@@ -1,6 +1,6 @@
 # P1 Implementation Log
 
-Status: started.
+Status: complete for the P1 backend foundation milestone.
 
 ## Scope Implemented
 
@@ -25,6 +25,8 @@ Status: started.
 - Validation report model and CLI script for retained test evidence.
 
 ## Scope Not Implemented
+
+The following items are intentionally deferred beyond P1. They are not blockers for closing the backend foundation milestone.
 
 - No FastAPI endpoints.
 - No database models or migrations.
@@ -60,6 +62,23 @@ Status: started.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.
+
+## P1 Closeout Criteria
+
+| Criterion | Status |
+|---|---|
+| Automated test framework and CI skeleton | Complete |
+| Quarterly scheduled regression trigger | Complete |
+| Core domain models and workflow state machine | Complete |
+| Roles and permission checks | Complete |
+| Audit event model and workflow audit service boundary | Complete |
+| Calculation-engine common primitives | Complete |
+| CMC lookup and AB11 rounding primitives | Complete |
+| Calculation summary version references | Complete |
+| Reference equipment traceability gates | Complete |
+| Constant-set and budget version locks | Complete |
+| Immutable certificate/export/revision record skeleton | Complete |
+| Controlled fixture governance and parser contracts | Complete |
 
 ## Environment Notes
 
