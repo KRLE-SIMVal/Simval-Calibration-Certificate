@@ -14,6 +14,7 @@ Status: started.
 - CMC lookup and floor tests for P1 expression types.
 - Parser-contract tests for controlled KAYE / ValProbe RT workbook and verification PDF IRTD rule.
 - Common calculation primitives for statistics, error of indication, uncertainty conversions, RSS combination, and expansion.
+- AB11 reporting-rounding primitives for expanded uncertainty and result precision.
 - Validation report model and CLI script for retained test evidence.
 
 ## Scope Not Implemented
@@ -24,14 +25,14 @@ Status: started.
 - No PDF table extraction implementation.
 - No certificate rendering.
 - No production certificate calculations.
-- No AB11 display rounding implementation.
+- No certificate-level display formatting implementation.
 
 ## Verification
 
 - `git diff --check` passed.
 - Source and tests compile with fallback `C:\Program Files\FreeCAD 1.0\bin\python.exe` using Python 3.11.13.
 - Pytest was installed into workspace-local `.test-deps` for local verification.
-- Default suite result with fallback Python: 37 passed, 2 skipped.
+- Default suite result with fallback Python after AB11 rounding slice: 44 passed, 2 skipped.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.

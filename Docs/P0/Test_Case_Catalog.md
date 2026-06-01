@@ -134,6 +134,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | RND-003 | Negative result rounding. | Correct sign and precision. |
 | RND-004 | Small decimal U. | Leading zeros do not count as significant digits. |
 | RND-005 | Rounding must not report U below CMC. | Displayed U remains >= CMC. |
+| RND-006 | One significant digit uncertainty. | U is rounded upward per AB11. |
+| RND-007 | More than two significant digits requested. | Reporting rounding rejects the request. |
 
 ## Import, Data Integrity, And Equipment
 
