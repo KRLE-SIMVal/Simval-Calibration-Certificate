@@ -9,6 +9,7 @@ Status: started.
 - Explicit Python package discovery for clean editable installs.
 - GitHub Actions CI skeleton with quarterly scheduled regression trigger.
 - Controlled fixture manifest for the three example files.
+- Immutable core domain entities for client, calibration job, DUT, uploaded-file evidence, source location, parsed reading, and measurement-window selection.
 - Domain workflow state tests.
 - Role and permission matrix tests.
 - Audit event immutability tests.
@@ -24,6 +25,7 @@ Status: started.
 - No database models or migrations.
 - No full XLSX import workflow.
 - No PDF table extraction implementation.
+- No persistence repositories or audit transaction orchestration.
 - No certificate rendering.
 - No production certificate calculations.
 - No certificate-level display formatting implementation.
@@ -37,6 +39,8 @@ Status: started.
 - Python 3.12.10 was installed from the official Python.org Windows installer.
 - Clean Python 3.12 virtual environment editable-install path is covered by `ENV-001`.
 - Pytest cache writes are disabled because controlled evidence is generated explicitly and `.pytest_cache` is not required for regression records.
+- Focused domain entity suite: 15 passed on Python 3.12.10.
+- Default suite result after core domain entity slice on Python 3.12.10: 59 passed, 2 skipped.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.

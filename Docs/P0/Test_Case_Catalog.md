@@ -13,6 +13,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | DOM-003 | Reject invalid discipline. | Validation error. |
 | DOM-004 | Create DUT with make/model/serial. | DUT linked to job. |
 | DOM-005 | Reject duplicate DUT serial within same batch when not allowed. | Validation error or explicit batch rule. |
+| DOM-006 | Job/domain timestamps are timezone-aware. | Naive timestamps are rejected where regulated timestamps are stored. |
 | WF-001 | Wizard next/back preserves draft values. | Values remain unchanged. |
 | WF-002 | Resume draft after interruption. | Draft loads with same state and data. |
 | WF-003 | Invalid step cannot advance. | Blocking validation shown. |
@@ -146,6 +147,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-003 | Unknown format requires mapping. | Import not silently accepted. |
 | IMP-020 | Uploaded raw file checksum stored. | Checksum matches file. |
 | IMP-021 | Raw file is immutable. | Edit attempt denied. |
+| IMP-022 | Uploaded raw file checksum format validated. | Non-SHA-256 values are rejected and valid digests are normalized. |
 | IMP-040 | KAYE verification PDF table detection. | Parser contract identifies the table containing `Time`. |
 | IMP-041 | KAYE verification PDF IRTD source column. | Parser contract treats the second column next to `Time` as IRTD/reference value. |
 | IMP-042 | Linked XLSX/PDF timestamp alignment. | Logger readings can be matched to corresponding IRTD/reference readings or produce blocking warnings. |
@@ -153,11 +155,23 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-044 | Verification PDF extraction failure. | Blocking parser warning and no silent fallback. |
 | IMP-045 | IRTD value missing for a logger reading. | Blocking parser warning for affected row/channel. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
+| DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
+| DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
 | EQ-001 | Create reference equipment. | Equipment stored with status and due date. |
 | EQ-002 | Equipment due date in future. | Selection allowed. |
 | EQ-030 | Overdue equipment selected. | Approval/export blocked or warning per rule. |
 | EQ-031 | Inactive equipment selected. | Approval/export blocked. |
 | EQ-032 | Equipment range incompatible with point. | Approval/export blocked. |
+
+## Measurement Windows
+
+| Test ID | Purpose | Expected result |
+|---|---|---|
+| WIN-001 | Selected window contains readings from one channel only. | Mixed channels are rejected. |
+| WIN-002 | Selected window contains readings in one unit only. | Mixed units are rejected. |
+| WIN-003 | Selected window contains at least one reading. | Empty window is rejected. |
+| WIN-004 | Selected window readings are chronological. | Non-chronological readings are rejected. |
+| WIN-005 | Selected window exposes start/end timestamps and reading count. | Traceable summary values are available. |
 
 ## Certificate, Audit, Validation, And Regression
 
