@@ -10,6 +10,7 @@ Status: started.
 - GitHub Actions CI skeleton with quarterly scheduled regression trigger.
 - Controlled fixture manifest for the three example files.
 - Immutable core domain entities for client, calibration job, DUT, uploaded-file evidence, source location, parsed reading, and measurement-window selection.
+- Immutable reference equipment traceability model with status, certificate reference, due date, range, and suitability blockers.
 - Domain workflow state tests.
 - Role and permission matrix tests.
 - Audit event immutability tests.
@@ -41,6 +42,8 @@ Status: started.
 - Pytest cache writes are disabled because controlled evidence is generated explicitly and `.pytest_cache` is not required for regression records.
 - Focused domain entity suite: 15 passed on Python 3.12.10.
 - Default suite result after core domain entity slice on Python 3.12.10: 59 passed, 2 skipped.
+- Focused reference equipment and domain-validation suite: 31 passed on Python 3.12.10.
+- Default suite result after reference equipment traceability slice on Python 3.12.10: 75 passed, 2 skipped.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.

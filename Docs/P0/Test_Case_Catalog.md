@@ -11,6 +11,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | DOM-001 | Create calibration job with minimum valid metadata. | Job is created in `draft`. |
 | DOM-002 | Reject job without required client. | Validation error. |
 | DOM-003 | Reject invalid discipline. | Validation error. |
+| DOM-003A | Reject invalid measurement mode. | Validation error. |
 | DOM-004 | Create DUT with make/model/serial. | DUT linked to job. |
 | DOM-005 | Reject duplicate DUT serial within same batch when not allowed. | Validation error or explicit batch rule. |
 | DOM-006 | Job/domain timestamps are timezone-aware. | Naive timestamps are rejected where regulated timestamps are stored. |
@@ -148,6 +149,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-020 | Uploaded raw file checksum stored. | Checksum matches file. |
 | IMP-021 | Raw file is immutable. | Edit attempt denied. |
 | IMP-022 | Uploaded raw file checksum format validated. | Non-SHA-256 values are rejected and valid digests are normalized. |
+| IMP-023 | Uploaded raw file kind is controlled. | Unknown file-kind values are rejected. |
 | IMP-040 | KAYE verification PDF table detection. | Parser contract identifies the table containing `Time`. |
 | IMP-041 | KAYE verification PDF IRTD source column. | Parser contract treats the second column next to `Time` as IRTD/reference value. |
 | IMP-042 | Linked XLSX/PDF timestamp alignment. | Logger readings can be matched to corresponding IRTD/reference readings or produce blocking warnings. |
@@ -159,9 +161,14 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
 | EQ-001 | Create reference equipment. | Equipment stored with status and due date. |
 | EQ-002 | Equipment due date in future. | Selection allowed. |
+| EQ-003 | Reference equipment certificate reference missing. | Equipment record rejected. |
+| EQ-004 | Reference equipment range inverted. | Equipment range rejected. |
 | EQ-030 | Overdue equipment selected. | Approval/export blocked or warning per rule. |
 | EQ-031 | Inactive equipment selected. | Approval/export blocked. |
 | EQ-032 | Equipment range incompatible with point. | Approval/export blocked. |
+| EQ-033 | Equipment unit incompatible with point. | Approval/export blocked. |
+| EQ-034 | Equipment discipline incompatible with point. | Approval/export blocked. |
+| EQ-035 | Multiple equipment suitability failures. | All applicable blockers are returned in deterministic order. |
 
 ## Measurement Windows
 

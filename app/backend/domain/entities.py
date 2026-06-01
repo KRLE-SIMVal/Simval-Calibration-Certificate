@@ -45,6 +45,11 @@ def _require_timezone_aware(value: datetime, field_name: str) -> None:
         raise DomainValidationError(f"{field_name} must be timezone-aware.")
 
 
+def _require_instance(value: object, expected_type: type, field_name: str) -> None:
+    if not isinstance(value, expected_type):
+        raise DomainValidationError(f"{field_name} is invalid.")
+
+
 @dataclass(frozen=True, slots=True)
 class Client:
     name: str
@@ -68,6 +73,13 @@ class CalibrationJob:
 
     def __post_init__(self) -> None:
         _require_text(self.id, "Calibration job id")
+        _require_instance(self.discipline, Discipline, "Calibration job discipline")
+        _require_instance(
+            self.measurement_mode,
+            MeasurementMode,
+            "Calibration job measurement mode",
+        )
+        _require_instance(self.state, WorkflowState, "Calibration job state")
         _require_text(self.method, "Calibration method")
         _require_text(self.created_by, "Created by user id")
         _require_timezone_aware(self.created_at, "Calibration job created_at")
@@ -89,6 +101,7 @@ class UploadedFile:
         _require_text(self.job_id, "Uploaded file job id")
         _require_text(self.original_filename, "Uploaded file original filename")
         _require_text(self.storage_uri, "Uploaded file storage URI")
+        _require_instance(self.file_kind, UploadedFileKind, "Uploaded file kind")
         if not _SHA256_PATTERN.fullmatch(self.checksum_sha256):
             raise DomainValidationError("Uploaded file checksum must be a SHA-256 hex digest.")
         if self.parser_version is not None:

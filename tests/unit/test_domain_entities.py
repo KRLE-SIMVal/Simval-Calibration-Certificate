@@ -39,6 +39,30 @@ def test_calibration_job_rejects_missing_client_name():
         Client(name=" ", address="Validated Road 1")
 
 
+def test_calibration_job_rejects_invalid_discipline():
+    with pytest.raises(DomainValidationError):
+        CalibrationJob(
+            id="job-001",
+            client=Client(name="SIMVal customer", address="Validated Road 1"),
+            discipline="temperature",
+            measurement_mode=MeasurementMode.AUTOMATIC,
+            method="ValProbe RT linked XLSX/PDF workflow",
+            created_by="user-001",
+        )
+
+
+def test_calibration_job_rejects_invalid_measurement_mode():
+    with pytest.raises(DomainValidationError):
+        CalibrationJob(
+            id="job-001",
+            client=Client(name="SIMVal customer", address="Validated Road 1"),
+            discipline=Discipline.TEMPERATURE,
+            measurement_mode="automatic",
+            method="ValProbe RT linked XLSX/PDF workflow",
+            created_by="user-001",
+        )
+
+
 def test_uploaded_file_records_raw_file_integrity_evidence():
     uploaded_file = UploadedFile(
         id="file-001",
@@ -62,6 +86,18 @@ def test_uploaded_file_rejects_invalid_checksum():
             original_filename="input.xlsx",
             checksum_sha256="not-a-sha256",
             file_kind=UploadedFileKind.CALIBRATION_XLSX,
+            storage_uri="controlled-local://input.xlsx",
+        )
+
+
+def test_uploaded_file_rejects_invalid_file_kind():
+    with pytest.raises(DomainValidationError):
+        UploadedFile(
+            id="file-001",
+            job_id="job-001",
+            original_filename="input.xlsx",
+            checksum_sha256="a" * 64,
+            file_kind="calibration_xlsx",
             storage_uri="controlled-local://input.xlsx",
         )
 
