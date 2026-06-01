@@ -18,6 +18,7 @@ Status: started.
 - Parser-contract tests for controlled KAYE / ValProbe RT workbook and verification PDF IRTD rule.
 - Common calculation primitives for statistics, error of indication, uncertainty conversions, RSS combination, and expansion.
 - AB11 reporting-rounding primitives for expanded uncertainty and result precision.
+- Measurement-point calculation summary model retaining raw values, error of indication, reported U, CMC floor, display rounding, and version references.
 - Validation report model and CLI script for retained test evidence.
 
 ## Scope Not Implemented
@@ -44,6 +45,8 @@ Status: started.
 - Default suite result after core domain entity slice on Python 3.12.10: 59 passed, 2 skipped.
 - Focused reference equipment and domain-validation suite: 31 passed on Python 3.12.10.
 - Default suite result after reference equipment traceability slice on Python 3.12.10: 75 passed, 2 skipped.
+- Focused calculation summary and AB11 rounding suite: 21 passed on Python 3.12.10.
+- Default suite result after calculation summary slice on Python 3.12.10: 89 passed, 2 skipped.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.

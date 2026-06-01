@@ -57,6 +57,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CALC-002 | Raw values retained at full precision. | Stored raw values equal inputs. |
 | CALC-003 | Calculation summary includes components. | Summary is independently recalculable. |
 | CALC-004 | Calculation engine version is recorded. | Version stored with calculation run. |
+| CALC-005 | Calculation summary records constant-set and budget versions. | Version references are present and immutable. |
+| CALC-006 | Calculation summary protects the applicable CMC floor. | Reported U is never below CMC after reporting rounding. |
+| CALC-007 | Two-significant-digit U uses normal AB11 rounding. | Rounded U may round down when still above CMC. |
 
 ## Temperature
 
