@@ -206,8 +206,13 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-030 | Preview required before export. | Export blocked without preview. |
 | CERT-050 | Released certificate tied to constants version. | Later constants changes do not alter released record. |
 | CERT-051 | Released certificate tied to uncertainty budget version. | Later budget changes do not alter released record. |
+| CERT-052 | Released certificate tied to calculation summary IDs. | Released record contains immutable calculation summary references. |
+| CERT-053 | Released certificate tied to software, calculation engine, and template versions. | Version references are present and immutable. |
 | CERT-100 | DANAK mark/reference area present when accredited. | Required text/logo placeholder present. |
 | CERT-120 | Released PDF immutable. | Regeneration creates revision path. |
+| CERT-121 | Export artifact checksum stored. | Artifact checksum is a valid SHA-256 digest. |
+| CERT-122 | Released certificate requires export artifact. | Release record is rejected without artifact evidence. |
+| CERT-123 | Certificate revision requires reason. | Revision record is rejected without reason and links original release. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |

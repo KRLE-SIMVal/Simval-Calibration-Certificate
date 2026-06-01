@@ -12,6 +12,7 @@ Status: started.
 - Immutable core domain entities for client, calibration job, DUT, uploaded-file evidence, source location, parsed reading, and measurement-window selection.
 - Immutable reference equipment traceability model with status, certificate reference, due date, range, and suitability blockers.
 - Approved constant-set and uncertainty-budget version lock models with release blockers.
+- Immutable certificate, export-artifact, and revision evidence records.
 - Domain workflow state tests.
 - Role and permission matrix tests.
 - Audit event immutability tests.
@@ -30,6 +31,7 @@ Status: started.
 - No PDF table extraction implementation.
 - No persistence repositories or audit transaction orchestration.
 - No certificate rendering.
+- No PDF generation implementation.
 - No production certificate calculations.
 - No certificate-level display formatting implementation.
 
@@ -50,6 +52,8 @@ Status: started.
 - Default suite result after calculation summary slice on Python 3.12.10: 89 passed, 2 skipped.
 - Focused version-lock and workflow suite: 13 passed on Python 3.12.10.
 - Default suite result after version-lock slice on Python 3.12.10: 98 passed, 2 skipped.
+- Focused certificate record suite: 11 passed on Python 3.12.10.
+- Default suite result after certificate record slice on Python 3.12.10: 109 passed, 2 skipped.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.
