@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "fixture_id": "kaye_valprobe_calibration_xlsx",
+      "path": "Docs/Input and output file examples/Calibration_input_file_Valprobe RT Loggers.xlsx",
+      "sha256": "71B6AAE2BCF599A65F25B16330473B1D7B60D3A3C0D3FD169D929E25CB362B02",
+      "intended_use": "Controlled parser-contract fixture for KAYE / ValProbe RT calibration XLSX structure.",
+      "confidentiality": "controlled_internal_confidential",
+      "allowed_in_ci": false
+    },
+    {
+      "fixture_id": "kaye_valprobe_verification_pdf",
+      "path": "Docs/Input and output file examples/KAYE Verification file - Valprobe Logger.pdf",
+      "sha256": "AD60CBA78FFEC2B9FF9D23BC4440DD849C6337FD3C407F773A4CA36B18F8F0F5",
+      "intended_use": "Controlled parser-contract fixture for KAYE verification PDF IRTD/reference values.",
+      "confidentiality": "controlled_internal_confidential",
+      "allowed_in_ci": false
+    },
+    {
+      "fixture_id": "third_party_certificate_output_pdf",
+      "path": "Docs/Input and output file examples/Calibration Certificate Output file.pdf",
+      "sha256": "C1D02553D14EC400099A48A4E1F8AA506E18DB4FD3FC0FFD15CA85FCEDFF1DC6",
+      "intended_use": "Controlled output-content reference; not authoritative calculation evidence.",
+      "confidentiality": "controlled_internal_confidential",
+      "allowed_in_ci": false
+    }
+  ]
+}
