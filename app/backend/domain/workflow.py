@@ -82,10 +82,11 @@ RELEASE_BLOCKERS: frozenset[str] = frozenset(
         "missing_cmc",
         "cmc_out_of_range",
         "blocking_calculation_warning",
+        "missing_approved_constant_set",
         "missing_approved_uncertainty_budget",
+        "constant_budget_version_mismatch",
         "reviewer_independence_violation",
         "missing_audit_reason",
         "certificate_preview_failed",
     }
 )
-

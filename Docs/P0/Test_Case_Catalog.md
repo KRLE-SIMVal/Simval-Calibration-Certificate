@@ -110,7 +110,19 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | UB-033 | U-shaped distribution conversion. | `u = a / sqrt(2)`. |
 | UB-040 | Approved budget cannot be edited in place. | Revision required. |
 | UB-041 | Certificate links to approved budget version. | Link stored and immutable after release. |
+| UB-042 | Approved budget requires approval evidence. | Approver and approval timestamp are required. |
+| UB-043 | Budget links to a constant-set version. | Missing linked constant-set version is rejected. |
 | UB-060 | Required contribution missing. | Warning or block according to method rule. |
+
+## Constant Sets And Version Locks
+
+| Test ID | Purpose | Expected result |
+|---|---|---|
+| CONST-001 | Approved constant set requires approval evidence. | Approver and approval timestamp are required. |
+| CONST-002 | Draft constant set cannot be used for release. | Release blocker is returned. |
+| CONST-003 | Missing approved constant set. | Approval/export blocked. |
+| CONST-004 | Budget linked constant version differs from selected constant set. | Approval/export blocked. |
+| CONST-005 | Budget discipline differs from selected constant set. | Approval/export blocked. |
 
 ## CMC And Rounding
 
@@ -193,6 +205,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-021 | Combined batch summary. | Summary references all DUTs. |
 | CERT-030 | Preview required before export. | Export blocked without preview. |
 | CERT-050 | Released certificate tied to constants version. | Later constants changes do not alter released record. |
+| CERT-051 | Released certificate tied to uncertainty budget version. | Later budget changes do not alter released record. |
 | CERT-100 | DANAK mark/reference area present when accredited. | Required text/logo placeholder present. |
 | CERT-120 | Released PDF immutable. | Regeneration creates revision path. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
