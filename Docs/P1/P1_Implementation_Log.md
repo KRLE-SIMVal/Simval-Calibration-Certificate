@@ -6,6 +6,7 @@ Status: started.
 
 - Python package skeleton for backend, domain, audit, imports, and CMC calculation primitives.
 - Pytest project configuration.
+- Explicit Python package discovery for clean editable installs.
 - GitHub Actions CI skeleton with quarterly scheduled regression trigger.
 - Controlled fixture manifest for the three example files.
 - Domain workflow state tests.
@@ -33,13 +34,15 @@ Status: started.
 - Source and tests compile with fallback `C:\Program Files\FreeCAD 1.0\bin\python.exe` using Python 3.11.13.
 - Pytest was installed into workspace-local `.test-deps` for local verification.
 - Default suite result with fallback Python after AB11 rounding slice: 44 passed, 2 skipped.
+- Python 3.12.10 was installed from the official Python.org Windows installer.
+- Clean Python 3.12 virtual environment editable-install path is covered by `ENV-001`.
+- Pytest cache writes are disabled because controlled evidence is generated explicitly and `.pytest_cache` is not required for regression records.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.
 
 ## Environment Notes
 
-- `python.exe` and `py.exe` resolve to Windows app aliases that fail to start in this session.
-- A proper project Python 3.12 interpreter is still required.
-- Fallback Python 3.11.13 is only a verification workaround and is not the approved project runtime.
+- `python.exe` and `py.exe` still resolve to Windows app aliases that fail to start in this session; use `.venv\Scripts\python.exe` or the absolute Python 3.12 path.
+- Fallback Python 3.11.13 was only a verification workaround before Python 3.12.10 was installed.
 - Optional controlled-file tests were attempted with `SIMVAL_RUN_CONTROLLED_FIXTURE_TESTS=1`, but FreeCAD Python could not read the OneDrive example files and raised `PermissionError`. PowerShell can read the same files. Recommended solution: install/use a normal Python 3.12 runtime with OneDrive file access, or create sanitized fixtures in a non-restricted test fixture path before enabling these tests in CI.

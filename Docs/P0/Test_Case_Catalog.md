@@ -177,6 +177,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUD-004 | Approval audit event. | Approver and timestamp stored. |
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
+| ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
 | REG-003 | Regression failure creates issue/deviation. | Failure path records tracked item. |
