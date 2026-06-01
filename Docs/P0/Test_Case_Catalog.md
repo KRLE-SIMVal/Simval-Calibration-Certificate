@@ -25,6 +25,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-021 | Automatic mode requires imported or parsed readings. | Missing readings block calculation. |
 | WF-030 | Certificate metadata complete moves state. | State becomes `metadata_complete`. |
 | WF-040 | Export before preview is blocked. | Export rejected and audited if attempted. |
+| WF-050 | Workflow transition service records audit event. | State change and software version are captured in audit evidence. |
+| WF-051 | Void/revision transition requires reason. | Transition is rejected without reason. |
+| WF-052 | Invalid workflow state type at service boundary. | Transition is rejected with service validation error. |
 
 ## Roles And Permissions
 
@@ -218,6 +221,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
 | AUD-004 | Approval audit event. | Approver and timestamp stored. |
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
+| AUD-006 | Workflow transition audit event. | Previous and new workflow states are stored. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |

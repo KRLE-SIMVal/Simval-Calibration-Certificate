@@ -13,6 +13,7 @@ Status: started.
 - Immutable reference equipment traceability model with status, certificate reference, due date, range, and suitability blockers.
 - Approved constant-set and uncertainty-budget version lock models with release blockers.
 - Immutable certificate, export-artifact, and revision evidence records.
+- Audit-aware workflow transition service boundary returning state and audit evidence.
 - Domain workflow state tests.
 - Role and permission matrix tests.
 - Audit event immutability tests.
@@ -29,7 +30,7 @@ Status: started.
 - No database models or migrations.
 - No full XLSX import workflow.
 - No PDF table extraction implementation.
-- No persistence repositories or audit transaction orchestration.
+- No persistence repositories or database transaction orchestration.
 - No certificate rendering.
 - No PDF generation implementation.
 - No production certificate calculations.
@@ -54,6 +55,8 @@ Status: started.
 - Default suite result after version-lock slice on Python 3.12.10: 98 passed, 2 skipped.
 - Focused certificate record suite: 11 passed on Python 3.12.10.
 - Default suite result after certificate record slice on Python 3.12.10: 109 passed, 2 skipped.
+- Focused workflow service, audit, and workflow suite: 15 passed on Python 3.12.10.
+- Default suite result after workflow service slice on Python 3.12.10: 117 passed, 2 skipped.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 - Validation report CLI was exercised and generated `Docs/Validation/evidence/latest/validation-report.json`.
 - The 2 skipped tests are controlled-file tests disabled until confidentiality classification.

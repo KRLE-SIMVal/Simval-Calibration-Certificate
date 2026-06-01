@@ -25,6 +25,7 @@ class AuditAction(StrEnum):
     CERTIFICATE_REVISED = "certificate_revised"
     CERTIFICATE_VOIDED = "certificate_voided"
     EXPORT_ARTIFACT_GENERATED = "export_artifact_generated"
+    WORKFLOW_TRANSITIONED = "workflow_transitioned"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,4 +54,3 @@ class AuditEvent:
             )
         if self.new_value is not None:
             object.__setattr__(self, "new_value", MappingProxyType(dict(self.new_value)))
-
