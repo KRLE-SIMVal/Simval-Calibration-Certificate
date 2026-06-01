@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.test-deps/
+dist/
+build/
+*.egg-info/
+Docs/Validation/evidence/
+Docs/Input and output file examples/*

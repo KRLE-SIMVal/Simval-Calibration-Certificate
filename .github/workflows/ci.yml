@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Full quarterly regression run on Jan 1, Apr 1, Jul 1, and Oct 1.
+    - cron: "0 0 1 1,4,7,10 *"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Run tests
+        run: |
+          mkdir -p Docs/Validation/evidence/latest
+          pytest --junitxml Docs/Validation/evidence/latest/pytest.xml
+
+      - name: Generate validation evidence report
+        if: always()
+        run: |
+          python scripts/validation/generate_validation_report.py \
+            --status "${{ job.status }}" \
+            --objective "Automated regression run" \
+            --test-suite "pytest" \
+            --evidence "junit=Docs/Validation/evidence/latest/pytest.xml" \
+            --output Docs/Validation/evidence/latest/validation-report.json
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-evidence
+          path: |
+            Docs/Validation/evidence/latest
+          if-no-files-found: ignore

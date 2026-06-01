@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simval-calibration-certificate"
+version = "0.1.0"
+description = "Controlled SIMVal calibration certificate application backend and calculation foundation."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+]
+api = [
+  "fastapi>=0.115",
+  "pydantic>=2.0",
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = [
+  "controlled_fixture: uses real controlled example files; disabled unless SIMVAL_RUN_CONTROLLED_FIXTURE_TESTS=1",
+  "parser_contract: parser contract test before full parser implementation",
+]
+
