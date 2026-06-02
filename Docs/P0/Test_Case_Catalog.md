@@ -313,6 +313,11 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PERSIST-034 | Store and reload required temperature setpoints for a job. | Setpoint, unit, sequence, creator, and timestamp round-trip unchanged in deterministic order. |
 | PERSIST-035 | Store required temperature setpoint for unknown job. | Insert is rejected by referential integrity. |
 | PERSIST-036 | Store duplicate required temperature setpoint sequence or value. | Duplicate plan entries are rejected. |
+| MIG-001 | Apply controlled SQLite migrations. | Migrations apply in supplied order and record version, description, checksum, and timestamp. |
+| MIG-002 | Re-run applied migration with same checksum. | Migration runner is idempotent and does not duplicate history. |
+| MIG-003 | Re-run applied migration with changed SQL. | Checksum mismatch blocks execution. |
+| MIG-004 | Migration plan contains duplicate versions. | Plan is rejected before execution. |
+| MIG-005 | Migration SQL fails. | Failed migration is not recorded as applied. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
