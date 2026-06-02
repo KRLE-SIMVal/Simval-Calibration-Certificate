@@ -25,6 +25,7 @@ from app.backend.domain.entities import (
     MeasurementReading,
     MeasurementWindow,
     MeasurementMode,
+    RequiredTemperatureSetpoint,
     SourceLocation,
     UploadedFile,
     UploadedFileKind,
@@ -34,7 +35,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
 
-SCHEMA_VERSION = "p2-sqlite-schema-v1"
+SCHEMA_VERSION = "p2-sqlite-schema-v2"
 
 
 class PersistenceError(RuntimeError):
@@ -144,6 +145,25 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
 
         CREATE UNIQUE INDEX IF NOT EXISTS ux_devices_under_test_identity
             ON devices_under_test(job_id, serial_number, coalesce(channel_id, ''));
+
+        CREATE TABLE IF NOT EXISTS required_temperature_setpoints (
+            id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL REFERENCES calibration_jobs(id),
+            setpoint REAL NOT NULL,
+            unit TEXT NOT NULL,
+            sequence_index INTEGER NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_required_temperature_setpoints_job
+            ON required_temperature_setpoints(job_id, sequence_index, id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_required_temperature_setpoints_sequence
+            ON required_temperature_setpoints(job_id, sequence_index);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_required_temperature_setpoints_value
+            ON required_temperature_setpoints(job_id, setpoint, unit);
 
         CREATE TABLE IF NOT EXISTS measurement_windows (
             id TEXT PRIMARY KEY,
@@ -410,6 +430,18 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             BEFORE DELETE ON linked_temperature_readings
             BEGIN
                 SELECT RAISE(ABORT, 'linked temperature readings are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS required_temperature_setpoints_no_update
+            BEFORE UPDATE ON required_temperature_setpoints
+            BEGIN
+                SELECT RAISE(ABORT, 'required temperature setpoints are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS required_temperature_setpoints_no_delete
+            BEFORE DELETE ON required_temperature_setpoints
+            BEGIN
+                SELECT RAISE(ABORT, 'required temperature setpoints are immutable');
             END;
         """
     )
@@ -934,6 +966,103 @@ class SQLiteDeviceUnderTestRepository:
             (job_id,),
         ).fetchall()
         return tuple(_dut_from_row(row) for row in rows)
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
+
+
+class SQLiteRequiredTemperatureSetpointRepository:
+    """Repository for immutable required temperature setpoint plans."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add_many(self, setpoints: tuple[RequiredTemperatureSetpoint, ...]) -> None:
+        if len(setpoints) == 0:
+            return
+        try:
+            for setpoint in setpoints:
+                self._connection.execute(
+                    """
+                    INSERT INTO required_temperature_setpoints (
+                        id,
+                        job_id,
+                        setpoint,
+                        unit,
+                        sequence_index,
+                        created_by,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        setpoint.id,
+                        setpoint.job_id,
+                        setpoint.setpoint,
+                        setpoint.unit,
+                        setpoint.sequence_index,
+                        setpoint.created_by,
+                        _datetime_to_text(
+                            setpoint.created_at,
+                            "Required temperature setpoint created_at",
+                        ),
+                    ),
+                )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError(
+                "Could not store required temperature setpoint plan."
+            ) from error
+
+    def get(self, setpoint_id: str) -> RequiredTemperatureSetpoint:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                job_id,
+                setpoint,
+                unit,
+                sequence_index,
+                created_by,
+                created_at
+            FROM required_temperature_setpoints
+            WHERE id = ?
+            """,
+            (setpoint_id,),
+        ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(
+                f"Required temperature setpoint {setpoint_id!r} was not found."
+            )
+        return _required_temperature_setpoint_from_row(row)
+
+    def list_for_job(self, job_id: str) -> tuple[RequiredTemperatureSetpoint, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                id,
+                job_id,
+                setpoint,
+                unit,
+                sequence_index,
+                created_by,
+                created_at
+            FROM required_temperature_setpoints
+            WHERE job_id = ?
+            ORDER BY sequence_index ASC, id ASC
+            """,
+            (job_id,),
+        ).fetchall()
+        return tuple(_required_temperature_setpoint_from_row(row) for row in rows)
 
     def _commit_if_needed(self) -> None:
         if self._autocommit:
@@ -1873,6 +2002,23 @@ def _dut_from_row(row: sqlite3.Row) -> DeviceUnderTest:
         model=row["model"],
         serial_number=row["serial_number"],
         channel_id=row["channel_id"],
+    )
+
+
+def _required_temperature_setpoint_from_row(
+    row: sqlite3.Row,
+) -> RequiredTemperatureSetpoint:
+    return RequiredTemperatureSetpoint(
+        id=row["id"],
+        job_id=row["job_id"],
+        setpoint=row["setpoint"],
+        unit=row["unit"],
+        sequence_index=row["sequence_index"],
+        created_by=row["created_by"],
+        created_at=_datetime_from_text(
+            row["created_at"],
+            "Required temperature setpoint created_at",
+        ),
     )
 
 

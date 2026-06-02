@@ -207,6 +207,39 @@ class LinkedTemperatureReading:
 
 
 @dataclass(frozen=True, slots=True)
+class RequiredTemperatureSetpoint:
+    id: str
+    job_id: str
+    setpoint: float
+    unit: str
+    sequence_index: int
+    created_by: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        _require_text(self.id, "Required temperature setpoint id")
+        _require_text(self.job_id, "Required temperature setpoint job id")
+        _require_text(self.unit, "Required temperature setpoint unit")
+        _require_text(self.created_by, "Required temperature setpoint created_by")
+        _require_timezone_aware(
+            self.created_at,
+            "Required temperature setpoint created_at",
+        )
+        if not isfinite(self.setpoint):
+            raise DomainValidationError(
+                "Required temperature setpoint must be finite."
+            )
+        if self.sequence_index < 0:
+            raise DomainValidationError(
+                "Required temperature setpoint sequence index cannot be negative."
+            )
+
+    @property
+    def coverage_key(self) -> tuple[float, str]:
+        return (self.setpoint, self.unit)
+
+
+@dataclass(frozen=True, slots=True)
 class MeasurementWindow:
     id: str
     job_id: str

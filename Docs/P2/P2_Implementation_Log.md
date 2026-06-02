@@ -1,6 +1,6 @@
 # P2 Implementation Log
 
-Status: started.
+Status: complete for the P2 backend temperature workflow milestone.
 
 P2 begins the temperature certificate workflow implementation after the P1 backend foundation closeout.
 
@@ -50,20 +50,26 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Temperature window selection rejects requests before the `data_entered` workflow state.
 - Temperature window completion gate transitions jobs from `data_entered` to `windows_selected` only when every DUT on the job has at least one selected window.
 - Temperature window completion records the existing workflow-transition audit evidence in the same transaction as the state update.
+- Domain model for required temperature setpoint plans with explicit setpoint, unit, order, creator, and timestamp.
+- SQLite persistence for immutable required temperature setpoint plans.
+- Temperature window completion now requires every DUT to have a selected window for every required setpoint and unit.
+- Pure automatic temperature calculation engine for selected linked logger/IRTD windows.
+- Temperature calculation engine computes reference mean, indication mean, error of indication, Type A reference repeatability, Type A DUT repeatability, reference calibration uncertainty conversion, optional bath/thermostat contribution, optional DUT resolution contribution, RSS combined standard uncertainty, expanded uncertainty, CMC floor, and AB11 display rounding.
+- Temperature calculation orchestration service persists measurement-point summaries, records calculation-run audit evidence with uncertainty contribution breakdowns, and transitions jobs from `windows_selected` to `calculated` in one transaction.
+- Temperature calculation orchestration requires approved matching constant-set and uncertainty-budget versions.
+- Temperature calculation orchestration rejects missing linked IRTD references, missing uncertainty inputs, duplicate selected windows for the same DUT/setpoint/unit, missing required DUT/setpoint coverage, and too few readings for Type A repeatability.
 
 ## Scope Not Implemented
 
-- No production database migration toolchain yet.
-- No API endpoints.
-- No user/session persistence.
-- No parser result orchestration around the uploaded-file, DUT, reading, or measurement-window repositories.
+- No production database migration toolchain beyond the current schema-version marker and direct schema initializer.
+- No API endpoints; FastAPI/Pydantic dependencies are not installed in the current validated environment.
+- No user/session persistence; audit actor identity is still accepted as a controlled user-id string at service boundaries.
 - No controlled-file parser regression in default CI until sanitized customer-safe fixtures are approved.
 - No production PDF text/table extraction dependency yet.
 - No D4 certificate-number adapter yet.
-- No certificate result calculation from linked logger/IRTD readings yet.
 - No automatic plateau/stability window suggestion yet.
 - No automatic transition from `data_entered` to `windows_selected` immediately after selecting an individual window; completion remains an explicit service action.
-- No required setpoint-plan model yet, so window completeness currently checks DUT coverage only.
+- No certificate PDF rendering or visual template matching.
 
 ## Compliance Notes
 
@@ -92,7 +98,14 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Temperature window selection requires the selected DUT to belong to the job and match the selected logger channel.
 - Temperature window selection is allowed only after source data is entered/imported, keeping workflow ordering explicit.
 - Temperature window completion does not classify stability or calculate results; it only checks selected-window coverage and records the workflow transition.
-- Temperature window completion currently requires at least one selected window per DUT because required setpoints are not modeled yet.
+- Required setpoint plans are immutable in SQLite. A future change to the plan must be handled as a controlled revision path, not an in-place edit.
+- Temperature window completion now checks required DUT/setpoint/unit coverage. This prevents a multi-setpoint calibration from advancing when each DUT has only one selected point.
+- Temperature calculation uses the approved P0 first-principles rule: `reference = mean(IRTD references)`, `indication = mean(DUT indications)`, and `error = indication - reference`.
+- Temperature calculation requires at least two linked readings per selected window so Type A repeatability can be calculated using sample standard deviation and standard uncertainty of the mean.
+- Temperature calculation does not silently convert units. Linked readings and selected windows must already have matching units.
+- Temperature calculation does not create or approve an uncertainty budget. It consumes explicit point uncertainty inputs and requires approved matching constant-set and budget version records before persistence.
+- Calculation-run audit evidence records contribution names, standard uncertainty values, sensitivity coefficients, effective standard uncertainty values, calculated expanded uncertainty, CMC floor, reported expanded uncertainty, and display-rounded error.
+- Measurement-point summary persistence remains immutable and stores version references for software-independent reproducibility.
 
 ## Verification
 
@@ -139,18 +152,25 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused temperature window completion and selection suite: 11 passed on Python 3.12.10.
 - Source-data, workflow, and temperature window-completion suite: 37 passed on Python 3.12.10.
 - Default regression suite after temperature window-completion gate slice: 188 passed, 2 skipped on Python 3.12.10.
+- Focused required temperature setpoint domain and persistence suite: 27 passed on Python 3.12.10.
+- Focused setpoint-plan and temperature window-completion suite: 11 passed on Python 3.12.10.
+- Focused automatic temperature calculation engine suite: 5 passed on Python 3.12.10.
+- Focused temperature calculation orchestration suite: 6 passed on Python 3.12.10.
+- Focused P2 setpoint/window/calculation path suite: 22 passed on Python 3.12.10.
+- Default regression suite after P2 setpoint-plan and calculation-run slices: 208 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
-| SQLite schema is currently initialized directly, not via controlled migrations. | Add a migration/version table or Alembic/SQL migration runner before production deployment. |
+| SQLite schema is currently initialized directly, not via a production migration runner. | Keep the schema-version marker for P2 traceability and add a controlled migration runner before production deployment or multi-environment rollout. |
 | Parser tests currently use generated sanitized XLSX workbooks, not the controlled customer workbook. | Create and approve customer-safe sanitized fixtures that mirror the observed workbook structure before production parser validation. |
 | Verification PDF table extraction dependency is not approved yet. | Keep file-level extraction blocked and add a small dependency-selection review before implementing PDF text/table extraction. |
 | Logger and IRTD alignment currently requires exact timestamps. | Keep exact matching as the default compliance-safe rule and add a council-reviewed tolerance/window rule only if real verification exports show timestamp drift. |
-| Window completion does not yet determine whether all required setpoint windows are complete. | Add a required setpoint-plan model before multi-setpoint calculation runs consume windows. |
 | Window selection is manual timestamp-range only. | Keep manual selection as the validated default and add automatic stable-window suggestion later with transparent thresholds and review/override evidence. |
 | D4 is still not integrated as the external certificate-number source. | Keep the internal sequence as the approved interim source and add a D4 adapter only when interface requirements are known. |
 | Audit actor identity is accepted as a user ID string only. | Add user repository/session integration before exposing API endpoints. |
+| Calculation contribution details are currently retained in calculation audit evidence, while the measurement-point summary table stores the locked result values. | Add a dedicated persisted contribution-detail table when the uncertainty-budget editor becomes part of the production workflow. |
+| API endpoints are not implemented in P2. | Treat API implementation as the next checkpoint because web dependencies and request/response contracts must be approved and tested separately. |
 | Test evidence is local and ignored by Git. | Keep generated validation artifacts local until a controlled evidence-retention location is agreed. |

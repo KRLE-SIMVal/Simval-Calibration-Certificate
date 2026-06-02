@@ -12,6 +12,7 @@ from app.backend.domain.entities import (
     MeasurementMode,
     MeasurementReading,
     MeasurementWindow,
+    RequiredTemperatureSetpoint,
     SourceLocation,
     UploadedFile,
     UploadedFileKind,
@@ -22,6 +23,7 @@ from app.backend.persistence.sqlite import (
     SQLiteCalibrationJobRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementWindowRepository,
+    SQLiteRequiredTemperatureSetpointRepository,
     SQLiteUploadedFileRepository,
     initialize_schema,
 )
@@ -46,8 +48,10 @@ def test_complete_temperature_window_selection_transitions_when_all_duts_have_wi
     connection = _connection_with_job()
     dut_repository = SQLiteDeviceUnderTestRepository(connection)
     window_repository = SQLiteMeasurementWindowRepository(connection)
+    setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(connection)
     dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
     dut_repository.add(_dut("dut-002", "NWU2", "NWU2-A"))
+    setpoint_repository.add_many((_setpoint("setpoint-001", -80.0, 0),))
     window_repository.add(_window("window-001", "dut-001", "MJT1-A"))
     window_repository.add(_window("window-002", "dut-002", "NWU2-A"))
 
@@ -73,8 +77,10 @@ def test_complete_temperature_window_selection_rejects_missing_dut_window():
     connection = _connection_with_job()
     dut_repository = SQLiteDeviceUnderTestRepository(connection)
     window_repository = SQLiteMeasurementWindowRepository(connection)
+    setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(connection)
     dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
     dut_repository.add(_dut("dut-002", "NWU2", "NWU2-A"))
+    setpoint_repository.add_many((_setpoint("setpoint-001", -80.0, 0),))
     window_repository.add(_window("window-001", "dut-001", "MJT1-A"))
 
     with pytest.raises(MeasurementWindowSelectionError) as exc_info:
@@ -86,7 +92,7 @@ def test_complete_temperature_window_selection_rejects_missing_dut_window():
             timestamp=datetime(2026, 6, 1, 14, 30, tzinfo=timezone.utc),
         )
 
-    assert "dut-002" in str(exc_info.value)
+    assert "dut-002@-80 deg C" in str(exc_info.value)
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.DATA_ENTERED
     )
@@ -98,6 +104,9 @@ def test_complete_temperature_window_selection_rejects_missing_dut_window():
 
 def test_complete_temperature_window_selection_rejects_job_without_duts():
     connection = _connection_with_job()
+    SQLiteRequiredTemperatureSetpointRepository(connection).add_many(
+        (_setpoint("setpoint-001", -80.0, 0),)
+    )
 
     with pytest.raises(MeasurementWindowSelectionError):
         complete_temperature_window_selection(
@@ -113,11 +122,67 @@ def test_complete_temperature_window_selection_rejects_job_without_duts():
     )
 
 
+def test_complete_temperature_window_selection_rejects_job_without_setpoint_plan():
+    connection = _connection_with_job()
+    dut_repository = SQLiteDeviceUnderTestRepository(connection)
+    window_repository = SQLiteMeasurementWindowRepository(connection)
+    dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
+    window_repository.add(_window("window-001", "dut-001", "MJT1-A"))
+
+    with pytest.raises(MeasurementWindowSelectionError) as exc_info:
+        complete_temperature_window_selection(
+            connection=connection,
+            job_id="job-001",
+            user_id="operator-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 14, 30, tzinfo=timezone.utc),
+        )
+
+    assert "required setpoint" in str(exc_info.value)
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.DATA_ENTERED
+    )
+
+
+def test_complete_temperature_window_selection_requires_each_dut_setpoint_pair():
+    connection = _connection_with_job()
+    dut_repository = SQLiteDeviceUnderTestRepository(connection)
+    window_repository = SQLiteMeasurementWindowRepository(connection)
+    setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(connection)
+    dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
+    dut_repository.add(_dut("dut-002", "NWU2", "NWU2-A"))
+    setpoint_repository.add_many(
+        (
+            _setpoint("setpoint-001", -80.0, 0),
+            _setpoint("setpoint-002", 0.0, 1),
+        )
+    )
+    window_repository.add(_window("window-001", "dut-001", "MJT1-A", setpoint=-80.0))
+    window_repository.add(_window("window-002", "dut-001", "MJT1-A", setpoint=0.0))
+    window_repository.add(_window("window-003", "dut-002", "NWU2-A", setpoint=-80.0))
+
+    with pytest.raises(MeasurementWindowSelectionError) as exc_info:
+        complete_temperature_window_selection(
+            connection=connection,
+            job_id="job-001",
+            user_id="operator-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 14, 30, tzinfo=timezone.utc),
+        )
+
+    assert "dut-002@0 deg C" in str(exc_info.value)
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.DATA_ENTERED
+    )
+
+
 def test_complete_temperature_window_selection_rejects_before_data_entered():
     connection = _connection_with_job(job_state=WorkflowState.EQUIPMENT_SELECTED)
     dut_repository = SQLiteDeviceUnderTestRepository(connection)
     window_repository = SQLiteMeasurementWindowRepository(connection)
+    setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(connection)
     dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
+    setpoint_repository.add_many((_setpoint("setpoint-001", -80.0, 0),))
     window_repository.add(_window("window-001", "dut-001", "MJT1-A"))
 
     with pytest.raises(MeasurementWindowSelectionError):
@@ -171,13 +236,35 @@ def _dut(dut_id: str, serial_number: str, channel_id: str) -> DeviceUnderTest:
     )
 
 
-def _window(window_id: str, dut_id: str, channel_id: str) -> MeasurementWindow:
+def _setpoint(
+    setpoint_id: str,
+    setpoint: float,
+    sequence_index: int,
+) -> RequiredTemperatureSetpoint:
+    return RequiredTemperatureSetpoint(
+        id=setpoint_id,
+        job_id="job-001",
+        setpoint=setpoint,
+        unit="deg C",
+        sequence_index=sequence_index,
+        created_by="operator-001",
+        created_at=datetime(2026, 6, 1, 14, 15, tzinfo=timezone.utc),
+    )
+
+
+def _window(
+    window_id: str,
+    dut_id: str,
+    channel_id: str,
+    *,
+    setpoint: float = -80.0,
+) -> MeasurementWindow:
     timestamp = datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc)
     return MeasurementWindow(
         id=window_id,
         job_id="job-001",
         dut_id=dut_id,
-        setpoint=-80.0,
+        setpoint=setpoint,
         unit="deg C",
         selected_by="operator-001",
         selected_at=datetime(2026, 6, 1, 14, 20, tzinfo=timezone.utc),

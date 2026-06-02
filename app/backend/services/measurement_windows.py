@@ -19,6 +19,7 @@ from app.backend.persistence.sqlite import (
     SQLiteDeviceUnderTestRepository,
     SQLiteLinkedTemperatureReadingRepository,
     SQLiteMeasurementWindowRepository,
+    SQLiteRequiredTemperatureSetpointRepository,
 )
 from app.backend.services.workflow import transition_calibration_job
 
@@ -164,6 +165,10 @@ def complete_temperature_window_selection(
             connection,
             autocommit=False,
         )
+        setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(
+            connection,
+            autocommit=False,
+        )
         audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
 
         job = job_repository.get(job_id)
@@ -178,16 +183,38 @@ def complete_temperature_window_selection(
                 "Temperature window completion requires at least one DUT."
             )
 
-        window_dut_ids = {
-            window.dut_id for window in window_repository.list_for_job(job_id)
-        }
-        missing_dut_ids = tuple(
-            dut_id for dut_id in dut_ids if dut_id not in window_dut_ids
-        )
-        if missing_dut_ids:
-            missing = ", ".join(missing_dut_ids)
+        required_setpoints = setpoint_repository.list_for_job(job_id)
+        if len(required_setpoints) == 0:
             raise MeasurementWindowSelectionError(
-                f"Missing selected measurement windows for DUTs: {missing}."
+                "Temperature window completion requires at least one required setpoint."
+            )
+
+        selected_windows = window_repository.list_for_job(job_id)
+        selected_coverage = {
+            (window.dut_id, window.setpoint, window.unit) for window in selected_windows
+        }
+        missing_coverage = tuple(
+            (
+                dut_id,
+                required_setpoint.setpoint,
+                required_setpoint.unit,
+            )
+            for dut_id in dut_ids
+            for required_setpoint in required_setpoints
+            if (
+                dut_id,
+                required_setpoint.setpoint,
+                required_setpoint.unit,
+            )
+            not in selected_coverage
+        )
+        if missing_coverage:
+            missing = ", ".join(
+                f"{dut_id}@{setpoint:g} {unit}"
+                for dut_id, setpoint, unit in missing_coverage
+            )
+            raise MeasurementWindowSelectionError(
+                f"Missing selected measurement windows for required setpoints: {missing}."
             )
 
         transition = transition_calibration_job(

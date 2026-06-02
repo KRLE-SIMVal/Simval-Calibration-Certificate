@@ -31,6 +31,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-053 | Complete temperature window selection with all DUTs covered. | Job transitions from `data_entered` to `windows_selected` and records workflow audit evidence. |
 | WF-054 | Complete temperature window selection with missing DUT window. | Transition is rejected, job state is unchanged, and no audit event is written. |
 | WF-055 | Complete temperature window selection with no DUTs. | Transition is rejected because completeness cannot be established. |
+| WF-056 | Complete temperature window selection without a required setpoint plan. | Transition is rejected because setpoint completeness cannot be established. |
+| WF-057 | Complete temperature window selection with a missing DUT/setpoint pair. | Transition is rejected and identifies the missing DUT/setpoint/unit coverage. |
 
 ## Roles And Permissions
 
@@ -66,6 +68,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CALC-005 | Calculation summary records constant-set and budget versions. | Version references are present and immutable. |
 | CALC-006 | Calculation summary protects the applicable CMC floor. | Reported U is never below CMC after reporting rounding. |
 | CALC-007 | Two-significant-digit U uses normal AB11 rounding. | Rounded U may round down when still above CMC. |
+| CALC-008 | Automatic temperature calculation run persists summaries and audit evidence. | All summaries are stored, the calculation audit event records components, and the job transitions to `calculated`. |
+| CALC-009 | Calculation run requires approved version locks. | Missing or incompatible constant/budget versions block calculation and persist no partial summaries. |
 
 ## Temperature
 
@@ -78,6 +82,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | TEMP-010 | Automatic mode reference mean. | R equals mean of selected reference readings. |
 | TEMP-011 | Automatic mode DUT mean. | I equals mean of selected DUT readings. |
 | TEMP-012 | Automatic mode repeatability. | Type A terms computed from selected windows. |
+| TEMP-013 | Automatic mode linked IRTD calculation. | Selected logger window readings are matched to linked IRTD references before mean/error calculation. |
+| TEMP-014 | Automatic mode too few linked readings. | Calculation is blocked when Type A repeatability cannot be calculated. |
 | TEMP-020 | DUT resolution contribution. | `(resolution / 2) / sqrt(3)`. |
 | TEMP-021 | Reference expanded uncertainty conversion. | `u = U / k`. |
 | TEMP-022 | Bath expanded uncertainty conversion. | `u = U / k`. |
@@ -227,6 +233,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WIN-010 | Linked temperature window records audit event. | Audit evidence records setpoint, unit, selected range, DUT channel, and linked reading count. |
 | WIN-011 | Linked temperature window before data-entered workflow state. | Selection is rejected until source data has been entered/imported. |
 | WIN-012 | Linked temperature window has inverted timestamp range. | Selection is rejected before persistence. |
+| WIN-013 | Required temperature setpoint plan is persisted. | Setpoint, unit, order, creator, and timestamp round-trip unchanged. |
+| WIN-014 | Required temperature setpoint plan is immutable. | Direct update/delete is rejected at database level. |
 
 ## Certificate, Audit, Validation, And Regression
 
@@ -288,6 +296,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PERSIST-031 | Store and reload linked logger/IRTD readings for a job. | DUT channel, timestamp, indication, reference, and source locations round-trip unchanged. |
 | PERSIST-032 | Store linked logger/IRTD reading with unknown source evidence. | Insert is rejected by referential integrity. |
 | PERSIST-033 | Mutate linked logger/IRTD reading directly. | Database rejects update/delete because linked readings are immutable. |
+| PERSIST-034 | Store and reload required temperature setpoints for a job. | Setpoint, unit, sequence, creator, and timestamp round-trip unchanged in deterministic order. |
+| PERSIST-035 | Store required temperature setpoint for unknown job. | Insert is rejected by referential integrity. |
+| PERSIST-036 | Store duplicate required temperature setpoint sequence or value. | Duplicate plan entries are rejected. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |

@@ -12,6 +12,7 @@ from app.backend.domain.entities import (
     MeasurementMode,
     MeasurementReading,
     MeasurementWindow,
+    RequiredTemperatureSetpoint,
     SourceLocation,
     UploadedFile,
     UploadedFileKind,
@@ -249,6 +250,54 @@ def test_linked_temperature_reading_rejects_unit_mismatch():
                 row_number=12,
                 column_label="B",
             ),
+        )
+
+
+def test_required_temperature_setpoint_records_ordered_calibration_point():
+    required_setpoint = RequiredTemperatureSetpoint(
+        id="setpoint-001",
+        job_id="job-001",
+        setpoint=-80.0,
+        unit="deg C",
+        sequence_index=0,
+        created_by="operator-001",
+        created_at=datetime(2026, 6, 1, 14, 15, tzinfo=timezone.utc),
+    )
+
+    assert required_setpoint.coverage_key == (-80.0, "deg C")
+    assert required_setpoint.created_at.tzinfo is not None
+
+
+def test_required_temperature_setpoint_rejects_invalid_values():
+    with pytest.raises(DomainValidationError):
+        RequiredTemperatureSetpoint(
+            id="setpoint-001",
+            job_id="job-001",
+            setpoint=float("nan"),
+            unit="deg C",
+            sequence_index=0,
+            created_by="operator-001",
+        )
+
+    with pytest.raises(DomainValidationError):
+        RequiredTemperatureSetpoint(
+            id="setpoint-001",
+            job_id="job-001",
+            setpoint=-80.0,
+            unit="deg C",
+            sequence_index=-1,
+            created_by="operator-001",
+        )
+
+    with pytest.raises(DomainValidationError):
+        RequiredTemperatureSetpoint(
+            id="setpoint-001",
+            job_id="job-001",
+            setpoint=-80.0,
+            unit="deg C",
+            sequence_index=0,
+            created_by="operator-001",
+            created_at=datetime(2026, 6, 1, 14, 15),
         )
 
 
