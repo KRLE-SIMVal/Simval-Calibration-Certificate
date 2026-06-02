@@ -21,6 +21,7 @@ from app.backend.domain.entities import (
     Client,
     DeviceUnderTest,
     Discipline,
+    LinkedTemperatureReading,
     MeasurementReading,
     MeasurementWindow,
     MeasurementMode,
@@ -101,6 +102,33 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS ix_parsed_readings_file_channel
             ON parsed_readings(uploaded_file_id, channel_id, timestamp);
+
+        CREATE TABLE IF NOT EXISTS linked_temperature_readings (
+            job_id TEXT NOT NULL REFERENCES calibration_jobs(id),
+            sequence_index INTEGER NOT NULL,
+            timestamp TEXT NOT NULL,
+            dut_channel_id TEXT NOT NULL,
+            indication_uploaded_file_id TEXT NOT NULL REFERENCES uploaded_files(id),
+            indication_source_label TEXT NOT NULL,
+            indication_row_number INTEGER,
+            indication_column_label TEXT,
+            indication_channel_id TEXT NOT NULL,
+            indication_value REAL NOT NULL,
+            indication_unit TEXT NOT NULL,
+            indication_quality_flag TEXT,
+            reference_uploaded_file_id TEXT NOT NULL REFERENCES uploaded_files(id),
+            reference_source_label TEXT NOT NULL,
+            reference_row_number INTEGER,
+            reference_column_label TEXT,
+            reference_channel_id TEXT NOT NULL,
+            reference_value REAL NOT NULL,
+            reference_unit TEXT NOT NULL,
+            reference_quality_flag TEXT,
+            PRIMARY KEY (job_id, sequence_index)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_linked_temperature_readings_job_channel
+            ON linked_temperature_readings(job_id, dut_channel_id, timestamp);
 
         CREATE TABLE IF NOT EXISTS devices_under_test (
             id TEXT PRIMARY KEY,
@@ -353,6 +381,35 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             BEFORE DELETE ON parsed_readings
             BEGIN
                 SELECT RAISE(ABORT, 'parsed readings are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS linked_temperature_readings_source_jobs
+            BEFORE INSERT ON linked_temperature_readings
+            WHEN (
+                SELECT job_id FROM uploaded_files
+                WHERE id = NEW.indication_uploaded_file_id
+            ) != NEW.job_id
+            OR (
+                SELECT job_id FROM uploaded_files
+                WHERE id = NEW.reference_uploaded_file_id
+            ) != NEW.job_id
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'linked temperature source files must belong to the job'
+                );
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS linked_temperature_readings_no_update
+            BEFORE UPDATE ON linked_temperature_readings
+            BEGIN
+                SELECT RAISE(ABORT, 'linked temperature readings are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS linked_temperature_readings_no_delete
+            BEFORE DELETE ON linked_temperature_readings
+            BEGIN
+                SELECT RAISE(ABORT, 'linked temperature readings are immutable');
             END;
         """
     )
@@ -684,6 +741,116 @@ class SQLiteParsedReadingRepository:
             ).fetchone()
             next_indexes[uploaded_file_id] = int(row["next_index"])
         return next_indexes
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
+
+
+class SQLiteLinkedTemperatureReadingRepository:
+    """Repository for immutable logger/IRTD links produced during import review."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add_many(
+        self,
+        *,
+        job_id: str,
+        linked_readings: tuple[LinkedTemperatureReading, ...],
+    ) -> None:
+        _require_text(job_id, "Linked temperature reading job id")
+        if len(linked_readings) == 0:
+            return
+        next_index = self._next_index_for_job(job_id)
+        try:
+            for offset, linked_reading in enumerate(linked_readings):
+                self._connection.execute(
+                    """
+                    INSERT INTO linked_temperature_readings (
+                        job_id,
+                        sequence_index,
+                        timestamp,
+                        dut_channel_id,
+                        indication_uploaded_file_id,
+                        indication_source_label,
+                        indication_row_number,
+                        indication_column_label,
+                        indication_channel_id,
+                        indication_value,
+                        indication_unit,
+                        indication_quality_flag,
+                        reference_uploaded_file_id,
+                        reference_source_label,
+                        reference_row_number,
+                        reference_column_label,
+                        reference_channel_id,
+                        reference_value,
+                        reference_unit,
+                        reference_quality_flag
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    _linked_temperature_reading_values(
+                        job_id=job_id,
+                        sequence_index=next_index + offset,
+                        linked_reading=linked_reading,
+                    ),
+                )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError(
+                "Could not store linked temperature readings."
+            ) from error
+
+    def list_for_job(self, job_id: str) -> tuple[LinkedTemperatureReading, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                timestamp,
+                dut_channel_id,
+                indication_uploaded_file_id,
+                indication_source_label,
+                indication_row_number,
+                indication_column_label,
+                indication_channel_id,
+                indication_value,
+                indication_unit,
+                indication_quality_flag,
+                reference_uploaded_file_id,
+                reference_source_label,
+                reference_row_number,
+                reference_column_label,
+                reference_channel_id,
+                reference_value,
+                reference_unit,
+                reference_quality_flag
+            FROM linked_temperature_readings
+            WHERE job_id = ?
+            ORDER BY sequence_index ASC
+            """,
+            (job_id,),
+        ).fetchall()
+        return tuple(_linked_temperature_reading_from_row(row) for row in rows)
+
+    def _next_index_for_job(self, job_id: str) -> int:
+        row = self._connection.execute(
+            """
+            SELECT coalesce(max(sequence_index), -1) + 1 AS next_index
+            FROM linked_temperature_readings
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        return int(row["next_index"])
 
     def _commit_if_needed(self) -> None:
         if self._autocommit:
@@ -1741,6 +1908,77 @@ def _reading_from_row(row: sqlite3.Row) -> MeasurementReading:
             column_label=row["column_label"],
         ),
         quality_flag=row["quality_flag"],
+    )
+
+
+def _linked_temperature_reading_values(
+    *,
+    job_id: str,
+    sequence_index: int,
+    linked_reading: LinkedTemperatureReading,
+) -> tuple[object, ...]:
+    indication = linked_reading.indication
+    reference = linked_reading.reference
+    return (
+        job_id,
+        sequence_index,
+        _datetime_to_text(linked_reading.timestamp, "Linked temperature timestamp"),
+        linked_reading.dut_channel_id,
+        indication.source.uploaded_file_id,
+        indication.source.source_label,
+        indication.source.row_number,
+        indication.source.column_label,
+        indication.channel_id,
+        indication.value,
+        indication.unit,
+        indication.quality_flag,
+        reference.source.uploaded_file_id,
+        reference.source.source_label,
+        reference.source.row_number,
+        reference.source.column_label,
+        reference.channel_id,
+        reference.value,
+        reference.unit,
+        reference.quality_flag,
+    )
+
+
+def _linked_temperature_reading_from_row(
+    row: sqlite3.Row,
+) -> LinkedTemperatureReading:
+    timestamp = _datetime_from_text(
+        row["timestamp"],
+        "Linked temperature timestamp",
+    )
+    return LinkedTemperatureReading(
+        timestamp=timestamp,
+        dut_channel_id=row["dut_channel_id"],
+        indication=MeasurementReading(
+            timestamp=timestamp,
+            channel_id=row["indication_channel_id"],
+            value=row["indication_value"],
+            unit=row["indication_unit"],
+            source=SourceLocation(
+                uploaded_file_id=row["indication_uploaded_file_id"],
+                source_label=row["indication_source_label"],
+                row_number=row["indication_row_number"],
+                column_label=row["indication_column_label"],
+            ),
+            quality_flag=row["indication_quality_flag"],
+        ),
+        reference=MeasurementReading(
+            timestamp=timestamp,
+            channel_id=row["reference_channel_id"],
+            value=row["reference_value"],
+            unit=row["reference_unit"],
+            source=SourceLocation(
+                uploaded_file_id=row["reference_uploaded_file_id"],
+                source_label=row["reference_source_label"],
+                row_number=row["reference_row_number"],
+                column_label=row["reference_column_label"],
+            ),
+            quality_flag=row["reference_quality_flag"],
+        ),
     )
 
 

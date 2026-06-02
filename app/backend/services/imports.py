@@ -25,6 +25,7 @@ from app.backend.imports.verification_pdf_contract import (
 )
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
+    SQLiteLinkedTemperatureReadingRepository,
     SQLiteParsedReadingRepository,
     SQLiteUploadedFileRepository,
 )
@@ -221,11 +222,19 @@ def record_valprobe_temperature_import_with_irtd_references(
             connection,
             autocommit=False,
         )
+        linked_reading_repository = SQLiteLinkedTemperatureReadingRepository(
+            connection,
+            autocommit=False,
+        )
         audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
         uploaded_file_repository.add(calibration_file)
         uploaded_file_repository.add(verification_file)
         reading_repository.add_many(
             parsed_workbook.readings + parsed_verification.readings
+        )
+        linked_reading_repository.add_many(
+            job_id=calibration_file.job_id,
+            linked_readings=alignment.linked_readings,
         )
         audit_event_ids = tuple(
             audit_repository.append(audit_event) for audit_event in audit_events

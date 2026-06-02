@@ -169,6 +169,44 @@ class MeasurementReading:
 
 
 @dataclass(frozen=True, slots=True)
+class LinkedTemperatureReading:
+    timestamp: datetime
+    dut_channel_id: str
+    reference: MeasurementReading
+    indication: MeasurementReading
+
+    def __post_init__(self) -> None:
+        _require_timezone_aware(self.timestamp, "Linked temperature reading timestamp")
+        _require_text(self.dut_channel_id, "Linked temperature reading DUT channel id")
+        _require_instance(
+            self.reference,
+            MeasurementReading,
+            "Linked temperature reference reading",
+        )
+        _require_instance(
+            self.indication,
+            MeasurementReading,
+            "Linked temperature indication reading",
+        )
+        if self.reference.timestamp != self.timestamp:
+            raise DomainValidationError(
+                "Linked temperature reference timestamp must match link timestamp."
+            )
+        if self.indication.timestamp != self.timestamp:
+            raise DomainValidationError(
+                "Linked temperature indication timestamp must match link timestamp."
+            )
+        if self.indication.channel_id != self.dut_channel_id:
+            raise DomainValidationError(
+                "Linked temperature indication channel must match DUT channel id."
+            )
+        if self.reference.unit != self.indication.unit:
+            raise DomainValidationError(
+                "Linked temperature readings must use the same unit."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class MeasurementWindow:
     id: str
     job_id: str

@@ -5,19 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.backend.domain.entities import MeasurementReading
+from app.backend.domain.entities import LinkedTemperatureReading, MeasurementReading
 
 
 class TemperatureAlignmentError(ValueError):
     """Raised when parsed readings cannot be linked without ambiguity."""
-
-
-@dataclass(frozen=True, slots=True)
-class LinkedTemperatureReading:
-    timestamp: datetime
-    dut_channel_id: str
-    reference: MeasurementReading
-    indication: MeasurementReading
 
 
 @dataclass(frozen=True, slots=True)

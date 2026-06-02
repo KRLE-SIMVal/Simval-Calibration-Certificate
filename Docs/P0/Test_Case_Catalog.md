@@ -193,6 +193,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-062 | Linked ValProbe import returns review warnings. | Workbook parser, verification parser, and alignment warnings are returned without silent fallback. |
 | IMP-063 | Linked ValProbe import rejects files from different jobs. | No uploaded files, readings, or audit events are persisted. |
 | IMP-064 | Linked ValProbe import rolls back on ambiguous IRTD alignment. | Duplicate reference timestamps prevent partial persistence. |
+| IMP-065 | Linked ValProbe import persists linked logger/IRTD pairs. | Persisted links match the service alignment result and preserve both source file references. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
@@ -274,6 +275,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PERSIST-028 | Store and reload raw parsed readings for an uploaded file. | Timestamp, channel, value, unit, source row/column, and quality flag round-trip unchanged. |
 | PERSIST-029 | Store raw parsed reading for unknown uploaded file. | Insert is rejected by referential integrity. |
 | PERSIST-030 | Mutate raw parsed reading directly. | Database rejects update/delete because parsed raw readings are immutable. |
+| PERSIST-031 | Store and reload linked logger/IRTD readings for a job. | DUT channel, timestamp, indication, reference, and source locations round-trip unchanged. |
+| PERSIST-032 | Store linked logger/IRTD reading with unknown source evidence. | Insert is rejected by referential integrity. |
+| PERSIST-033 | Mutate linked logger/IRTD reading directly. | Database rejects update/delete because linked readings are immutable. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |

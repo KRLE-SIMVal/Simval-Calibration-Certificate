@@ -8,6 +8,7 @@ from app.backend.domain.entities import (
     DeviceUnderTest,
     Discipline,
     DomainValidationError,
+    LinkedTemperatureReading,
     MeasurementMode,
     MeasurementReading,
     MeasurementWindow,
@@ -190,6 +191,67 @@ def test_imported_reading_rejects_nonfinite_value():
         )
 
 
+def test_linked_temperature_reading_requires_matching_traceable_pair():
+    timestamp = datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc)
+    indication = _reading(
+        timestamp=timestamp,
+        channel_id="MJT1-A",
+        value=-80.036,
+        uploaded_file_id="file-001",
+        source_label="Temperature",
+        row_number=12,
+        column_label="B",
+    )
+    reference = _reading(
+        timestamp=timestamp,
+        channel_id="IRTD",
+        value=-80.031,
+        uploaded_file_id="file-002",
+        source_label="Verification IRTD",
+        row_number=2,
+        column_label="IRTD (deg C)",
+    )
+
+    linked = LinkedTemperatureReading(
+        timestamp=timestamp,
+        dut_channel_id="MJT1-A",
+        reference=reference,
+        indication=indication,
+    )
+
+    assert linked.reference.source.uploaded_file_id == "file-002"
+    assert linked.indication.source.uploaded_file_id == "file-001"
+
+
+def test_linked_temperature_reading_rejects_unit_mismatch():
+    timestamp = datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc)
+
+    with pytest.raises(DomainValidationError):
+        LinkedTemperatureReading(
+            timestamp=timestamp,
+            dut_channel_id="MJT1-A",
+            reference=_reading(
+                timestamp=timestamp,
+                channel_id="IRTD",
+                value=193.119,
+                unit="K",
+                uploaded_file_id="file-002",
+                source_label="Verification IRTD",
+                row_number=2,
+                column_label="IRTD (K)",
+            ),
+            indication=_reading(
+                timestamp=timestamp,
+                channel_id="MJT1-A",
+                value=-80.036,
+                uploaded_file_id="file-001",
+                source_label="Temperature",
+                row_number=12,
+                column_label="B",
+            ),
+        )
+
+
 def test_measurement_window_keeps_single_channel_and_unit():
     first = MeasurementReading(
         timestamp=datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc),
@@ -268,6 +330,31 @@ def test_measurement_window_rejects_mixed_channels():
             selected_by="user-001",
             readings=(first, second),
         )
+
+
+def _reading(
+    *,
+    timestamp: datetime,
+    channel_id: str,
+    value: float,
+    uploaded_file_id: str,
+    source_label: str,
+    row_number: int,
+    column_label: str,
+    unit: str = "deg C",
+) -> MeasurementReading:
+    return MeasurementReading(
+        timestamp=timestamp,
+        channel_id=channel_id,
+        value=value,
+        unit=unit,
+        source=SourceLocation(
+            uploaded_file_id=uploaded_file_id,
+            source_label=source_label,
+            row_number=row_number,
+            column_label=column_label,
+        ),
+    )
 
 
 def test_measurement_window_rejects_mixed_units():

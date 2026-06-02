@@ -21,6 +21,7 @@ from app.backend.imports.valprobe_workbook import ValProbeWorkbookParseError
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteLinkedTemperatureReadingRepository,
     SQLiteParsedReadingRepository,
     SQLiteUploadedFileRepository,
     initialize_schema,
@@ -194,6 +195,10 @@ def test_valprobe_linked_import_persists_files_readings_alignment_and_audit_even
     assert (
         len(SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-002"))
         == 2
+    )
+    assert (
+        SQLiteLinkedTemperatureReadingRepository(connection).list_for_job("job-001")
+        == result.alignment.linked_readings
     )
     calibration_events = SQLiteAuditEventRepository(connection).list_for_entity(
         "uploaded_file",
