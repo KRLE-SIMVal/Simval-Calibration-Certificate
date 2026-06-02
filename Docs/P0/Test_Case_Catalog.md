@@ -217,6 +217,13 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WIN-003 | Selected window contains at least one reading. | Empty window is rejected. |
 | WIN-004 | Selected window readings are chronological. | Non-chronological readings are rejected. |
 | WIN-005 | Selected window exposes start/end timestamps and reading count. | Traceable summary values are available. |
+| WIN-006 | Select temperature window from linked logger/IRTD readings. | Measurement window stores matching DUT indication readings and returns the linked reference pairs. |
+| WIN-007 | Linked temperature window filters by channel and timestamp range. | Only linked readings for the requested DUT channel and inclusive time range are selected. |
+| WIN-008 | Linked temperature window with no matching linked readings. | Selection is rejected and no window or audit event is persisted. |
+| WIN-009 | Linked temperature window rejects DUT/job/channel mismatch. | Selection is rejected before persistence. |
+| WIN-010 | Linked temperature window records audit event. | Audit evidence records setpoint, unit, selected range, DUT channel, and linked reading count. |
+| WIN-011 | Linked temperature window before data-entered workflow state. | Selection is rejected until source data has been entered/imported. |
+| WIN-012 | Linked temperature window has inverted timestamp range. | Selection is rejected before persistence. |
 
 ## Certificate, Audit, Validation, And Regression
 

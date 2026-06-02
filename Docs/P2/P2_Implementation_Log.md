@@ -43,6 +43,11 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - SQLite persistence for immutable linked logger/IRTD temperature readings.
 - Linked ValProbe import orchestration persists linked logger/IRTD pairs in the same transaction as raw readings and audit evidence.
 - Database triggers reject linked logger/IRTD reading update and delete operations.
+- Controlled temperature measurement-window selection service from persisted linked logger/IRTD readings.
+- Temperature window selection filters linked readings by DUT channel and inclusive timestamp range.
+- Temperature window selection persists the DUT indication readings as a selected measurement window and returns the paired IRTD references for review.
+- Temperature window selection records `measurement_window_changed` audit evidence with setpoint, unit, selected range, channel, and linked-reading count.
+- Temperature window selection rejects requests before the `data_entered` workflow state.
 
 ## Scope Not Implemented
 
@@ -54,7 +59,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - No production PDF text/table extraction dependency yet.
 - No D4 certificate-number adapter yet.
 - No certificate result calculation from linked logger/IRTD readings yet.
-- No measurement-window generation from persisted linked logger/IRTD pairs yet.
+- No automatic plateau/stability window suggestion yet.
+- No automatic transition from `data_entered` to `windows_selected` after selecting windows yet.
 
 ## Compliance Notes
 
@@ -79,6 +85,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Linked ValProbe import orchestration keeps calibration XLSX and verification PDF evidence separate so each parsed reading remains traceable to its own uploaded file.
 - Linked logger/IRTD pairs preserve both original source locations and raw values; they do not calculate error of indication, mean values, uncertainty, or reported results.
 - Linked logger/IRTD persistence rejects source files from another calibration job at database level.
+- Temperature window selection does not calculate mean reference, mean indication, standard deviation, uncertainty, error of indication, or reported certificate results.
+- Temperature window selection requires the selected DUT to belong to the job and match the selected logger channel.
+- Temperature window selection is allowed only after source data is entered/imported, keeping workflow ordering explicit.
 
 ## Verification
 
@@ -119,6 +128,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused linked temperature reading domain, persistence, and service suite: 30 passed on Python 3.12.10.
 - Persistence, import, alignment, and controlled-fixture contract suite: 43 passed, 2 skipped on Python 3.12.10.
 - Default regression suite after linked temperature reading persistence slice: 177 passed, 2 skipped on Python 3.12.10.
+- Focused temperature measurement-window selection suite: 7 passed on Python 3.12.10.
+- Source-data, workflow, and temperature window-selection suite: 39 passed on Python 3.12.10.
+- Default regression suite after temperature measurement-window selection slice: 184 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions
@@ -129,7 +141,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 | Parser tests currently use generated sanitized XLSX workbooks, not the controlled customer workbook. | Create and approve customer-safe sanitized fixtures that mirror the observed workbook structure before production parser validation. |
 | Verification PDF table extraction dependency is not approved yet. | Keep file-level extraction blocked and add a small dependency-selection review before implementing PDF text/table extraction. |
 | Logger and IRTD alignment currently requires exact timestamps. | Keep exact matching as the default compliance-safe rule and add a council-reviewed tolerance/window rule only if real verification exports show timestamp drift. |
-| Persisted linked logger/IRTD pairs are not yet converted into selected measurement windows. | Add a controlled measurement-window selection service before calculation runs consume linked pairs. |
+| Window selection does not yet determine whether all required DUT/setpoint windows are complete. | Add a window-completeness check before allowing the workflow transition to `windows_selected`. |
+| Window selection is manual timestamp-range only. | Keep manual selection as the validated default and add automatic stable-window suggestion later with transparent thresholds and review/override evidence. |
 | D4 is still not integrated as the external certificate-number source. | Keep the internal sequence as the approved interim source and add a D4 adapter only when interface requirements are known. |
 | Audit actor identity is accepted as a user ID string only. | Add user repository/session integration before exposing API endpoints. |
 | Test evidence is local and ignored by Git. | Keep generated validation artifacts local until a controlled evidence-retention location is agreed. |
