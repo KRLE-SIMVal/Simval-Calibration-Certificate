@@ -282,6 +282,12 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUTH-003 | Store and reload user session. | Session id, user id, issued timestamp, expiry timestamp, and revocation status round-trip unchanged. |
 | AUTH-004 | Store session for unknown user. | Insert is rejected by referential integrity. |
 | AUTH-005 | Revoke user session. | Revoked timestamp is persisted and the session no longer resolves as active. |
+| API-001 | API health endpoint. | `GET /health` returns status `ok`. |
+| API-002 | API authenticated actor endpoint. | `GET /me` resolves the supplied session and returns controlled user id, display name, and roles. |
+| API-003 | API certificate preview endpoint. | `POST /certificate-previews` returns locked preview rows and audit event id. |
+| API-004 | API certificate preview with insufficient role. | Request is rejected with `403` before audit or preview evidence is written. |
+| API-005 | API certificate preview before calculated state. | Request returns a controlled conflict response. |
+| API-006 | API certificate preview with unknown session. | Request is rejected with `401` before audit or preview evidence is written. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

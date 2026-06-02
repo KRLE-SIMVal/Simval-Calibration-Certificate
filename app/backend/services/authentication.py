@@ -6,8 +6,9 @@ from datetime import datetime
 import sqlite3
 
 from app.backend.auth.permissions import Action
-from app.backend.auth.users import AuthenticatedActor
+from app.backend.auth.users import AuthenticatedActor, UserAccount
 from app.backend.persistence.sqlite import (
+    RecordNotFoundError,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
 )
@@ -15,6 +16,14 @@ from app.backend.persistence.sqlite import (
 
 class AuthenticationServiceError(ValueError):
     """Raised when an authenticated actor cannot be resolved or authorized."""
+
+
+class AuthenticationFailureError(AuthenticationServiceError):
+    """Raised when a session cannot authenticate an active user."""
+
+
+class AuthorizationServiceError(AuthenticationServiceError):
+    """Raised when an authenticated user lacks a required permission."""
 
 
 def resolve_actor_for_action(
@@ -30,23 +39,64 @@ def resolve_actor_for_action(
         raise AuthenticationServiceError("Action must be a controlled Action value.")
     _require_timezone_aware(timestamp, "Authentication timestamp")
 
-    user_repository = SQLiteUserAccountRepository(connection)
-    session_repository = SQLiteUserSessionRepository(connection)
-    session = session_repository.get(session_id)
-    if not session.active_at(timestamp):
-        raise AuthenticationServiceError("Session is not active.")
-
-    user = user_repository.get(session.user_id)
-    if not user.active:
-        raise AuthenticationServiceError("User account is inactive.")
+    user = _resolve_user_for_session(
+        connection=connection,
+        session_id=session_id,
+        timestamp=timestamp,
+    )
     if not user.can_perform(action):
-        raise AuthenticationServiceError("User is not authorized for this action.")
+        raise AuthorizationServiceError("User is not authorized for this action.")
 
     return AuthenticatedActor(
         user_id=user.id,
         display_name=user.display_name,
         roles=user.roles,
     )
+
+
+def resolve_actor_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    timestamp: datetime,
+) -> AuthenticatedActor:
+    """Resolve an active session to an authenticated actor without action check."""
+    _require_text(session_id, "Session id")
+    _require_timezone_aware(timestamp, "Authentication timestamp")
+    user = _resolve_user_for_session(
+        connection=connection,
+        session_id=session_id,
+        timestamp=timestamp,
+    )
+    return AuthenticatedActor(
+        user_id=user.id,
+        display_name=user.display_name,
+        roles=user.roles,
+    )
+
+
+def _resolve_user_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    timestamp: datetime,
+) -> UserAccount:
+    user_repository = SQLiteUserAccountRepository(connection)
+    session_repository = SQLiteUserSessionRepository(connection)
+    try:
+        session = session_repository.get(session_id)
+    except RecordNotFoundError as exc:
+        raise AuthenticationFailureError("Session is not active.") from exc
+    if not session.active_at(timestamp):
+        raise AuthenticationFailureError("Session is not active.")
+
+    try:
+        user = user_repository.get(session.user_id)
+    except RecordNotFoundError as exc:
+        raise AuthenticationFailureError("Session user is not active.") from exc
+    if not user.active:
+        raise AuthenticationFailureError("User account is inactive.")
+    return user
 
 
 def _require_text(value: str, field_name: str) -> None:

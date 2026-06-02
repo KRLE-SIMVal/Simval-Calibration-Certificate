@@ -11,7 +11,10 @@ from app.backend.persistence.sqlite import (
     initialize_schema,
 )
 from app.backend.services.authentication import (
+    AuthenticationFailureError,
     AuthenticationServiceError,
+    AuthorizationServiceError,
+    resolve_actor_for_session,
     resolve_actor_for_action,
 )
 
@@ -43,10 +46,23 @@ def test_resolve_actor_for_action_returns_authorized_active_actor():
     assert actor.roles == (Role.OPERATOR,)
 
 
+def test_resolve_actor_for_session_returns_active_actor_without_action_check():
+    connection = _connection_with_user_and_session()
+
+    actor = resolve_actor_for_session(
+        connection=connection,
+        session_id="session-001",
+        timestamp=datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
+    )
+
+    assert actor.user_id == "user-001"
+    assert actor.roles == (Role.OPERATOR,)
+
+
 def test_resolve_actor_for_action_rejects_expired_session():
     connection = _connection_with_user_and_session()
 
-    with pytest.raises(AuthenticationServiceError):
+    with pytest.raises(AuthenticationFailureError):
         resolve_actor_for_action(
             connection=connection,
             session_id="session-001",
@@ -66,7 +82,7 @@ def test_resolve_actor_for_action_rejects_revoked_session():
         )
     )
 
-    with pytest.raises(AuthenticationServiceError):
+    with pytest.raises(AuthenticationFailureError):
         resolve_actor_for_action(
             connection=connection,
             session_id="session-001",
@@ -86,7 +102,7 @@ def test_resolve_actor_for_action_rejects_inactive_user():
     )
     connection = _connection_with_user_and_session(user=inactive_user)
 
-    with pytest.raises(AuthenticationServiceError):
+    with pytest.raises(AuthenticationFailureError):
         resolve_actor_for_action(
             connection=connection,
             session_id="session-001",
@@ -95,10 +111,22 @@ def test_resolve_actor_for_action_rejects_inactive_user():
         )
 
 
+def test_resolve_actor_for_action_rejects_unknown_session_as_authentication_failure():
+    connection = _connection_with_user_and_session()
+
+    with pytest.raises(AuthenticationFailureError):
+        resolve_actor_for_action(
+            connection=connection,
+            session_id="missing-session",
+            action=Action.RUN_CALCULATION,
+            timestamp=datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
+        )
+
+
 def test_resolve_actor_for_action_rejects_unauthorized_action():
     connection = _connection_with_user_and_session()
 
-    with pytest.raises(AuthenticationServiceError):
+    with pytest.raises(AuthorizationServiceError):
         resolve_actor_for_action(
             connection=connection,
             session_id="session-001",
