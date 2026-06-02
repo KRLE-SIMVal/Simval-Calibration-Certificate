@@ -256,6 +256,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PERSIST-025 | Store budget linked to unknown constant-set version. | Insert is rejected by referential integrity. |
 | PERSIST-026 | List approved constant and budget versions. | Only approved records are returned, ordered by version. |
 | PERSIST-027 | Initialize SQLite schema. | Schema version marker is recorded once with a timezone-aware applied timestamp. |
+| PERSIST-028 | Store and reload raw parsed readings for an uploaded file. | Timestamp, channel, value, unit, source row/column, and quality flag round-trip unchanged. |
+| PERSIST-029 | Store raw parsed reading for unknown uploaded file. | Insert is rejected by referential integrity. |
+| PERSIST-030 | Mutate raw parsed reading directly. | Database rejects update/delete because parsed raw readings are immutable. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |

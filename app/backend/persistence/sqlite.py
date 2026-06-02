@@ -85,6 +85,23 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS ix_uploaded_files_job
             ON uploaded_files(job_id, id);
 
+        CREATE TABLE IF NOT EXISTS parsed_readings (
+            uploaded_file_id TEXT NOT NULL REFERENCES uploaded_files(id),
+            sequence_index INTEGER NOT NULL,
+            timestamp TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            value REAL NOT NULL,
+            unit TEXT NOT NULL,
+            source_label TEXT NOT NULL,
+            row_number INTEGER,
+            column_label TEXT,
+            quality_flag TEXT,
+            PRIMARY KEY (uploaded_file_id, sequence_index)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_parsed_readings_file_channel
+            ON parsed_readings(uploaded_file_id, channel_id, timestamp);
+
         CREATE TABLE IF NOT EXISTS devices_under_test (
             id TEXT PRIMARY KEY,
             job_id TEXT NOT NULL REFERENCES calibration_jobs(id),
@@ -325,6 +342,18 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             BEGIN
                 SELECT RAISE(ABORT, 'uncertainty budgets are immutable');
             END;
+
+        CREATE TRIGGER IF NOT EXISTS parsed_readings_no_update
+            BEFORE UPDATE ON parsed_readings
+            BEGIN
+                SELECT RAISE(ABORT, 'parsed readings are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS parsed_readings_no_delete
+            BEFORE DELETE ON parsed_readings
+            BEGIN
+                SELECT RAISE(ABORT, 'parsed readings are immutable');
+            END;
         """
     )
     connection.execute(
@@ -550,6 +579,111 @@ class SQLiteUploadedFileRepository:
             (job_id,),
         ).fetchall()
         return tuple(_uploaded_file_from_row(row) for row in rows)
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
+
+
+class SQLiteParsedReadingRepository:
+    """Repository for immutable raw readings produced by import parsers."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add_many(self, readings: tuple[MeasurementReading, ...]) -> None:
+        if len(readings) == 0:
+            return
+        next_indexes = self._next_indexes_by_uploaded_file(readings)
+        try:
+            for reading in readings:
+                uploaded_file_id = reading.source.uploaded_file_id
+                sequence_index = next_indexes[uploaded_file_id]
+                next_indexes[uploaded_file_id] += 1
+                self._connection.execute(
+                    """
+                    INSERT INTO parsed_readings (
+                        uploaded_file_id,
+                        sequence_index,
+                        timestamp,
+                        channel_id,
+                        value,
+                        unit,
+                        source_label,
+                        row_number,
+                        column_label,
+                        quality_flag
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        uploaded_file_id,
+                        sequence_index,
+                        _datetime_to_text(reading.timestamp, "Parsed reading timestamp"),
+                        reading.channel_id,
+                        reading.value,
+                        reading.unit,
+                        reading.source.source_label,
+                        reading.source.row_number,
+                        reading.source.column_label,
+                        reading.quality_flag,
+                    ),
+                )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not store parsed readings.") from error
+
+    def list_for_uploaded_file(
+        self,
+        uploaded_file_id: str,
+    ) -> tuple[MeasurementReading, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                timestamp,
+                channel_id,
+                value,
+                unit,
+                uploaded_file_id,
+                source_label,
+                row_number,
+                column_label,
+                quality_flag
+            FROM parsed_readings
+            WHERE uploaded_file_id = ?
+            ORDER BY sequence_index ASC
+            """,
+            (uploaded_file_id,),
+        ).fetchall()
+        return tuple(_reading_from_row(row) for row in rows)
+
+    def _next_indexes_by_uploaded_file(
+        self,
+        readings: tuple[MeasurementReading, ...],
+    ) -> dict[str, int]:
+        next_indexes: dict[str, int] = {}
+        for reading in readings:
+            uploaded_file_id = reading.source.uploaded_file_id
+            if uploaded_file_id in next_indexes:
+                continue
+            row = self._connection.execute(
+                """
+                SELECT coalesce(max(sequence_index), -1) + 1 AS next_index
+                FROM parsed_readings
+                WHERE uploaded_file_id = ?
+                """,
+                (uploaded_file_id,),
+            ).fetchone()
+            next_indexes[uploaded_file_id] = int(row["next_index"])
+        return next_indexes
 
     def _commit_if_needed(self) -> None:
         if self._autocommit:

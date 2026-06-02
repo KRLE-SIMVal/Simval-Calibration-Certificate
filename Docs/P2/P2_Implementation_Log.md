@@ -28,6 +28,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Deterministic ValProbe/KAYE temperature XLSX parser boundary for sanitized workbooks.
 - Parser output preserves logger channel, unit, timestamp, source sheet, source row, and source column for each parsed reading.
 - Parser warnings are returned for nonnumeric measurement cells instead of silently converting invalid values.
+- SQLite persistence for immutable raw parsed readings produced by import parsers.
 
 ## Scope Not Implemented
 
@@ -51,6 +52,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Certificate numbers can be allocated internally while preserving the future D4 adapter boundary.
 - Schema initialization records an auditable schema marker so future migrations can be tied to validation evidence.
 - The XLSX parser slice does not calculate certificate results. It only converts sanitized workbook rows into traceable readings.
+- Raw parsed readings are retained before measurement-window selection so imported data can be reviewed independently from later selected windows.
 
 ## Verification
 
@@ -74,6 +76,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused ValProbe XLSX parser suite: 4 passed on Python 3.12.10.
 - Import-focused parser and controlled-fixture contract suite: 7 passed, 2 skipped on Python 3.12.10.
 - Default regression suite after sanitized ValProbe XLSX parser slice: 153 passed, 2 skipped on Python 3.12.10.
+- Focused parsed-reading persistence suite: 3 passed on Python 3.12.10.
+- Expanded combined focused SQLite persistence suite after parsed-reading repository: 35 passed on Python 3.12.10.
+- Default regression suite after parsed-reading persistence slice: 156 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions
