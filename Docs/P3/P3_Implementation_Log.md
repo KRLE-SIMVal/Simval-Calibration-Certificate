@@ -47,6 +47,8 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - API app factory supports either a fixed test connection or a production connection provider.
 - Production SQLite API connection scope opens and closes one connection per request with foreign keys enabled.
 - `POST /certificate-releases` endpoint exposes the session-backed release gate and returns certificate, artifact, and audit ids.
+- Controlled SQLite schema bootstrap records the validated P3 baseline schema as `p3-baseline-schema-v1`.
+- Persistent API SQLite connections use the controlled schema bootstrap path.
 
 ## Scope Not Implemented
 
@@ -54,7 +56,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - API coverage is limited to health, actor identity, certificate preview, and certificate release endpoints.
 - Existing P2 backend services still accept explicit `user_id` strings internally for trusted backend use; P3 API-facing wrappers now resolve sessions before calling them for window and calculation actions.
 - User-management workflow is service-level only; no API endpoints for admin user management yet.
-- Existing full SQLite schema initializer is not yet split into a historical migration chain.
+- Existing full SQLite schema initializer remains available for unit-test databases and the P3 baseline bootstrap.
 - No PDF rendering, visual template matching, or export artifact generation yet.
 - Release service records controlled export-artifact metadata but does not render the PDF/XLSX bytes.
 
@@ -75,6 +77,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - User creation, role change, account deactivation, and session revocation must go through the audited service path before being exposed in an API or UI.
 - Certificate release is blocked unless a previous preview audit event matches the current summary IDs, template version, software version, calculation engine, constant set, and budget version.
 - Persistent API deployment must provide `SIMVAL_DATABASE_PATH`; request handlers must use scoped database connections rather than long-lived shared connections.
+- The current SQLite schema is now treated as a controlled baseline because no production database deployment exists yet; future schema changes must be separate SQL migrations after `p3-baseline-schema-v1`.
 
 ## Verification
 
@@ -87,6 +90,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Focused audited user-management, user/session persistence, and authentication suite: 21 passed on Python 3.12.10.
 - Focused certificate release, preview, certificate persistence, and workflow suite: 25 passed on Python 3.12.10.
 - Focused API app, API settings, API connection lifecycle, certificate release, and certificate preview suite: 22 passed on Python 3.12.10.
+- Focused SQLite schema bootstrap, migration runner, schema marker, API connection lifecycle, and API app suite: 18 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -95,7 +99,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 | No password, MFA, SSO, or Azure/M365 identity-provider integration exists yet. | Keep local session identity as the backend control boundary for P3 and select the production identity provider before deployment. |
 | Admin user-management currently has service tests but no API endpoints. | Expose only session-backed admin endpoints once the UI/admin settings workflow is ready. |
 | Some trusted internal services still accept explicit `user_id` strings. | Keep them internal and require API endpoints to call session-backed wrappers for regulated actions. Add wrappers for remaining regulated actions as those API surfaces are implemented. |
-| Existing full SQLite schema still uses direct initialization. | Keep direct initialization for test databases now, but split the production schema history into controlled migrations before persistent multi-environment testing or deployment. |
+| Existing full SQLite schema is recorded as one P3 baseline migration rather than decomposed historical migrations. | This is acceptable before production deployment; future schema changes must be explicit controlled SQL migrations with checksum evidence. |
 | Certificate preview is audited but not yet persisted as a separate preview record. | Current release gate uses matching preview audit evidence; add a dedicated preview table only if template review requires retaining rendered preview payloads. |
 | Release service records artifact metadata but does not render PDF/XLSX bytes. | Keep rendering as the first P4 task so P3 closes on backend control gates without template/UI scope creep. |
 | API settings currently cover database path only. | Add host, port, storage path, and identity-provider settings when the deploy target is selected. |

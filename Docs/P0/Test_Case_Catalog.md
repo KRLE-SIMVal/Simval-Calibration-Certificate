@@ -343,6 +343,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | MIG-003 | Re-run applied migration with changed SQL. | Checksum mismatch blocks execution. |
 | MIG-004 | Migration plan contains duplicate versions. | Plan is rejected before execution. |
 | MIG-005 | Migration SQL fails. | Failed migration is not recorded as applied. |
+| MIG-006 | Bootstrap SQLite schema through controlled baseline. | Current schema is created and `p3-baseline-schema-v1` is recorded in controlled migration history. |
+| MIG-007 | Re-run SQLite schema bootstrap. | Bootstrap is idempotent when the baseline migration checksum is unchanged. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |

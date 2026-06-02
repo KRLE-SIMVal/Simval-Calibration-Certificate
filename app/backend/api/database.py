@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
 
-from app.backend.persistence.sqlite import initialize_schema
+from app.backend.persistence.schema_bootstrap import bootstrap_sqlite_schema
 
 
 @contextmanager
@@ -17,7 +17,7 @@ def sqlite_connection_scope(database_path: Path) -> Iterator[sqlite3.Connection]
     try:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        initialize_schema(connection)
+        bootstrap_sqlite_schema(connection)
         yield connection
     finally:
         connection.close()
