@@ -30,6 +30,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Parser warnings are returned for nonnumeric measurement cells instead of silently converting invalid values.
 - SQLite persistence for immutable raw parsed readings produced by import parsers.
 - Transactional ValProbe import orchestration service that records uploaded-file evidence, parsed readings, and parser audit evidence together.
+- Sanitized fixture governance note for CI-safe parser development.
+- Verification IRTD table parser for already-extracted table rows.
+- Verification IRTD parser uses the column immediately after `Time` as the reference column.
 
 ## Scope Not Implemented
 
@@ -38,6 +41,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - No user/session persistence.
 - No parser result orchestration around the uploaded-file, DUT, reading, or measurement-window repositories.
 - No controlled-file parser regression in default CI until sanitized customer-safe fixtures are approved.
+- No production PDF text/table extraction dependency yet.
 - No D4 certificate-number adapter yet.
 
 ## Compliance Notes
@@ -55,6 +59,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - The XLSX parser slice does not calculate certificate results. It only converts sanitized workbook rows into traceable readings.
 - Raw parsed readings are retained before measurement-window selection so imported data can be reviewed independently from later selected windows.
 - ValProbe import orchestration records `parser_result_recorded` audit evidence with parser version, reading count, and warning count.
+- Verification PDF file extraction remains explicitly deferred until a dependency is approved; the implemented parser only handles sanitized/extracted table rows.
 
 ## Verification
 
@@ -84,6 +89,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused ValProbe import orchestration suite: 3 passed on Python 3.12.10.
 - Import orchestration, parser, parsed-reading, and controlled-fixture contract suite: 13 passed, 2 skipped on Python 3.12.10.
 - Default regression suite after ValProbe import orchestration slice: 159 passed, 2 skipped on Python 3.12.10.
+- Focused verification IRTD table and controlled-fixture contract suite: 8 passed, 2 skipped on Python 3.12.10.
+- Default regression suite after verification IRTD table parser slice: 164 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions
@@ -92,6 +99,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 |---|---|
 | SQLite schema is currently initialized directly, not via controlled migrations. | Add a migration/version table or Alembic/SQL migration runner before production deployment. |
 | Parser tests currently use generated sanitized XLSX workbooks, not the controlled customer workbook. | Create and approve customer-safe sanitized fixtures that mirror the observed workbook structure before production parser validation. |
+| Verification PDF table extraction dependency is not approved yet. | Keep file-level extraction blocked and add a small dependency-selection review before implementing PDF text/table extraction. |
 | D4 is still not integrated as the external certificate-number source. | Keep the internal sequence as the approved interim source and add a D4 adapter only when interface requirements are known. |
 | Audit actor identity is accepted as a user ID string only. | Add user repository/session integration before exposing API endpoints. |
 | Test evidence is local and ignored by Git. | Keep generated validation artifacts local until a controlled evidence-retention location is agreed. |

@@ -181,6 +181,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-050 | ValProbe import orchestration persists parser output. | Uploaded file evidence, raw parsed readings, and parser audit event are written in one transaction. |
 | IMP-051 | ValProbe import orchestration rejects wrong uploaded-file kind. | No uploaded file, parsed readings, or audit event is persisted. |
 | IMP-052 | ValProbe import orchestration handles parser failure. | Parser error prevents persistence and no partial import evidence is written. |
+| IMP-053 | Verification table parser extracts IRTD from column next to Time. | Parser returns IRTD readings from the second column next to `Time`, not logger channels. |
+| IMP-054 | Verification table parser rejects missing Time column. | Parser raises a controlled parser error. |
+| IMP-055 | Verification table parser reports invalid timestamp or IRTD value. | Parser records warnings and skips affected rows without silent conversion. |
+| IMP-056 | Verification PDF file extraction remains explicit. | File extraction raises not-implemented until a PDF dependency is approved. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
