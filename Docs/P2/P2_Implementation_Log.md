@@ -29,6 +29,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Parser output preserves logger channel, unit, timestamp, source sheet, source row, and source column for each parsed reading.
 - Parser warnings are returned for nonnumeric measurement cells instead of silently converting invalid values.
 - SQLite persistence for immutable raw parsed readings produced by import parsers.
+- Transactional ValProbe import orchestration service that records uploaded-file evidence, parsed readings, and parser audit evidence together.
 
 ## Scope Not Implemented
 
@@ -53,6 +54,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Schema initialization records an auditable schema marker so future migrations can be tied to validation evidence.
 - The XLSX parser slice does not calculate certificate results. It only converts sanitized workbook rows into traceable readings.
 - Raw parsed readings are retained before measurement-window selection so imported data can be reviewed independently from later selected windows.
+- ValProbe import orchestration records `parser_result_recorded` audit evidence with parser version, reading count, and warning count.
 
 ## Verification
 
@@ -79,6 +81,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused parsed-reading persistence suite: 3 passed on Python 3.12.10.
 - Expanded combined focused SQLite persistence suite after parsed-reading repository: 35 passed on Python 3.12.10.
 - Default regression suite after parsed-reading persistence slice: 156 passed, 2 skipped on Python 3.12.10.
+- Focused ValProbe import orchestration suite: 3 passed on Python 3.12.10.
+- Import orchestration, parser, parsed-reading, and controlled-fixture contract suite: 13 passed, 2 skipped on Python 3.12.10.
+- Default regression suite after ValProbe import orchestration slice: 159 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions

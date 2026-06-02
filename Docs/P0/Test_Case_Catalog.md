@@ -178,6 +178,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-047 | Sanitized ValProbe XLSX parser skips blank measurement cells. | Blank cells are ignored without creating readings. |
 | IMP-048 | Sanitized ValProbe XLSX parser rejects missing Temperature sheet. | Parser raises a controlled parser error. |
 | IMP-049 | Sanitized ValProbe XLSX parser reports nonnumeric measurement cells. | Parser records a warning and does not silently convert invalid values. |
+| IMP-050 | ValProbe import orchestration persists parser output. | Uploaded file evidence, raw parsed readings, and parser audit event are written in one transaction. |
+| IMP-051 | ValProbe import orchestration rejects wrong uploaded-file kind. | No uploaded file, parsed readings, or audit event is persisted. |
+| IMP-052 | ValProbe import orchestration handles parser failure. | Parser error prevents persistence and no partial import evidence is written. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
