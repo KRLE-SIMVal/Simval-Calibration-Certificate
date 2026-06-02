@@ -185,6 +185,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-054 | Verification table parser rejects missing Time column. | Parser raises a controlled parser error. |
 | IMP-055 | Verification table parser reports invalid timestamp or IRTD value. | Parser records warnings and skips affected rows without silent conversion. |
 | IMP-056 | Verification PDF file extraction remains explicit. | File extraction raises not-implemented until a PDF dependency is approved. |
+| IMP-057 | Link logger readings to IRTD references by timestamp. | One linked reading is produced per logger channel and timestamp with matching IRTD reference. |
+| IMP-058 | Logger reading missing IRTD reference. | Linker records a warning and skips the unmatched logger reading. |
+| IMP-059 | IRTD reference unit mismatch. | Linker records a warning and skips affected link instead of converting silently. |
+| IMP-060 | Duplicate IRTD timestamp. | Linker raises a controlled alignment error because the reference is ambiguous. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
