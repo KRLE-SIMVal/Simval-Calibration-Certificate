@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import pytest
 
 from app.backend.audit.events import AuditAction
+from app.backend.auth.permissions import Role
+from app.backend.auth.users import UserAccount, UserSession
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -24,23 +26,30 @@ from app.backend.persistence.sqlite import (
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementWindowRepository,
     SQLiteRequiredTemperatureSetpointRepository,
+    SQLiteUserAccountRepository,
+    SQLiteUserSessionRepository,
     SQLiteUploadedFileRepository,
     initialize_schema,
 )
+from app.backend.services.authentication import AuthenticationServiceError
 from app.backend.services.measurement_windows import (
     MeasurementWindowSelectionError,
     complete_temperature_window_selection,
+    complete_temperature_window_selection_for_session,
 )
 
 
 def _connection_with_job(
     *,
     job_state: WorkflowState = WorkflowState.DATA_ENTERED,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
     SQLiteCalibrationJobRepository(connection).add(_job(job_state))
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
     return connection
 
 
@@ -71,6 +80,54 @@ def test_complete_temperature_window_selection_transitions_when_all_duts_have_wi
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.WINDOWS_SELECTED
     )
+
+
+def test_complete_temperature_window_selection_for_session_uses_actor_for_audit():
+    connection = _connection_with_job()
+    dut_repository = SQLiteDeviceUnderTestRepository(connection)
+    window_repository = SQLiteMeasurementWindowRepository(connection)
+    setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(connection)
+    dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
+    setpoint_repository.add_many((_setpoint("setpoint-001", -80.0, 0),))
+    window_repository.add(_window("window-001", "dut-001", "MJT1-A"))
+
+    result = complete_temperature_window_selection_for_session(
+        connection=connection,
+        session_id="session-001",
+        job_id="job-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 14, 30, tzinfo=timezone.utc),
+    )
+
+    assert result.job.state is WorkflowState.WINDOWS_SELECTED
+    assert result.audit_event.user_id == "user-001"
+
+
+def test_complete_temperature_window_selection_for_session_rejects_unauthorized_actor():
+    connection = _connection_with_job(user_roles=(Role.READ_ONLY,))
+    dut_repository = SQLiteDeviceUnderTestRepository(connection)
+    window_repository = SQLiteMeasurementWindowRepository(connection)
+    setpoint_repository = SQLiteRequiredTemperatureSetpointRepository(connection)
+    dut_repository.add(_dut("dut-001", "MJT1", "MJT1-A"))
+    setpoint_repository.add_many((_setpoint("setpoint-001", -80.0, 0),))
+    window_repository.add(_window("window-001", "dut-001", "MJT1-A"))
+
+    with pytest.raises(AuthenticationServiceError):
+        complete_temperature_window_selection_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 14, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.DATA_ENTERED
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
 
 
 def test_complete_temperature_window_selection_rejects_missing_dut_window():
@@ -282,4 +339,24 @@ def _window(
                 ),
             ),
         ),
+    )
+
+
+def _user(roles: tuple[Role, ...]) -> UserAccount:
+    return UserAccount(
+        id="user-001",
+        display_name="Operator User",
+        email="operator@example.com",
+        roles=roles,
+        active=True,
+        created_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+    )
+
+
+def _session() -> UserSession:
+    return UserSession(
+        id="session-001",
+        user_id="user-001",
+        issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
     )

@@ -5,6 +5,8 @@ from decimal import Decimal
 import pytest
 
 from app.backend.audit.events import AuditAction
+from app.backend.auth.permissions import Role
+from app.backend.auth.users import UserAccount, UserSession
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -30,13 +32,17 @@ from app.backend.persistence.sqlite import (
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
     SQLiteRequiredTemperatureSetpointRepository,
+    SQLiteUserAccountRepository,
+    SQLiteUserSessionRepository,
     SQLiteUncertaintyBudgetRepository,
     SQLiteUploadedFileRepository,
     initialize_schema,
 )
+from app.backend.services.authentication import AuthenticationServiceError
 from app.backend.services.temperature_calculations import (
     TemperatureCalculationServiceError,
     calculate_temperature_measurement_points,
+    calculate_temperature_measurement_points_for_session,
 )
 from app.calculation_engine.temperature.results import TemperaturePointUncertaintyInput
 
@@ -44,6 +50,8 @@ from app.calculation_engine.temperature.results import TemperaturePointUncertain
 def _connection_with_calculable_job(
     *,
     include_linked_readings: bool = True,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+    user_active: bool = True,
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
@@ -63,6 +71,10 @@ def _connection_with_calculable_job(
     SQLiteMeasurementWindowRepository(connection).add(_window())
     SQLiteConstantSetRepository(connection).add(_constant_set())
     SQLiteUncertaintyBudgetRepository(connection).add(_budget())
+    SQLiteUserAccountRepository(connection).add(
+        _user(roles=user_roles, active=user_active)
+    )
+    SQLiteUserSessionRepository(connection).add(_session())
     return connection
 
 
@@ -108,6 +120,54 @@ def test_calculate_temperature_measurement_points_persists_summary_and_audit():
     assert events[0].new_value["points"][0]["measurement_window_id"] == "window-001"
     assert events[0].new_value["points"][0]["contributions"][0]["name"] == (
         "reference_sensor_calibration"
+    )
+
+
+def test_calculate_temperature_measurement_points_for_session_uses_actor_for_audit():
+    connection = _connection_with_calculable_job()
+
+    result = calculate_temperature_measurement_points_for_session(
+        connection=connection,
+        session_id="session-001",
+        job_id="job-001",
+        uncertainty_inputs=(_uncertainty_input(),),
+        software_version="app-0.1.0",
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version="constants-2026-001",
+        budget_version="budget-temp-001",
+        timestamp=datetime(2026, 6, 1, 15, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.calculation_audit_event.user_id == "user-001"
+    assert result.workflow_audit_event.user_id == "user-001"
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.CALCULATED
+    )
+
+
+def test_calculate_temperature_measurement_points_for_session_rejects_unauthorized_actor():
+    connection = _connection_with_calculable_job(user_roles=(Role.READ_ONLY,))
+
+    with pytest.raises(AuthenticationServiceError):
+        calculate_temperature_measurement_points_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            uncertainty_inputs=(_uncertainty_input(),),
+            software_version="app-0.1.0",
+            calculation_engine_version="calc-engine-0.1.0",
+            constant_set_version="constants-2026-001",
+            budget_version="budget-temp-001",
+            timestamp=datetime(2026, 6, 1, 15, 0, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteMeasurementPointSummaryRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.WINDOWS_SELECTED
     )
 
 
@@ -421,4 +481,28 @@ def _uncertainty_input() -> TemperaturePointUncertaintyInput:
         reference_expanded_uncertainty=0.010,
         bath_expanded_uncertainty=0.004,
         dut_resolution=0.010,
+    )
+
+
+def _user(
+    *,
+    roles: tuple[Role, ...],
+    active: bool,
+) -> UserAccount:
+    return UserAccount(
+        id="user-001",
+        display_name="Operator User",
+        email="operator@example.com",
+        roles=roles,
+        active=active,
+        created_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+    )
+
+
+def _session() -> UserSession:
+    return UserSession(
+        id="session-001",
+        user_id="user-001",
+        issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
     )

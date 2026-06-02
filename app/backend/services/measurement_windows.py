@@ -7,6 +7,7 @@ from datetime import datetime
 import sqlite3
 
 from app.backend.audit.events import AuditAction, AuditEvent
+from app.backend.auth.permissions import Action
 from app.backend.domain.entities import (
     CalibrationJob,
     LinkedTemperatureReading,
@@ -21,6 +22,7 @@ from app.backend.persistence.sqlite import (
     SQLiteMeasurementWindowRepository,
     SQLiteRequiredTemperatureSetpointRepository,
 )
+from app.backend.services.authentication import resolve_actor_for_action
 from app.backend.services.workflow import transition_calibration_job
 
 
@@ -41,6 +43,44 @@ class TemperatureWindowCompletion:
     job: CalibrationJob
     audit_event_id: int
     audit_event: AuditEvent
+
+
+def select_temperature_window_from_linked_readings_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    window_id: str,
+    job_id: str,
+    dut_id: str,
+    dut_channel_id: str,
+    setpoint: float,
+    unit: str,
+    start_timestamp: datetime,
+    end_timestamp: datetime,
+    software_version: str,
+    timestamp: datetime,
+) -> TemperatureMeasurementWindowSelection:
+    """Select a temperature window after resolving an authenticated actor."""
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.SELECT_MEASUREMENT_WINDOWS,
+        timestamp=timestamp,
+    )
+    return select_temperature_window_from_linked_readings(
+        connection=connection,
+        window_id=window_id,
+        job_id=job_id,
+        dut_id=dut_id,
+        dut_channel_id=dut_channel_id,
+        setpoint=setpoint,
+        unit=unit,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        selected_by=actor.user_id,
+        software_version=software_version,
+        timestamp=timestamp,
+    )
 
 
 def select_temperature_window_from_linked_readings(
@@ -141,6 +181,30 @@ def select_temperature_window_from_linked_readings(
         linked_readings=linked_readings,
         audit_event_id=audit_event_id,
         audit_event=audit_event,
+    )
+
+
+def complete_temperature_window_selection_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    software_version: str,
+    timestamp: datetime,
+) -> TemperatureWindowCompletion:
+    """Complete temperature window selection after resolving an authenticated actor."""
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.SELECT_MEASUREMENT_WINDOWS,
+        timestamp=timestamp,
+    )
+    return complete_temperature_window_selection(
+        connection=connection,
+        job_id=job_id,
+        user_id=actor.user_id,
+        software_version=software_version,
+        timestamp=timestamp,
     )
 
 

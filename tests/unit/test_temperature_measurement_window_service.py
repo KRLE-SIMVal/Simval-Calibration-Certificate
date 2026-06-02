@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import pytest
 
 from app.backend.audit.events import AuditAction
+from app.backend.auth.permissions import Role
+from app.backend.auth.users import UserAccount, UserSession
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -23,18 +25,23 @@ from app.backend.persistence.sqlite import (
     SQLiteDeviceUnderTestRepository,
     SQLiteLinkedTemperatureReadingRepository,
     SQLiteMeasurementWindowRepository,
+    SQLiteUserAccountRepository,
+    SQLiteUserSessionRepository,
     SQLiteUploadedFileRepository,
     initialize_schema,
 )
+from app.backend.services.authentication import AuthenticationServiceError
 from app.backend.services.measurement_windows import (
     MeasurementWindowSelectionError,
     select_temperature_window_from_linked_readings,
+    select_temperature_window_from_linked_readings_for_session,
 )
 
 
 def _connection_with_linked_readings(
     *,
     job_state: WorkflowState = WorkflowState.DATA_ENTERED,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
@@ -47,6 +54,8 @@ def _connection_with_linked_readings(
         job_id="job-001",
         linked_readings=_linked_readings(),
     )
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
     return connection
 
 
@@ -112,6 +121,54 @@ def test_select_temperature_window_persists_window_and_audit_event():
         "end_timestamp": "2026-04-08T15:46:00+00:00",
         "linked_reading_count": 2,
     }
+
+
+def test_select_temperature_window_for_session_uses_actor_for_selection_and_audit():
+    connection = _connection_with_linked_readings()
+
+    result = select_temperature_window_from_linked_readings_for_session(
+        connection=connection,
+        session_id="session-001",
+        window_id="window-001",
+        job_id="job-001",
+        dut_id="dut-001",
+        dut_channel_id="MJT1-A",
+        setpoint=-80.0,
+        unit="deg C",
+        start_timestamp=datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc),
+        end_timestamp=datetime(2026, 4, 8, 15, 46, tzinfo=timezone.utc),
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 14, 20, tzinfo=timezone.utc),
+    )
+
+    assert result.window.selected_by == "user-001"
+    assert result.audit_event.user_id == "user-001"
+
+
+def test_select_temperature_window_for_session_rejects_unauthorized_actor():
+    connection = _connection_with_linked_readings(user_roles=(Role.READ_ONLY,))
+
+    with pytest.raises(AuthenticationServiceError):
+        select_temperature_window_from_linked_readings_for_session(
+            connection=connection,
+            session_id="session-001",
+            window_id="window-001",
+            job_id="job-001",
+            dut_id="dut-001",
+            dut_channel_id="MJT1-A",
+            setpoint=-80.0,
+            unit="deg C",
+            start_timestamp=datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc),
+            end_timestamp=datetime(2026, 4, 8, 15, 46, tzinfo=timezone.utc),
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 14, 20, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteMeasurementWindowRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "measurement_window",
+        "window-001",
+    ) == ()
 
 
 def test_select_temperature_window_filters_channel_and_range():
@@ -377,4 +434,24 @@ def _linked_reading(
                 column_label="IRTD (deg C)",
             ),
         ),
+    )
+
+
+def _user(roles: tuple[Role, ...]) -> UserAccount:
+    return UserAccount(
+        id="user-001",
+        display_name="Operator User",
+        email="operator@example.com",
+        roles=roles,
+        active=True,
+        created_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+    )
+
+
+def _session() -> UserSession:
+    return UserSession(
+        id="session-001",
+        user_id="user-001",
+        issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
     )

@@ -8,6 +8,7 @@ from decimal import Decimal
 import sqlite3
 
 from app.backend.audit.events import AuditAction, AuditEvent
+from app.backend.auth.permissions import Action
 from app.backend.domain.entities import LinkedTemperatureReading, MeasurementWindow
 from app.backend.domain.versioning import release_version_blockers
 from app.backend.domain.workflow import WorkflowState
@@ -23,6 +24,7 @@ from app.backend.persistence.sqlite import (
     SQLiteRequiredTemperatureSetpointRepository,
     SQLiteUncertaintyBudgetRepository,
 )
+from app.backend.services.authentication import resolve_actor_for_action
 from app.backend.services.workflow import transition_calibration_job
 from app.calculation_engine.common.summary import MeasurementPointSummary
 from app.calculation_engine.temperature.results import (
@@ -44,6 +46,38 @@ class TemperatureCalculationRun:
     calculation_audit_event: AuditEvent
     workflow_audit_event_id: int
     workflow_audit_event: AuditEvent
+
+
+def calculate_temperature_measurement_points_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    uncertainty_inputs: tuple[TemperaturePointUncertaintyInput, ...],
+    software_version: str,
+    calculation_engine_version: str,
+    constant_set_version: str,
+    budget_version: str,
+    timestamp: datetime,
+) -> TemperatureCalculationRun:
+    """Calculate temperature points after resolving an authenticated actor."""
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.RUN_CALCULATION,
+        timestamp=timestamp,
+    )
+    return calculate_temperature_measurement_points(
+        connection=connection,
+        job_id=job_id,
+        uncertainty_inputs=uncertainty_inputs,
+        user_id=actor.user_id,
+        software_version=software_version,
+        calculation_engine_version=calculation_engine_version,
+        constant_set_version=constant_set_version,
+        budget_version=budget_version,
+        timestamp=timestamp,
+    )
 
 
 def calculate_temperature_measurement_points(

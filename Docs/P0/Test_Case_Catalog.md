@@ -55,6 +55,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | RBAC-015 | Session-backed actor resolution for a regulated action. | Active session resolves to authenticated user id, display name, and roles. |
 | RBAC-016 | Expired or revoked session attempts regulated action. | Denied before service action executes. |
 | RBAC-017 | Session for inactive user attempts regulated action. | Denied before service action executes. |
+| RBAC-018 | Session-backed measurement-window selection. | Authorized session resolves actor and uses resolved user id in window/audit evidence. |
+| RBAC-019 | Unauthorized session attempts measurement-window selection or completion. | Denied before window or workflow audit evidence is written. |
+| RBAC-020 | Session-backed temperature calculation run. | Authorized session resolves actor and uses resolved user id in calculation and workflow audit evidence. |
+| RBAC-021 | Unauthorized session attempts temperature calculation run. | Denied before calculation summaries, audit events, or workflow transition are written. |
 
 ## Statistics And Calculation Common
 
