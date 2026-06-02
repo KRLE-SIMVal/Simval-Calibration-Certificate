@@ -174,6 +174,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-043 | Missing verification PDF for calibration requiring IRTD. | Calculation approval/export blocked. |
 | IMP-044 | Verification PDF extraction failure. | Blocking parser warning and no silent fallback. |
 | IMP-045 | IRTD value missing for a logger reading. | Blocking parser warning for affected row/channel. |
+| IMP-046 | Sanitized ValProbe XLSX parser reads logger channels. | Parser returns timezone-aware readings with logger channel, value, unit, and source row/column. |
+| IMP-047 | Sanitized ValProbe XLSX parser skips blank measurement cells. | Blank cells are ignored without creating readings. |
+| IMP-048 | Sanitized ValProbe XLSX parser rejects missing Temperature sheet. | Parser raises a controlled parser error. |
+| IMP-049 | Sanitized ValProbe XLSX parser reports nonnumeric measurement cells. | Parser records a warning and does not silently convert invalid values. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
