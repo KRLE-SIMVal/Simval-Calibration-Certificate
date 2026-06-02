@@ -50,6 +50,11 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | RBAC-010 | Inactive user cannot perform regulated action. | Denied. |
 | RBAC-011 | Unauthorized user cannot view restricted audit trail. | Denied. |
 | RBAC-012 | Read Only can view released certificate when permitted. | Allowed. |
+| RBAC-013 | User account with multiple roles performs any action allowed by one assigned role. | Allowed when at least one active assigned role permits the action. |
+| RBAC-014 | User account without a controlled role. | Rejected at identity boundary. |
+| RBAC-015 | Session-backed actor resolution for a regulated action. | Active session resolves to authenticated user id, display name, and roles. |
+| RBAC-016 | Expired or revoked session attempts regulated action. | Denied before service action executes. |
+| RBAC-017 | Session for inactive user attempts regulated action. | Denied before service action executes. |
 
 ## Statistics And Calculation Common
 
@@ -263,6 +268,11 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUD-004 | Approval audit event. | Approver and timestamp stored. |
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
 | AUD-006 | Workflow transition audit event. | Previous and new workflow states are stored. |
+| AUTH-001 | Store and reload user account identity. | User id, display name, email, roles, active status, signature label, and created timestamp round-trip unchanged. |
+| AUTH-002 | Store duplicate user email. | Duplicate email is rejected. |
+| AUTH-003 | Store and reload user session. | Session id, user id, issued timestamp, expiry timestamp, and revocation status round-trip unchanged. |
+| AUTH-004 | Store session for unknown user. | Insert is rejected by referential integrity. |
+| AUTH-005 | Revoke user session. | Revoked timestamp is persisted and the session no longer resolves as active. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

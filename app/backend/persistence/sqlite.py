@@ -8,6 +8,8 @@ import json
 import sqlite3
 from typing import Any, Mapping
 
+from app.backend.auth.permissions import Role
+from app.backend.auth.users import UserAccount, UserSession
 from app.backend.certificates.records import (
     ArtifactType,
     CertificateRecord,
@@ -35,7 +37,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
 
-SCHEMA_VERSION = "p2-sqlite-schema-v2"
+SCHEMA_VERSION = "p3-sqlite-schema-v1"
 
 
 class PersistenceError(RuntimeError):
@@ -60,6 +62,30 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             version TEXT PRIMARY KEY,
             applied_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS user_accounts (
+            id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            roles_json TEXT NOT NULL,
+            active INTEGER NOT NULL CHECK (active IN (0, 1)),
+            signature_label TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_user_accounts_active
+            ON user_accounts(active, id);
+
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES user_accounts(id),
+            issued_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_user_sessions_user
+            ON user_sessions(user_id, expires_at);
 
         CREATE TABLE IF NOT EXISTS calibration_jobs (
             id TEXT PRIMARY KEY,
@@ -469,6 +495,183 @@ def list_schema_versions(connection: sqlite3.Connection) -> tuple[str, ...]:
         """
     ).fetchall()
     return tuple(row["version"] for row in rows)
+
+
+class SQLiteUserAccountRepository:
+    """Repository for persisted user identities."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add(self, user: UserAccount) -> None:
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO user_accounts (
+                    id,
+                    display_name,
+                    email,
+                    roles_json,
+                    active,
+                    signature_label,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user.id,
+                    user.display_name,
+                    user.email,
+                    _roles_to_json(user.roles),
+                    1 if user.active else 0,
+                    user.signature_label,
+                    _datetime_to_text(user.created_at, "User created_at"),
+                ),
+            )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not store user account.") from error
+
+    def get(self, user_id: str) -> UserAccount:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                display_name,
+                email,
+                roles_json,
+                active,
+                signature_label,
+                created_at
+            FROM user_accounts
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(f"User account {user_id!r} was not found.")
+        return _user_account_from_row(row)
+
+    def list_active(self) -> tuple[UserAccount, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                id,
+                display_name,
+                email,
+                roles_json,
+                active,
+                signature_label,
+                created_at
+            FROM user_accounts
+            WHERE active = 1
+            ORDER BY id ASC
+            """
+        ).fetchall()
+        return tuple(_user_account_from_row(row) for row in rows)
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
+
+
+class SQLiteUserSessionRepository:
+    """Repository for persisted authenticated sessions."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add(self, session: UserSession) -> None:
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO user_sessions (
+                    id,
+                    user_id,
+                    issued_at,
+                    expires_at,
+                    revoked_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    session.id,
+                    session.user_id,
+                    _datetime_to_text(session.issued_at, "Session issued_at"),
+                    _datetime_to_text(session.expires_at, "Session expires_at"),
+                    _optional_datetime_to_text(
+                        session.revoked_at,
+                        "Session revoked_at",
+                    ),
+                ),
+            )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not store user session.") from error
+
+    def get(self, session_id: str) -> UserSession:
+        row = self._connection.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                issued_at,
+                expires_at,
+                revoked_at
+            FROM user_sessions
+            WHERE id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(f"User session {session_id!r} was not found.")
+        return _user_session_from_row(row)
+
+    def revoke(self, *, session_id: str, revoked_at: datetime) -> UserSession:
+        try:
+            cursor = self._connection.execute(
+                """
+                UPDATE user_sessions
+                SET revoked_at = ?
+                WHERE id = ?
+                  AND revoked_at IS NULL
+                """,
+                (
+                    _datetime_to_text(revoked_at, "Session revoked_at"),
+                    session_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                self.get(session_id)
+                raise PersistenceError("User session is already revoked.")
+            self._commit_if_needed()
+            return self.get(session_id)
+        except (RecordNotFoundError, PersistenceError):
+            self._rollback_if_needed()
+            raise
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not revoke user session.") from error
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
 
 
 class SQLiteCalibrationJobRepository:
@@ -1981,6 +2184,31 @@ def _job_from_row(row: sqlite3.Row) -> CalibrationJob:
     )
 
 
+def _user_account_from_row(row: sqlite3.Row) -> UserAccount:
+    return UserAccount(
+        id=row["id"],
+        display_name=row["display_name"],
+        email=row["email"],
+        roles=_roles_from_json(row["roles_json"]),
+        active=bool(row["active"]),
+        signature_label=row["signature_label"],
+        created_at=_datetime_from_text(row["created_at"], "User created_at"),
+    )
+
+
+def _user_session_from_row(row: sqlite3.Row) -> UserSession:
+    return UserSession(
+        id=row["id"],
+        user_id=row["user_id"],
+        issued_at=_datetime_from_text(row["issued_at"], "Session issued_at"),
+        expires_at=_datetime_from_text(row["expires_at"], "Session expires_at"),
+        revoked_at=_optional_datetime_from_text(
+            row["revoked_at"],
+            "Session revoked_at",
+        ),
+    )
+
+
 def _uploaded_file_from_row(row: sqlite3.Row) -> UploadedFile:
     return UploadedFile(
         id=row["id"],
@@ -2305,3 +2533,17 @@ def _json_to_mapping(value: str | None) -> dict[str, Any] | None:
     if not isinstance(parsed, dict):
         raise PersistenceError("Audit event JSON value must be an object.")
     return parsed
+
+
+def _roles_to_json(roles: tuple[Role, ...]) -> str:
+    return json.dumps([role.value for role in roles], separators=(",", ":"))
+
+
+def _roles_from_json(value: str) -> tuple[Role, ...]:
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise PersistenceError("User roles JSON must be a list.")
+    try:
+        return tuple(Role(role) for role in parsed)
+    except ValueError as error:
+        raise PersistenceError("User roles JSON contains an unknown role.") from error
