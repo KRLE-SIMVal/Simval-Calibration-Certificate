@@ -26,6 +26,12 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Migration runner is idempotent when an already-applied migration has the same checksum.
 - Migration runner blocks checksum mismatches for already-applied versions.
 - Migration runner rejects duplicate migration versions in one plan and does not record failed SQL as applied.
+- Certificate preview permission added to the regulated action matrix.
+- Immutable certificate preview models for rows generated from locked calculation summaries.
+- Session-backed certificate preview service.
+- Certificate preview service requires `calculated` or later workflow state.
+- Certificate preview service rejects missing summaries and mixed calculation-engine, constant-set, or budget versions.
+- Certificate preview generation records audit evidence with summary ids, row count, template version, actor, and version references.
 
 ## Scope Not Implemented
 
@@ -34,6 +40,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Existing P2 backend services still accept explicit `user_id` strings internally for trusted backend use; P3 API-facing wrappers now resolve sessions before calling them for window and calculation actions.
 - No dedicated user-management audit workflow yet for creating, deactivating, or role-changing user accounts.
 - Existing full SQLite schema initializer is not yet split into a historical migration chain.
+- No PDF rendering, visual template matching, or export artifact generation yet.
 
 ## Compliance Notes
 
@@ -45,12 +52,15 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Inactive users cannot perform regulated actions even when a session record exists.
 - Future API endpoints must call the session-backed wrappers for regulated window and calculation actions, not the internal `user_id` service functions directly.
 - Future schema changes should be applied through the controlled migration runner so version and checksum evidence are retained.
+- Certificate preview consumes locked summaries and does not recalculate certificate result rows.
+- Certificate preview audit evidence can be used by later export/release gates to prove preview occurred before export.
 
 ## Verification
 
 - Focused user identity, SQLite user/session persistence, actor-resolution, and permission suite: 25 passed on Python 3.12.10.
 - Focused session-backed measurement-window, window-completion, calculation-run, and authentication suite: 31 passed on Python 3.12.10.
 - Focused controlled SQLite migration runner suite: 5 passed on Python 3.12.10.
+- Focused certificate preview model, preview service, permission, and audit suite: 16 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -60,3 +70,4 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 | User creation and role changes are not yet audited workflows. | Add an admin user-management service that writes audit events for create, deactivate, role change, and session revocation. |
 | Some trusted internal services still accept explicit `user_id` strings. | Keep them internal and require API endpoints to call session-backed wrappers for regulated actions. Add wrappers for remaining regulated actions as those API surfaces are implemented. |
 | Existing full SQLite schema still uses direct initialization. | Keep direct initialization for test databases now, but split the production schema history into controlled migrations before persistent multi-environment testing or deployment. |
+| Certificate preview is audited but not yet persisted as a separate preview record. | Use preview audit evidence for the next export gate, then add a dedicated preview table only if template review requires retaining rendered preview payloads. |

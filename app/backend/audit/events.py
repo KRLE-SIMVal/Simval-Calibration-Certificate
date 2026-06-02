@@ -22,6 +22,7 @@ class AuditAction(StrEnum):
     BUDGET_CHANGED = "budget_changed"
     TECHNICAL_REVIEW_APPROVED = "technical_review_approved"
     QA_APPROVED = "qa_approved"
+    CERTIFICATE_PREVIEW_GENERATED = "certificate_preview_generated"
     CERTIFICATE_RELEASED = "certificate_released"
     CERTIFICATE_REVISED = "certificate_revised"
     CERTIFICATE_VOIDED = "certificate_voided"

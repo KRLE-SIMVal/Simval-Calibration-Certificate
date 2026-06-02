@@ -22,6 +22,7 @@ One person may hold multiple roles in the system, but workflow rules may require
 | Enter manual readings | Yes | Yes | No | Yes | No |
 | Select measurement windows | Yes | Yes | No | Yes | No |
 | Run calculation | Yes | Yes | No | Yes | No |
+| Preview certificate | Yes | Yes | Yes | Yes | No |
 | Submit for technical review | Yes | Yes | No | Yes | No |
 | Approve technical review | No | Yes | No | Yes | No |
 | Approve QA release | No | No | Yes | Yes | No |
@@ -53,4 +54,3 @@ Every permission in the matrix requires automated tests for:
 - Inactive users cannot act.
 - Released records cannot be modified by normal edit paths.
 - Audit records are visible only to permitted roles.
-

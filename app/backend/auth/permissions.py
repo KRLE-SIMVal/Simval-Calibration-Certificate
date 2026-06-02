@@ -20,6 +20,7 @@ class Action(StrEnum):
     ENTER_MANUAL_READINGS = "enter_manual_readings"
     SELECT_MEASUREMENT_WINDOWS = "select_measurement_windows"
     RUN_CALCULATION = "run_calculation"
+    PREVIEW_CERTIFICATE = "preview_certificate"
     SUBMIT_TECHNICAL_REVIEW = "submit_technical_review"
     APPROVE_TECHNICAL_REVIEW = "approve_technical_review"
     APPROVE_QA_RELEASE = "approve_qa_release"
@@ -44,6 +45,7 @@ PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.ENTER_MANUAL_READINGS,
             Action.SELECT_MEASUREMENT_WINDOWS,
             Action.RUN_CALCULATION,
+            Action.PREVIEW_CERTIFICATE,
             Action.SUBMIT_TECHNICAL_REVIEW,
             Action.VIEW_RELEASED_CERTIFICATE,
         }
@@ -56,6 +58,7 @@ PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.ENTER_MANUAL_READINGS,
             Action.SELECT_MEASUREMENT_WINDOWS,
             Action.RUN_CALCULATION,
+            Action.PREVIEW_CERTIFICATE,
             Action.SUBMIT_TECHNICAL_REVIEW,
             Action.APPROVE_TECHNICAL_REVIEW,
             Action.VIEW_AUDIT_TRAIL,
@@ -66,6 +69,7 @@ PERMISSIONS: dict[Role, frozenset[Action]] = {
     Role.QA_APPROVER: frozenset(
         {
             Action.APPROVE_QA_RELEASE,
+            Action.PREVIEW_CERTIFICATE,
             Action.RELEASE_CERTIFICATE,
             Action.REVISE_RELEASED_CERTIFICATE,
             Action.VOID_CERTIFICATE,
@@ -85,4 +89,3 @@ def is_allowed(role: Role, action: Action, *, user_active: bool = True) -> bool:
     if not user_active:
         return False
     return action in PERMISSIONS[role]
-

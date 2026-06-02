@@ -1,0 +1,279 @@
+import sqlite3
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import pytest
+
+from app.backend.audit.events import AuditAction
+from app.backend.auth.permissions import Role
+from app.backend.auth.users import UserAccount, UserSession
+from app.backend.domain.entities import (
+    CalibrationJob,
+    Client,
+    DeviceUnderTest,
+    Discipline,
+    MeasurementMode,
+    MeasurementReading,
+    MeasurementWindow,
+    SourceLocation,
+    UploadedFile,
+    UploadedFileKind,
+)
+from app.backend.domain.workflow import WorkflowState
+from app.backend.persistence.sqlite import (
+    SQLiteAuditEventRepository,
+    SQLiteCalibrationJobRepository,
+    SQLiteDeviceUnderTestRepository,
+    SQLiteMeasurementPointSummaryRepository,
+    SQLiteMeasurementWindowRepository,
+    SQLiteUploadedFileRepository,
+    SQLiteUserAccountRepository,
+    SQLiteUserSessionRepository,
+    initialize_schema,
+)
+from app.backend.services.authentication import AuthenticationServiceError
+from app.backend.services.certificates import (
+    CertificatePreviewServiceError,
+    build_certificate_preview_for_session,
+)
+from app.calculation_engine.common.summary import MeasurementPointSummary
+
+
+def _connection_with_summary(
+    *,
+    job_state: WorkflowState = WorkflowState.CALCULATED,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(_job(job_state))
+    SQLiteUploadedFileRepository(connection).add(_uploaded_file())
+    SQLiteDeviceUnderTestRepository(connection).add(_dut())
+    SQLiteMeasurementWindowRepository(connection).add(_window("window-001", -80.0))
+    SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
+    return connection
+
+
+def test_build_certificate_preview_for_session_consumes_locked_summaries_and_audits():
+    connection = _connection_with_summary()
+
+    result = build_certificate_preview_for_session(
+        connection=connection,
+        session_id="session-001",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+    )
+
+    preview = result.preview
+    assert preview.generated_by == "user-001"
+    assert preview.summary_ids == ("point-001",)
+    assert preview.rows[0].reference == pytest.approx(-80.0305)
+    assert preview.rows[0].display_error_of_indication == Decimal("-0.004")
+    assert result.audit_event_id == 1
+    assert result.audit_event.action is AuditAction.CERTIFICATE_PREVIEW_GENERATED
+    assert result.audit_event.user_id == "user-001"
+    assert result.audit_event.new_value == {
+        "summary_ids": ["point-001"],
+        "row_count": 1,
+        "template_version": "template-2026-001",
+    }
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == (result.audit_event,)
+
+
+def test_build_certificate_preview_for_session_rejects_unauthorized_actor():
+    connection = _connection_with_summary(user_roles=(Role.READ_ONLY,))
+
+    with pytest.raises(AuthenticationServiceError):
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_build_certificate_preview_for_session_rejects_before_calculated_state():
+    connection = _connection_with_summary(job_state=WorkflowState.WINDOWS_SELECTED)
+
+    with pytest.raises(CertificatePreviewServiceError):
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_build_certificate_preview_for_session_rejects_missing_summaries():
+    connection = sqlite3.connect(":memory:")
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(_job(WorkflowState.CALCULATED))
+    SQLiteUserAccountRepository(connection).add(_user((Role.OPERATOR,)))
+    SQLiteUserSessionRepository(connection).add(_session())
+
+    with pytest.raises(CertificatePreviewServiceError):
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+
+def test_build_certificate_preview_for_session_rejects_mismatched_versions():
+    connection = _connection_with_summary()
+    SQLiteMeasurementWindowRepository(connection).add(_window("window-002", 0.0))
+    SQLiteMeasurementPointSummaryRepository(connection).add(
+        _summary(
+            point_id="point-002",
+            measurement_window_id="window-002",
+            constant_set_version="constants-2026-002",
+        )
+    )
+
+    with pytest.raises(CertificatePreviewServiceError) as exc_info:
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "constant set version" in str(exc_info.value)
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def _job(state: WorkflowState) -> CalibrationJob:
+    return CalibrationJob(
+        id="job-001",
+        client=Client(name="SIMVal customer", address="Validated Road 1"),
+        discipline=Discipline.TEMPERATURE,
+        measurement_mode=MeasurementMode.AUTOMATIC,
+        method="ValProbe RT linked XLSX/PDF workflow",
+        created_by="operator-001",
+        state=state,
+        created_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _uploaded_file() -> UploadedFile:
+    return UploadedFile(
+        id="file-001",
+        job_id="job-001",
+        original_filename="sanitized-valprobe.xlsx",
+        checksum_sha256="a" * 64,
+        file_kind=UploadedFileKind.CALIBRATION_XLSX,
+        storage_uri="controlled-local://sanitized-valprobe.xlsx",
+        parser_version="valprobe-xlsx-parser-v1",
+        uploaded_at=datetime(2026, 6, 1, 14, 5, tzinfo=timezone.utc),
+    )
+
+
+def _dut() -> DeviceUnderTest:
+    return DeviceUnderTest(
+        id="dut-001",
+        job_id="job-001",
+        make="Kaye",
+        model="ValProbe RT",
+        serial_number="MJT1",
+        channel_id="MJT1-A",
+    )
+
+
+def _window(window_id: str, setpoint: float) -> MeasurementWindow:
+    return MeasurementWindow(
+        id=window_id,
+        job_id="job-001",
+        dut_id="dut-001",
+        setpoint=setpoint,
+        unit="deg C",
+        selected_by="operator-001",
+        selected_at=datetime(2026, 6, 1, 14, 20, tzinfo=timezone.utc),
+        readings=(
+            MeasurementReading(
+                timestamp=datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc),
+                channel_id="MJT1-A",
+                value=-80.036,
+                unit="deg C",
+                source=SourceLocation(
+                    uploaded_file_id="file-001",
+                    source_label="Temperature",
+                    row_number=12,
+                    column_label="B",
+                ),
+            ),
+        ),
+    )
+
+
+def _summary(
+    *,
+    point_id: str = "point-001",
+    measurement_window_id: str = "window-001",
+    constant_set_version: str = "constants-2026-001",
+) -> MeasurementPointSummary:
+    return MeasurementPointSummary(
+        point_id=point_id,
+        job_id="job-001",
+        dut_id="dut-001",
+        measurement_window_id=measurement_window_id,
+        reference=-80.0305,
+        indication=-80.035,
+        unit="deg C",
+        error_of_indication=-0.0045,
+        calculated_expanded_uncertainty=Decimal("0.0124231"),
+        cmc_floor=Decimal("0.010"),
+        reported_expanded_uncertainty=Decimal("0.012"),
+        display_error_of_indication=Decimal("-0.004"),
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version=constant_set_version,
+        budget_version="budget-temp-001",
+    )
+
+
+def _user(roles: tuple[Role, ...]) -> UserAccount:
+    return UserAccount(
+        id="user-001",
+        display_name="Operator User",
+        email="operator@example.com",
+        roles=roles,
+        active=True,
+        created_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+    )
+
+
+def _session() -> UserSession:
+    return UserSession(
+        id="session-001",
+        user_id="user-001",
+        issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
+    )

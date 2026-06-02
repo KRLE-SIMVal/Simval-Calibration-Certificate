@@ -59,6 +59,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | RBAC-019 | Unauthorized session attempts measurement-window selection or completion. | Denied before window or workflow audit evidence is written. |
 | RBAC-020 | Session-backed temperature calculation run. | Authorized session resolves actor and uses resolved user id in calculation and workflow audit evidence. |
 | RBAC-021 | Unauthorized session attempts temperature calculation run. | Denied before calculation summaries, audit events, or workflow transition are written. |
+| RBAC-022 | Certificate preview permission. | Operator, Technical Reviewer, QA Approver, and Admin can preview; Read Only cannot preview drafts. |
 
 ## Statistics And Calculation Common
 
@@ -257,6 +258,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-020 | One artifact per DUT. | Correct artifact count. |
 | CERT-021 | Combined batch summary. | Summary references all DUTs. |
 | CERT-030 | Preview required before export. | Export blocked without preview. |
+| CERT-031 | Certificate preview consumes locked summaries. | Preview rows are built from stored calculation summaries and no recalculation is performed. |
+| CERT-032 | Certificate preview before calculation. | Preview is rejected before `calculated` workflow state. |
+| CERT-033 | Certificate preview with inconsistent summary versions. | Preview is rejected until calculation summaries reference one calculation engine, constant set, and budget version. |
 | CERT-050 | Released certificate tied to constants version. | Later constants changes do not alter released record. |
 | CERT-051 | Released certificate tied to uncertainty budget version. | Later budget changes do not alter released record. |
 | CERT-052 | Released certificate tied to calculation summary IDs. | Released record contains immutable calculation summary references. |
@@ -272,6 +276,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUD-004 | Approval audit event. | Approver and timestamp stored. |
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
 | AUD-006 | Workflow transition audit event. | Previous and new workflow states are stored. |
+| AUD-007 | Certificate preview audit event. | Preview event records summary ids, row count, template version, user, and version references. |
 | AUTH-001 | Store and reload user account identity. | User id, display name, email, roles, active status, signature label, and created timestamp round-trip unchanged. |
 | AUTH-002 | Store duplicate user email. | Duplicate email is rejected. |
 | AUTH-003 | Store and reload user session. | Session id, user id, issued timestamp, expiry timestamp, and revocation status round-trip unchanged. |
