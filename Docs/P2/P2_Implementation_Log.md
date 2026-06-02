@@ -48,6 +48,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Temperature window selection persists the DUT indication readings as a selected measurement window and returns the paired IRTD references for review.
 - Temperature window selection records `measurement_window_changed` audit evidence with setpoint, unit, selected range, channel, and linked-reading count.
 - Temperature window selection rejects requests before the `data_entered` workflow state.
+- Temperature window completion gate transitions jobs from `data_entered` to `windows_selected` only when every DUT on the job has at least one selected window.
+- Temperature window completion records the existing workflow-transition audit evidence in the same transaction as the state update.
 
 ## Scope Not Implemented
 
@@ -60,7 +62,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - No D4 certificate-number adapter yet.
 - No certificate result calculation from linked logger/IRTD readings yet.
 - No automatic plateau/stability window suggestion yet.
-- No automatic transition from `data_entered` to `windows_selected` after selecting windows yet.
+- No automatic transition from `data_entered` to `windows_selected` immediately after selecting an individual window; completion remains an explicit service action.
+- No required setpoint-plan model yet, so window completeness currently checks DUT coverage only.
 
 ## Compliance Notes
 
@@ -88,6 +91,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Temperature window selection does not calculate mean reference, mean indication, standard deviation, uncertainty, error of indication, or reported certificate results.
 - Temperature window selection requires the selected DUT to belong to the job and match the selected logger channel.
 - Temperature window selection is allowed only after source data is entered/imported, keeping workflow ordering explicit.
+- Temperature window completion does not classify stability or calculate results; it only checks selected-window coverage and records the workflow transition.
+- Temperature window completion currently requires at least one selected window per DUT because required setpoints are not modeled yet.
 
 ## Verification
 
@@ -131,6 +136,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused temperature measurement-window selection suite: 7 passed on Python 3.12.10.
 - Source-data, workflow, and temperature window-selection suite: 39 passed on Python 3.12.10.
 - Default regression suite after temperature measurement-window selection slice: 184 passed, 2 skipped on Python 3.12.10.
+- Focused temperature window completion and selection suite: 11 passed on Python 3.12.10.
+- Source-data, workflow, and temperature window-completion suite: 37 passed on Python 3.12.10.
+- Default regression suite after temperature window-completion gate slice: 188 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions
@@ -141,7 +149,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 | Parser tests currently use generated sanitized XLSX workbooks, not the controlled customer workbook. | Create and approve customer-safe sanitized fixtures that mirror the observed workbook structure before production parser validation. |
 | Verification PDF table extraction dependency is not approved yet. | Keep file-level extraction blocked and add a small dependency-selection review before implementing PDF text/table extraction. |
 | Logger and IRTD alignment currently requires exact timestamps. | Keep exact matching as the default compliance-safe rule and add a council-reviewed tolerance/window rule only if real verification exports show timestamp drift. |
-| Window selection does not yet determine whether all required DUT/setpoint windows are complete. | Add a window-completeness check before allowing the workflow transition to `windows_selected`. |
+| Window completion does not yet determine whether all required setpoint windows are complete. | Add a required setpoint-plan model before multi-setpoint calculation runs consume windows. |
 | Window selection is manual timestamp-range only. | Keep manual selection as the validated default and add automatic stable-window suggestion later with transparent thresholds and review/override evidence. |
 | D4 is still not integrated as the external certificate-number source. | Keep the internal sequence as the approved interim source and add a D4 adapter only when interface requirements are known. |
 | Audit actor identity is accepted as a user ID string only. | Add user repository/session integration before exposing API endpoints. |

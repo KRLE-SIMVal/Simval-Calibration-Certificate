@@ -8,6 +8,7 @@ import sqlite3
 
 from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.domain.entities import (
+    CalibrationJob,
     LinkedTemperatureReading,
     MeasurementWindow,
 )
@@ -19,6 +20,7 @@ from app.backend.persistence.sqlite import (
     SQLiteLinkedTemperatureReadingRepository,
     SQLiteMeasurementWindowRepository,
 )
+from app.backend.services.workflow import transition_calibration_job
 
 
 class MeasurementWindowSelectionError(ValueError):
@@ -29,6 +31,13 @@ class MeasurementWindowSelectionError(ValueError):
 class TemperatureMeasurementWindowSelection:
     window: MeasurementWindow
     linked_readings: tuple[LinkedTemperatureReading, ...]
+    audit_event_id: int
+    audit_event: AuditEvent
+
+
+@dataclass(frozen=True, slots=True)
+class TemperatureWindowCompletion:
+    job: CalibrationJob
     audit_event_id: int
     audit_event: AuditEvent
 
@@ -131,6 +140,75 @@ def select_temperature_window_from_linked_readings(
         linked_readings=linked_readings,
         audit_event_id=audit_event_id,
         audit_event=audit_event,
+    )
+
+
+def complete_temperature_window_selection(
+    *,
+    connection: sqlite3.Connection,
+    job_id: str,
+    user_id: str,
+    software_version: str,
+    timestamp: datetime,
+) -> TemperatureWindowCompletion:
+    """Move a job to windows_selected after each DUT has a selected window."""
+    _require_text(job_id, "Job id")
+    _require_text(user_id, "User id")
+    _require_text(software_version, "Software version")
+    _require_timezone_aware(timestamp, "Window completion timestamp")
+
+    with connection:
+        job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+        dut_repository = SQLiteDeviceUnderTestRepository(connection, autocommit=False)
+        window_repository = SQLiteMeasurementWindowRepository(
+            connection,
+            autocommit=False,
+        )
+        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+
+        job = job_repository.get(job_id)
+        if job.state is not WorkflowState.DATA_ENTERED:
+            raise MeasurementWindowSelectionError(
+                "Temperature window completion requires data_entered state."
+            )
+
+        dut_ids = tuple(dut.id for dut in dut_repository.list_for_job(job_id))
+        if len(dut_ids) == 0:
+            raise MeasurementWindowSelectionError(
+                "Temperature window completion requires at least one DUT."
+            )
+
+        window_dut_ids = {
+            window.dut_id for window in window_repository.list_for_job(job_id)
+        }
+        missing_dut_ids = tuple(
+            dut_id for dut_id in dut_ids if dut_id not in window_dut_ids
+        )
+        if missing_dut_ids:
+            missing = ", ".join(missing_dut_ids)
+            raise MeasurementWindowSelectionError(
+                f"Missing selected measurement windows for DUTs: {missing}."
+            )
+
+        transition = transition_calibration_job(
+            job_id=job.id,
+            current=job.state,
+            target=WorkflowState.WINDOWS_SELECTED,
+            user_id=user_id,
+            software_version=software_version,
+            timestamp=timestamp,
+        )
+        updated_job = job_repository.update_state(
+            job_id=job.id,
+            expected_state=job.state,
+            new_state=transition.state,
+        )
+        audit_event_id = audit_repository.append(transition.audit_event)
+
+    return TemperatureWindowCompletion(
+        job=updated_job,
+        audit_event_id=audit_event_id,
+        audit_event=transition.audit_event,
     )
 
 

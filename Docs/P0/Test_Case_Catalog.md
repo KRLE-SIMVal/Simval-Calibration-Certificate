@@ -28,6 +28,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-050 | Workflow transition service records audit event. | State change and software version are captured in audit evidence. |
 | WF-051 | Void/revision transition requires reason. | Transition is rejected without reason. |
 | WF-052 | Invalid workflow state type at service boundary. | Transition is rejected with service validation error. |
+| WF-053 | Complete temperature window selection with all DUTs covered. | Job transitions from `data_entered` to `windows_selected` and records workflow audit evidence. |
+| WF-054 | Complete temperature window selection with missing DUT window. | Transition is rejected, job state is unchanged, and no audit event is written. |
+| WF-055 | Complete temperature window selection with no DUTs. | Transition is rejected because completeness cannot be established. |
 
 ## Roles And Permissions
 
