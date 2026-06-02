@@ -14,6 +14,7 @@ class AuditAction(StrEnum):
     METADATA_CHANGED = "metadata_changed"
     FILE_UPLOADED = "file_uploaded"
     PARSER_RESULT_RECORDED = "parser_result_recorded"
+    IMPORT_ALIGNMENT_RECORDED = "import_alignment_recorded"
     MANUAL_READING_CHANGED = "manual_reading_changed"
     MEASUREMENT_WINDOW_CHANGED = "measurement_window_changed"
     CALCULATION_RUN = "calculation_run"

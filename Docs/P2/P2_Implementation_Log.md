@@ -36,6 +36,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Temperature import alignment helper links logger readings to IRTD reference readings by exact timestamp.
 - Temperature import alignment records warnings for missing IRTD references and unit mismatches.
 - Temperature import alignment rejects duplicate IRTD timestamps as ambiguous.
+- Linked ValProbe import orchestration persists calibration XLSX evidence, verification PDF evidence, raw logger readings, raw IRTD readings, parser audit evidence, and alignment audit evidence in one transaction.
+- Linked ValProbe import orchestration returns workbook parser, verification parser, and timestamp alignment warnings for import review.
+- Linked ValProbe import orchestration rejects calibration and verification files from different jobs before parsing or persistence.
 
 ## Scope Not Implemented
 
@@ -47,6 +50,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - No production PDF text/table extraction dependency yet.
 - No D4 certificate-number adapter yet.
 - No certificate result calculation from linked logger/IRTD readings yet.
+- No persistence table for linked logger/IRTD pairs yet; linked pairs are returned by the service for review and later calculation design.
 
 ## Compliance Notes
 
@@ -67,6 +71,8 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Temperature import alignment does not calculate errors, averages, uncertainty, or certificate results.
 - Temperature import alignment preserves the original logger and IRTD reading objects so source-row and source-column traceability remains available downstream.
 - Temperature import alignment does not convert units silently; unit mismatches are reported as warnings and skipped until an approved conversion rule exists.
+- Linked ValProbe import orchestration records an `import_alignment_recorded` audit event on the calibration job with file IDs, linked-reading count, and alignment-warning count.
+- Linked ValProbe import orchestration keeps calibration XLSX and verification PDF evidence separate so each parsed reading remains traceable to its own uploaded file.
 
 ## Verification
 
@@ -101,6 +107,9 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 - Focused temperature reading alignment suite: 4 passed on Python 3.12.10.
 - Import parser and alignment suite: 16 passed on Python 3.12.10.
 - Default regression suite after temperature reading alignment slice: 168 passed, 2 skipped on Python 3.12.10.
+- Focused linked ValProbe import orchestration suite: 7 passed on Python 3.12.10.
+- Import parser, alignment, and controlled-fixture contract suite: 23 passed, 2 skipped on Python 3.12.10.
+- Default regression suite after linked ValProbe import orchestration slice: 172 passed, 2 skipped on Python 3.12.10.
 - JUnit XML evidence was generated at `Docs/Validation/evidence/latest/pytest.xml`.
 
 ## Remaining Risks And Recommended Solutions
@@ -111,6 +120,7 @@ P2 begins the temperature certificate workflow implementation after the P1 backe
 | Parser tests currently use generated sanitized XLSX workbooks, not the controlled customer workbook. | Create and approve customer-safe sanitized fixtures that mirror the observed workbook structure before production parser validation. |
 | Verification PDF table extraction dependency is not approved yet. | Keep file-level extraction blocked and add a small dependency-selection review before implementing PDF text/table extraction. |
 | Logger and IRTD alignment currently requires exact timestamps. | Keep exact matching as the default compliance-safe rule and add a council-reviewed tolerance/window rule only if real verification exports show timestamp drift. |
+| Linked logger/IRTD pairs are returned by the service but not persisted as a dedicated relation yet. | Add a controlled linked-reading or measurement-window persistence model before calculation runs consume the pairs. |
 | D4 is still not integrated as the external certificate-number source. | Keep the internal sequence as the approved interim source and add a D4 adapter only when interface requirements are known. |
 | Audit actor identity is accepted as a user ID string only. | Add user repository/session integration before exposing API endpoints. |
 | Test evidence is local and ignored by Git. | Keep generated validation artifacts local until a controlled evidence-retention location is agreed. |

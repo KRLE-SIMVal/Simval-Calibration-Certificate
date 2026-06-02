@@ -28,6 +28,7 @@ from app.backend.persistence.sqlite import (
 from app.backend.services.imports import (
     ImportServiceError,
     record_valprobe_temperature_import,
+    record_valprobe_temperature_import_with_irtd_references,
 )
 
 
@@ -51,7 +52,9 @@ def _job() -> CalibrationJob:
     )
 
 
-def _uploaded_file(file_kind: UploadedFileKind = UploadedFileKind.CALIBRATION_XLSX) -> UploadedFile:
+def _uploaded_file(
+    file_kind: UploadedFileKind = UploadedFileKind.CALIBRATION_XLSX,
+) -> UploadedFile:
     return UploadedFile(
         id="file-001",
         job_id="job-001",
@@ -61,6 +64,19 @@ def _uploaded_file(file_kind: UploadedFileKind = UploadedFileKind.CALIBRATION_XL
         storage_uri="controlled-local://sanitized-valprobe.xlsx",
         parser_version="valprobe-xlsx-parser-v1",
         uploaded_at=datetime(2026, 6, 1, 14, 5, tzinfo=timezone.utc),
+    )
+
+
+def _verification_file(*, job_id: str = "job-001") -> UploadedFile:
+    return UploadedFile(
+        id="file-002",
+        job_id=job_id,
+        original_filename="sanitized-verification.pdf",
+        checksum_sha256="b" * 64,
+        file_kind=UploadedFileKind.VERIFICATION_PDF,
+        storage_uri="controlled-local://sanitized-verification.pdf",
+        parser_version="verification-irtd-table-parser-v1",
+        uploaded_at=datetime(2026, 6, 1, 14, 7, tzinfo=timezone.utc),
     )
 
 
@@ -91,7 +107,10 @@ def test_valprobe_import_service_persists_file_readings_and_audit_event(tmp_path
     assert result.audit_event_id == 1
     assert result.reading_count == 2
     assert SQLiteUploadedFileRepository(connection).get("file-001") == _uploaded_file()
-    assert len(SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001")) == 2
+    assert (
+        len(SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001"))
+        == 2
+    )
     events = SQLiteAuditEventRepository(connection).list_for_entity(
         "uploaded_file",
         "file-001",
@@ -130,6 +149,187 @@ def test_valprobe_import_service_rejects_wrong_uploaded_file_kind(tmp_path):
     ) == ()
 
 
+def test_valprobe_linked_import_persists_files_readings_alignment_and_audit_events(
+    tmp_path,
+):
+    connection = _connection_with_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[
+                    ("2026-04-08T15:45:00+00:00", "-80.036"),
+                    ("2026-04-08T15:46:00+00:00", "-80.034"),
+                ],
+            )
+        },
+    )
+
+    result = record_valprobe_temperature_import_with_irtd_references(
+        connection=connection,
+        workbook_path=workbook,
+        calibration_file=_uploaded_file(),
+        verification_file=_verification_file(),
+        verification_rows=(
+            ("Time", "IRTD (deg C)", "MJT1-A"),
+            ("2026-04-08T15:45:00+00:00", "-80.031", "-80.036"),
+            ("2026-04-08T15:46:00+00:00", "-80.030", "-80.034"),
+        ),
+        user_id="operator-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 14, 8, tzinfo=timezone.utc),
+    )
+
+    assert result.logger_reading_count == 2
+    assert result.irtd_reading_count == 2
+    assert result.linked_reading_count == 2
+    assert result.warnings == ()
+    assert len(result.audit_event_ids) == 3
+    assert len(SQLiteUploadedFileRepository(connection).list_for_job("job-001")) == 2
+    assert (
+        len(SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001"))
+        == 2
+    )
+    assert (
+        len(SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-002"))
+        == 2
+    )
+    calibration_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "uploaded_file",
+        "file-001",
+    )
+    verification_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "uploaded_file",
+        "file-002",
+    )
+    alignment_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    )
+    assert calibration_events[0].action is AuditAction.PARSER_RESULT_RECORDED
+    assert verification_events[0].action is AuditAction.PARSER_RESULT_RECORDED
+    assert alignment_events[0].action is AuditAction.IMPORT_ALIGNMENT_RECORDED
+    assert alignment_events[0].new_value == {
+        "calibration_uploaded_file_id": "file-001",
+        "verification_uploaded_file_id": "file-002",
+        "linked_reading_count": 2,
+        "alignment_warning_count": 0,
+    }
+
+
+def test_valprobe_linked_import_returns_parser_and_alignment_warnings(tmp_path):
+    connection = _connection_with_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[
+                    ("2026-04-08T15:45:00+00:00", "-80.036"),
+                    ("2026-04-08T15:46:00+00:00", "-80.034"),
+                ],
+            )
+        },
+    )
+
+    result = record_valprobe_temperature_import_with_irtd_references(
+        connection=connection,
+        workbook_path=workbook,
+        calibration_file=_uploaded_file(),
+        verification_file=_verification_file(),
+        verification_rows=(
+            ("Time", "IRTD (deg C)", "MJT1-A"),
+            ("2026-04-08T15:45:00+00:00", "-80.031", "-80.036"),
+            ("2026-04-08T15:46:00+00:00", "not-a-number", "-80.034"),
+        ),
+        user_id="operator-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 14, 8, tzinfo=timezone.utc),
+    )
+
+    assert result.linked_reading_count == 1
+    assert result.warnings == (
+        "Skipped nonnumeric IRTD value at Verification IRTD!IRTD (deg C) row 3.",
+        "Missing IRTD reference for logger channel MJT1-A at "
+        "2026-04-08T15:46:00+00:00.",
+    )
+
+
+def test_valprobe_linked_import_rejects_files_from_different_jobs(tmp_path):
+    connection = _connection_with_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={"Temperature": _temperature_sheet_xml(data_rows=[])},
+    )
+
+    with pytest.raises(ImportServiceError):
+        record_valprobe_temperature_import_with_irtd_references(
+            connection=connection,
+            workbook_path=workbook,
+            calibration_file=_uploaded_file(),
+            verification_file=_verification_file(job_id="job-999"),
+            verification_rows=(("Time", "IRTD (deg C)"),),
+            user_id="operator-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 14, 8, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteUploadedFileRepository(connection).list_for_job("job-001") == ()
+    assert (
+        SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001")
+        == ()
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_valprobe_linked_import_rolls_back_on_ambiguous_irtd_alignment(tmp_path):
+    connection = _connection_with_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[("2026-04-08T15:45:00+00:00", "-80.036")],
+            )
+        },
+    )
+
+    with pytest.raises(ImportServiceError):
+        record_valprobe_temperature_import_with_irtd_references(
+            connection=connection,
+            workbook_path=workbook,
+            calibration_file=_uploaded_file(),
+            verification_file=_verification_file(),
+            verification_rows=(
+                ("Time", "IRTD (deg C)", "MJT1-A"),
+                ("2026-04-08T15:45:00+00:00", "-80.031", "-80.036"),
+                ("2026-04-08T15:45:00+00:00", "-80.030", "-80.035"),
+            ),
+            user_id="operator-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 14, 8, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteUploadedFileRepository(connection).list_for_job("job-001") == ()
+    assert (
+        SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001")
+        == ()
+    )
+    assert (
+        SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-002")
+        == ()
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "uploaded_file",
+        "file-001",
+    ) == ()
+
+
 def test_valprobe_import_service_rolls_back_when_parser_fails(tmp_path):
     connection = _connection_with_job()
     workbook = tmp_path / "sanitized-valprobe.xlsx"
@@ -146,7 +346,10 @@ def test_valprobe_import_service_rolls_back_when_parser_fails(tmp_path):
         )
 
     assert SQLiteUploadedFileRepository(connection).list_for_job("job-001") == ()
-    assert SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001") == ()
+    assert (
+        SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-001")
+        == ()
+    )
     assert SQLiteAuditEventRepository(connection).list_for_entity(
         "uploaded_file",
         "file-001",
@@ -188,7 +391,10 @@ def _write_workbook(path: Path, *, sheets: dict[str, str]) -> None:
         archive.writestr("[Content_Types].xml", _content_types_xml(len(sheet_entries)))
         archive.writestr("_rels/.rels", _root_relationships_xml())
         archive.writestr("xl/workbook.xml", _workbook_xml(sheet_entries))
-        archive.writestr("xl/_rels/workbook.xml.rels", _workbook_relationships_xml(sheet_entries))
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            _workbook_relationships_xml(sheet_entries),
+        )
         for index, (_name, xml) in enumerate(sheet_entries, start=1):
             archive.writestr(f"xl/worksheets/sheet{index}.xml", xml)
 

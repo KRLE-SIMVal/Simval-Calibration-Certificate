@@ -189,6 +189,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-058 | Logger reading missing IRTD reference. | Linker records a warning and skips the unmatched logger reading. |
 | IMP-059 | IRTD reference unit mismatch. | Linker records a warning and skips affected link instead of converting silently. |
 | IMP-060 | Duplicate IRTD timestamp. | Linker raises a controlled alignment error because the reference is ambiguous. |
+| IMP-061 | Linked ValProbe import persists calibration and verification evidence. | Calibration XLSX, verification PDF metadata, raw readings, and audit evidence are written in one transaction. |
+| IMP-062 | Linked ValProbe import returns review warnings. | Workbook parser, verification parser, and alignment warnings are returned without silent fallback. |
+| IMP-063 | Linked ValProbe import rejects files from different jobs. | No uploaded files, readings, or audit events are persisted. |
+| IMP-064 | Linked ValProbe import rolls back on ambiguous IRTD alignment. | Duplicate reference timestamps prevent partial persistence. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
