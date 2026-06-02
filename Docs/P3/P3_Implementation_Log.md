@@ -38,6 +38,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - `GET /me` endpoint resolving active session identity.
 - `POST /certificate-previews` endpoint using the session-backed certificate preview service.
 - API certificate preview endpoint returns controlled error responses for unauthorized sessions and invalid workflow state.
+- CI default regression dependency installation includes both API and test extras.
 
 ## Scope Not Implemented
 
@@ -61,6 +62,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Certificate preview consumes locked summaries and does not recalculate certificate result rows.
 - Certificate preview audit evidence can be used by later export/release gates to prove preview occurred before export.
 - API endpoint tests use ASGI transport directly and avoid deprecated synchronous test-client behavior.
+- Default regression CI must install `.[api,test]` because the default suite now includes API endpoint tests.
 
 ## Verification
 

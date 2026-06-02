@@ -330,7 +330,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | MIG-004 | Migration plan contains duplicate versions. | Plan is rejected before execution. |
 | MIG-005 | Migration SQL fails. | Failed migration is not recorded as applied. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
-| ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
+| ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
 | REG-003 | Regression failure creates issue/deviation. | Failure path records tracked item. |
