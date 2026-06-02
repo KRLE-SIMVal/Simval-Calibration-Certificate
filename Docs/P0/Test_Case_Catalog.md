@@ -298,6 +298,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-004 | API certificate preview with insufficient role. | Request is rejected with `403` before audit or preview evidence is written. |
 | API-005 | API certificate preview before calculated state. | Request returns a controlled conflict response. |
 | API-006 | API certificate preview with unknown session. | Request is rejected with `401` before audit or preview evidence is written. |
+| API-007 | API certificate release after preview. | `POST /certificate-releases` stores release evidence and returns certificate, artifact, and audit ids. |
+| API-008 | API certificate release without preview. | Request returns a controlled conflict response and writes no certificate record. |
+| API-009 | API request connection lifecycle. | API connection provider opens and closes one SQLite connection per request. |
+| API-010 | API settings load database path. | `SIMVAL_DATABASE_PATH` is required and resolves to the SQLite database path. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

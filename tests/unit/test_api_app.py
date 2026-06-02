@@ -24,6 +24,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteCertificateRecordRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
@@ -97,6 +98,89 @@ def test_api_certificate_preview_returns_locked_rows_and_audit_id():
             "job-001",
         )
     ) == 1
+
+
+def test_api_certificate_release_returns_release_evidence_after_preview():
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    preview_response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert preview_response.status_code == 200
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "artifact_type": "pdf",
+            "filename": "SIMVAL-CAL-0001.pdf",
+            "checksum_sha256": "b" * 64,
+            "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["certificate_id"] == "cert-001"
+    assert payload["status"] == "released"
+    assert payload["calculation_summary_ids"] == ["point-001"]
+    assert payload["artifacts"][0]["checksum_sha256"] == "b" * 64
+    assert payload["export_audit_event_id"] == 2
+    assert payload["release_audit_event_id"] == 3
+    assert payload["workflow_audit_event_id"] == 4
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.RELEASED
+    )
+    assert SQLiteCertificateRecordRepository(connection).get("cert-001").status.value == (
+        "released"
+    )
+
+
+def test_api_certificate_release_rejects_missing_preview():
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "artifact_type": "pdf",
+            "filename": "SIMVAL-CAL-0001.pdf",
+            "checksum_sha256": "b" * 64,
+            "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 409
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
 
 
 def test_api_certificate_preview_rejects_unauthorized_session_before_audit():

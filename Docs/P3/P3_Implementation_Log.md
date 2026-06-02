@@ -43,11 +43,15 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - User-management audit events record previous/new regulated identity values and required reasons for role, deactivation, and revocation changes.
 - Certificate release service requiring approved workflow state and matching preview audit evidence before release.
 - Certificate release service persists immutable certificate/export artifact evidence and records export, release, and workflow audit events in one transaction.
+- API runtime settings require `SIMVAL_DATABASE_PATH` for persistent SQLite deployments.
+- API app factory supports either a fixed test connection or a production connection provider.
+- Production SQLite API connection scope opens and closes one connection per request with foreign keys enabled.
+- `POST /certificate-releases` endpoint exposes the session-backed release gate and returns certificate, artifact, and audit ids.
 
 ## Scope Not Implemented
 
 - No password, SSO, or external identity-provider integration yet.
-- API coverage is limited to health, actor identity, and certificate preview endpoints.
+- API coverage is limited to health, actor identity, certificate preview, and certificate release endpoints.
 - Existing P2 backend services still accept explicit `user_id` strings internally for trusted backend use; P3 API-facing wrappers now resolve sessions before calling them for window and calculation actions.
 - User-management workflow is service-level only; no API endpoints for admin user management yet.
 - Existing full SQLite schema initializer is not yet split into a historical migration chain.
@@ -70,6 +74,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Default regression CI must install `.[api,test]` because the default suite now includes API endpoint tests.
 - User creation, role change, account deactivation, and session revocation must go through the audited service path before being exposed in an API or UI.
 - Certificate release is blocked unless a previous preview audit event matches the current summary IDs, template version, software version, calculation engine, constant set, and budget version.
+- Persistent API deployment must provide `SIMVAL_DATABASE_PATH`; request handlers must use scoped database connections rather than long-lived shared connections.
 
 ## Verification
 
@@ -81,6 +86,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Default regression suite after API endpoint slice: 255 passed, 2 skipped on Python 3.12.10.
 - Focused audited user-management, user/session persistence, and authentication suite: 21 passed on Python 3.12.10.
 - Focused certificate release, preview, certificate persistence, and workflow suite: 25 passed on Python 3.12.10.
+- Focused API app, API settings, API connection lifecycle, certificate release, and certificate preview suite: 22 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -92,4 +98,4 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 | Existing full SQLite schema still uses direct initialization. | Keep direct initialization for test databases now, but split the production schema history into controlled migrations before persistent multi-environment testing or deployment. |
 | Certificate preview is audited but not yet persisted as a separate preview record. | Current release gate uses matching preview audit evidence; add a dedicated preview table only if template review requires retaining rendered preview payloads. |
 | Release service records artifact metadata but does not render PDF/XLSX bytes. | Keep rendering as the first P4 task so P3 closes on backend control gates without template/UI scope creep. |
-| API app currently uses an injected SQLite connection for tests. | Add production connection/session lifecycle management before running a persistent web server. |
+| API settings currently cover database path only. | Add host, port, storage path, and identity-provider settings when the deploy target is selected. |

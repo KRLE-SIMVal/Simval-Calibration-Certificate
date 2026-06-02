@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 import sqlite3
@@ -10,6 +11,9 @@ import sqlite3
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from app.backend.api.database import sqlite_connection_scope
+from app.backend.api.settings import ApiSettings
+from app.backend.certificates.records import ArtifactType
 from app.backend.services.authentication import (
     AuthenticationFailureError,
     AuthenticationServiceError,
@@ -17,9 +21,12 @@ from app.backend.services.authentication import (
     resolve_actor_for_session,
 )
 from app.backend.services.certificates import (
+    CertificateRelease,
+    CertificateReleaseServiceError,
     CertificatePreviewGeneration,
     CertificatePreviewServiceError,
     build_certificate_preview_for_session,
+    release_certificate_for_session,
 )
 
 
@@ -67,12 +74,68 @@ class CertificatePreviewResponse(BaseModel):
     audit_event_id: int
 
 
+class CertificateReleaseRequest(BaseModel):
+    job_id: str
+    certificate_id: str
+    certificate_number: str
+    artifact_id: str
+    artifact_type: ArtifactType
+    filename: str
+    checksum_sha256: str
+    storage_uri: str
+    template_version: str
+    software_version: str
+
+
+class ExportArtifactResponse(BaseModel):
+    artifact_id: str
+    artifact_type: str
+    filename: str
+    checksum_sha256: str
+    storage_uri: str
+    generated_by: str
+    generated_at: str
+
+
+class CertificateReleaseResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    certificate_id: str
+    job_id: str
+    certificate_number: str
+    status: str
+    calculation_summary_ids: tuple[str, ...]
+    software_version: str
+    calculation_engine_version: str
+    constant_set_version: str
+    budget_version: str
+    template_version: str
+    released_by: str
+    released_at: str
+    artifacts: tuple[ExportArtifactResponse, ...]
+    export_audit_event_id: int
+    release_audit_event_id: int
+    workflow_audit_event_id: int
+
+
 def create_app(
     *,
-    connection: sqlite3.Connection,
+    connection: sqlite3.Connection | None = None,
+    connection_provider: (
+        Callable[[], AbstractContextManager[sqlite3.Connection]] | None
+    ) = None,
     clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
-    """Create the backend API with an injected SQLite connection."""
+    """Create the backend API with an injected connection or connection scope."""
+    if connection is None and connection_provider is None:
+        raise ValueError("A connection or connection provider is required.")
+    if connection is not None and connection_provider is not None:
+        raise ValueError("Provide either connection or connection provider, not both.")
+    connection_scope = (
+        connection_provider
+        if connection_provider is not None
+        else lambda: _fixed_connection_scope(connection)
+    )
     app = FastAPI(title="SIMVal Calibration Certificate API")
     clock_fn = clock or _utc_now
 
@@ -87,11 +150,12 @@ def create_app(
     )
     def me(x_session_id: str = Header(alias="X-Session-Id")) -> ActorResponse:
         try:
-            actor = resolve_actor_for_session(
-                connection=connection,
-                session_id=x_session_id,
-                timestamp=clock_fn(),
-            )
+            with connection_scope() as scoped_connection:
+                actor = resolve_actor_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    timestamp=clock_fn(),
+                )
         except AuthenticationServiceError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         return ActorResponse(
@@ -114,14 +178,15 @@ def create_app(
         x_session_id: str = Header(alias="X-Session-Id"),
     ) -> CertificatePreviewResponse:
         try:
-            result = build_certificate_preview_for_session(
-                connection=connection,
-                session_id=x_session_id,
-                job_id=request.job_id,
-                template_version=request.template_version,
-                software_version=request.software_version,
-                timestamp=clock_fn(),
-            )
+            with connection_scope() as scoped_connection:
+                result = build_certificate_preview_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    template_version=request.template_version,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
         except AuthenticationFailureError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         except AuthorizationServiceError as exc:
@@ -132,7 +197,59 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _preview_response(result)
 
+    @app.post(
+        "/certificate-releases",
+        response_model=CertificateReleaseResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def certificate_release(
+        request: CertificateReleaseRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateReleaseResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = release_certificate_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    certificate_id=request.certificate_id,
+                    certificate_number=request.certificate_number,
+                    artifact_id=request.artifact_id,
+                    artifact_type=request.artifact_type,
+                    filename=request.filename,
+                    checksum_sha256=request.checksum_sha256,
+                    storage_uri=request.storage_uri,
+                    template_version=request.template_version,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except CertificateReleaseServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _release_response(result)
+
     return app
+
+
+def create_app_from_settings(
+    settings: ApiSettings,
+    *,
+    clock: Callable[[], datetime] | None = None,
+) -> FastAPI:
+    """Create the backend API from runtime settings."""
+    return create_app(
+        connection_provider=lambda: sqlite_connection_scope(settings.database_path),
+        clock=clock,
+    )
 
 
 def _preview_response(
@@ -171,8 +288,57 @@ def _preview_response(
     )
 
 
+def _release_response(result: CertificateRelease) -> CertificateReleaseResponse:
+    certificate = result.certificate
+    return CertificateReleaseResponse(
+        certificate_id=certificate.certificate_id,
+        job_id=certificate.job_id,
+        certificate_number=certificate.certificate_number,
+        status=certificate.status.value,
+        calculation_summary_ids=certificate.calculation_summary_ids,
+        software_version=certificate.software_version,
+        calculation_engine_version=certificate.calculation_engine_version,
+        constant_set_version=certificate.constant_set_version,
+        budget_version=certificate.budget_version,
+        template_version=certificate.template_version,
+        released_by=certificate.released_by or "",
+        released_at=(
+            certificate.released_at.isoformat()
+            if certificate.released_at is not None
+            else ""
+        ),
+        artifacts=tuple(
+            _artifact_response(artifact) for artifact in certificate.export_artifacts
+        ),
+        export_audit_event_id=result.export_audit_event_id,
+        release_audit_event_id=result.release_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _artifact_response(artifact) -> ExportArtifactResponse:
+    return ExportArtifactResponse(
+        artifact_id=artifact.artifact_id,
+        artifact_type=artifact.artifact_type.value,
+        filename=artifact.filename,
+        checksum_sha256=artifact.checksum_sha256,
+        storage_uri=artifact.storage_uri,
+        generated_by=artifact.generated_by,
+        generated_at=artifact.generated_at.isoformat(),
+    )
+
+
 def _decimal_to_text(value: Decimal) -> str:
     return format(value, "f")
+
+
+@contextmanager
+def _fixed_connection_scope(
+    connection: sqlite3.Connection | None,
+) -> sqlite3.Connection:
+    if connection is None:
+        raise ValueError("A fixed connection is required.")
+    yield connection
 
 
 def _utc_now() -> datetime:
