@@ -261,6 +261,11 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-031 | Certificate preview consumes locked summaries. | Preview rows are built from stored calculation summaries and no recalculation is performed. |
 | CERT-032 | Certificate preview before calculation. | Preview is rejected before `calculated` workflow state. |
 | CERT-033 | Certificate preview with inconsistent summary versions. | Preview is rejected until calculation summaries reference one calculation engine, constant set, and budget version. |
+| CERT-034 | Release certificate after matching preview. | Release stores immutable certificate/export artifact evidence, records release audit events, and transitions job to `released`. |
+| CERT-035 | Release certificate without matching preview. | Release is blocked before certificate, export, release, or workflow evidence is written. |
+| CERT-036 | Release certificate with mismatched preview template. | Release is blocked until preview evidence matches current template and version locks. |
+| CERT-037 | Release certificate before approved workflow state. | Release is blocked and job state remains unchanged. |
+| CERT-038 | Unauthorized actor attempts certificate release. | Release is rejected before new certificate or release audit evidence is written. |
 | CERT-050 | Released certificate tied to constants version. | Later constants changes do not alter released record. |
 | CERT-051 | Released certificate tied to uncertainty budget version. | Later budget changes do not alter released record. |
 | CERT-052 | Released certificate tied to calculation summary IDs. | Released record contains immutable calculation summary references. |

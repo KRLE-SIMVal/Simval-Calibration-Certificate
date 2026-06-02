@@ -1,0 +1,348 @@
+import sqlite3
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import pytest
+
+from app.backend.audit.events import AuditAction
+from app.backend.auth.permissions import Role
+from app.backend.auth.users import UserAccount, UserSession
+from app.backend.certificates.records import ArtifactType, CertificateStatus
+from app.backend.domain.entities import (
+    CalibrationJob,
+    Client,
+    DeviceUnderTest,
+    Discipline,
+    MeasurementMode,
+    MeasurementReading,
+    MeasurementWindow,
+    SourceLocation,
+    UploadedFile,
+    UploadedFileKind,
+)
+from app.backend.domain.workflow import WorkflowState
+from app.backend.persistence.sqlite import (
+    SQLiteAuditEventRepository,
+    SQLiteCalibrationJobRepository,
+    SQLiteCertificateRecordRepository,
+    SQLiteDeviceUnderTestRepository,
+    SQLiteMeasurementPointSummaryRepository,
+    SQLiteMeasurementWindowRepository,
+    SQLiteUploadedFileRepository,
+    SQLiteUserAccountRepository,
+    SQLiteUserSessionRepository,
+    initialize_schema,
+)
+from app.backend.services.authentication import AuthenticationServiceError
+from app.backend.services.certificates import (
+    CertificateReleaseServiceError,
+    build_certificate_preview_for_session,
+    release_certificate_for_session,
+)
+from app.calculation_engine.common.summary import MeasurementPointSummary
+
+
+def test_release_certificate_for_session_requires_preview_and_records_release():
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    result = release_certificate_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        artifact_id="artifact-001",
+        artifact_type=ArtifactType.PDF,
+        filename="SIMVAL-CAL-0001.pdf",
+        checksum_sha256="b" * 64,
+        storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+    )
+
+    assert result.certificate.status is CertificateStatus.RELEASED
+    assert result.certificate.released_by == "qa-001"
+    assert result.certificate.calculation_summary_ids == ("point-001",)
+    assert result.certificate.primary_artifact.generated_by == "qa-001"
+    assert result.export_audit_event.action is AuditAction.EXPORT_ARTIFACT_GENERATED
+    assert result.release_audit_event.action is AuditAction.CERTIFICATE_RELEASED
+    assert result.workflow_audit_event.action is AuditAction.WORKFLOW_TRANSITIONED
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.RELEASED
+    )
+    assert SQLiteCertificateRecordRepository(connection).get("cert-001") == (
+        result.certificate
+    )
+    audit_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    )
+    assert [event.action for event in audit_events] == [
+        AuditAction.CERTIFICATE_PREVIEW_GENERATED,
+        AuditAction.EXPORT_ARTIFACT_GENERATED,
+        AuditAction.CERTIFICATE_RELEASED,
+        AuditAction.WORKFLOW_TRANSITIONED,
+    ]
+
+
+def test_release_certificate_for_session_rejects_missing_matching_preview():
+    connection = _connection_with_release_data()
+
+    with pytest.raises(CertificateReleaseServiceError):
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.APPROVED
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_release_certificate_for_session_rejects_mismatched_preview_template():
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-OLD",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(CertificateReleaseServiceError):
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.APPROVED
+    )
+
+
+def test_release_certificate_for_session_rejects_before_approved_state():
+    connection = _connection_with_release_data(job_state=WorkflowState.CALCULATED)
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(CertificateReleaseServiceError):
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.CALCULATED
+    )
+
+
+def test_release_certificate_for_session_rejects_unauthorized_actor_before_audit():
+    connection = _connection_with_release_data(actor_roles=(Role.OPERATOR,))
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(AuthenticationServiceError):
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+    audit_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    )
+    assert [event.action for event in audit_events] == [
+        AuditAction.CERTIFICATE_PREVIEW_GENERATED
+    ]
+
+
+def _connection_with_release_data(
+    *,
+    job_state: WorkflowState = WorkflowState.APPROVED,
+    actor_roles: tuple[Role, ...] = (Role.QA_APPROVER,),
+) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(_job(job_state))
+    SQLiteUploadedFileRepository(connection).add(_uploaded_file())
+    SQLiteDeviceUnderTestRepository(connection).add(_dut())
+    SQLiteMeasurementWindowRepository(connection).add(_window())
+    SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
+    SQLiteUserAccountRepository(connection).add(_qa_user(actor_roles))
+    SQLiteUserSessionRepository(connection).add(_qa_session())
+    return connection
+
+
+def _job(state: WorkflowState) -> CalibrationJob:
+    return CalibrationJob(
+        id="job-001",
+        client=Client(name="SIMVal customer", address="Validated Road 1"),
+        discipline=Discipline.TEMPERATURE,
+        measurement_mode=MeasurementMode.AUTOMATIC,
+        method="ValProbe RT linked XLSX/PDF workflow",
+        created_by="operator-001",
+        state=state,
+        created_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _uploaded_file() -> UploadedFile:
+    return UploadedFile(
+        id="file-001",
+        job_id="job-001",
+        original_filename="sanitized-valprobe.xlsx",
+        checksum_sha256="a" * 64,
+        file_kind=UploadedFileKind.CALIBRATION_XLSX,
+        storage_uri="controlled-local://sanitized-valprobe.xlsx",
+        parser_version="valprobe-xlsx-parser-v1",
+        uploaded_at=datetime(2026, 6, 1, 14, 5, tzinfo=timezone.utc),
+    )
+
+
+def _dut() -> DeviceUnderTest:
+    return DeviceUnderTest(
+        id="dut-001",
+        job_id="job-001",
+        make="Kaye",
+        model="ValProbe RT",
+        serial_number="MJT1",
+        channel_id="MJT1-A",
+    )
+
+
+def _window() -> MeasurementWindow:
+    return MeasurementWindow(
+        id="window-001",
+        job_id="job-001",
+        dut_id="dut-001",
+        setpoint=-80.0,
+        unit="deg C",
+        selected_by="operator-001",
+        selected_at=datetime(2026, 6, 1, 14, 20, tzinfo=timezone.utc),
+        readings=(
+            MeasurementReading(
+                timestamp=datetime(2026, 4, 8, 15, 45, tzinfo=timezone.utc),
+                channel_id="MJT1-A",
+                value=-80.036,
+                unit="deg C",
+                source=SourceLocation(
+                    uploaded_file_id="file-001",
+                    source_label="Temperature",
+                    row_number=12,
+                    column_label="B",
+                ),
+            ),
+        ),
+    )
+
+
+def _summary() -> MeasurementPointSummary:
+    return MeasurementPointSummary(
+        point_id="point-001",
+        job_id="job-001",
+        dut_id="dut-001",
+        measurement_window_id="window-001",
+        reference=-80.0305,
+        indication=-80.035,
+        unit="deg C",
+        error_of_indication=-0.0045,
+        calculated_expanded_uncertainty=Decimal("0.0124231"),
+        cmc_floor=Decimal("0.010"),
+        reported_expanded_uncertainty=Decimal("0.012"),
+        display_error_of_indication=Decimal("-0.004"),
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version="constants-2026-001",
+        budget_version="budget-temp-001",
+    )
+
+
+def _qa_user(roles: tuple[Role, ...]) -> UserAccount:
+    return UserAccount(
+        id="qa-001",
+        display_name="QA User",
+        email="qa@example.com",
+        roles=roles,
+        created_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+    )
+
+
+def _qa_session() -> UserSession:
+    return UserSession(
+        id="qa-session",
+        user_id="qa-001",
+        issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
+    )
