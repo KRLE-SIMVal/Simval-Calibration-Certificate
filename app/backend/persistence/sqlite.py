@@ -574,6 +574,68 @@ class SQLiteUserAccountRepository:
         ).fetchall()
         return tuple(_user_account_from_row(row) for row in rows)
 
+    def update_roles(
+        self,
+        *,
+        user_id: str,
+        roles: tuple[Role, ...],
+    ) -> UserAccount:
+        current = self.get(user_id)
+        updated = UserAccount(
+            id=current.id,
+            display_name=current.display_name,
+            email=current.email,
+            roles=roles,
+            active=current.active,
+            signature_label=current.signature_label,
+            created_at=current.created_at,
+        )
+        try:
+            self._connection.execute(
+                """
+                UPDATE user_accounts
+                SET roles_json = ?
+                WHERE id = ?
+                """,
+                (_roles_to_json(updated.roles), user_id),
+            )
+            self._commit_if_needed()
+            return self.get(user_id)
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not update user account roles.") from error
+
+    def set_active(
+        self,
+        *,
+        user_id: str,
+        active: bool,
+    ) -> UserAccount:
+        current = self.get(user_id)
+        updated = UserAccount(
+            id=current.id,
+            display_name=current.display_name,
+            email=current.email,
+            roles=current.roles,
+            active=active,
+            signature_label=current.signature_label,
+            created_at=current.created_at,
+        )
+        try:
+            self._connection.execute(
+                """
+                UPDATE user_accounts
+                SET active = ?
+                WHERE id = ?
+                """,
+                (1 if updated.active else 0, user_id),
+            )
+            self._commit_if_needed()
+            return self.get(user_id)
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not update user account active state.") from error
+
     def _commit_if_needed(self) -> None:
         if self._autocommit:
             self._connection.commit()

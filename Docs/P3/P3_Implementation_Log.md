@@ -39,13 +39,15 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - `POST /certificate-previews` endpoint using the session-backed certificate preview service.
 - API certificate preview endpoint returns controlled error responses for unauthorized sessions and invalid workflow state.
 - CI default regression dependency installation includes both API and test extras.
+- Audited admin user-management service for user creation, role change, user deactivation, and session revocation.
+- User-management audit events record previous/new regulated identity values and required reasons for role, deactivation, and revocation changes.
 
 ## Scope Not Implemented
 
 - No password, SSO, or external identity-provider integration yet.
 - API coverage is limited to health, actor identity, and certificate preview endpoints.
 - Existing P2 backend services still accept explicit `user_id` strings internally for trusted backend use; P3 API-facing wrappers now resolve sessions before calling them for window and calculation actions.
-- No dedicated user-management audit workflow yet for creating, deactivating, or role-changing user accounts.
+- User-management workflow is service-level only; no API endpoints for admin user management yet.
 - Existing full SQLite schema initializer is not yet split into a historical migration chain.
 - No PDF rendering, visual template matching, or export artifact generation yet.
 
@@ -63,6 +65,7 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Certificate preview audit evidence can be used by later export/release gates to prove preview occurred before export.
 - API endpoint tests use ASGI transport directly and avoid deprecated synchronous test-client behavior.
 - Default regression CI must install `.[api,test]` because the default suite now includes API endpoint tests.
+- User creation, role change, account deactivation, and session revocation must go through the audited service path before being exposed in an API or UI.
 
 ## Verification
 
@@ -72,13 +75,14 @@ P3 begins the production-control and API-readiness work after the P2 backend tem
 - Focused certificate preview model, preview service, permission, and audit suite: 16 passed on Python 3.12.10.
 - Focused API app, authentication, certificate preview service, and session-backed temperature service suite: 44 passed on Python 3.12.10.
 - Default regression suite after API endpoint slice: 255 passed, 2 skipped on Python 3.12.10.
+- Focused audited user-management, user/session persistence, and authentication suite: 21 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
 | No password, MFA, SSO, or Azure/M365 identity-provider integration exists yet. | Keep local session identity as the backend control boundary for P3 and select the production identity provider before deployment. |
-| User creation and role changes are not yet audited workflows. | Add an admin user-management service that writes audit events for create, deactivate, role change, and session revocation. |
+| Admin user-management currently has service tests but no API endpoints. | Expose only session-backed admin endpoints once the UI/admin settings workflow is ready. |
 | Some trusted internal services still accept explicit `user_id` strings. | Keep them internal and require API endpoints to call session-backed wrappers for regulated actions. Add wrappers for remaining regulated actions as those API surfaces are implemented. |
 | Existing full SQLite schema still uses direct initialization. | Keep direct initialization for test databases now, but split the production schema history into controlled migrations before persistent multi-environment testing or deployment. |
 | Certificate preview is audited but not yet persisted as a separate preview record. | Use preview audit evidence for the next export gate, then add a dedicated preview table only if template review requires retaining rendered preview payloads. |

@@ -282,6 +282,11 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUTH-003 | Store and reload user session. | Session id, user id, issued timestamp, expiry timestamp, and revocation status round-trip unchanged. |
 | AUTH-004 | Store session for unknown user. | Insert is rejected by referential integrity. |
 | AUTH-005 | Revoke user session. | Revoked timestamp is persisted and the session no longer resolves as active. |
+| AUTH-006 | Admin creates user account through audited service. | User is stored and `user_account_created` audit evidence is appended. |
+| AUTH-007 | Non-admin attempts user creation through audited service. | Request is rejected before user or audit evidence is written. |
+| AUTH-008 | Admin changes user roles through audited service. | Previous/new roles and reason are recorded in audit evidence. |
+| AUTH-009 | Admin deactivates user account through audited service. | Previous/new active state and reason are recorded in audit evidence. |
+| AUTH-010 | Admin revokes user session through audited service. | Previous/new revocation state and reason are recorded in audit evidence. |
 | API-001 | API health endpoint. | `GET /health` returns status `ok`. |
 | API-002 | API authenticated actor endpoint. | `GET /me` resolves the supplied session and returns controlled user id, display name, and roles. |
 | API-003 | API certificate preview endpoint. | `POST /certificate-previews` returns locked preview rows and audit event id. |

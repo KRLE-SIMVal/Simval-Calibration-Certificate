@@ -27,6 +27,10 @@ class AuditAction(StrEnum):
     CERTIFICATE_REVISED = "certificate_revised"
     CERTIFICATE_VOIDED = "certificate_voided"
     EXPORT_ARTIFACT_GENERATED = "export_artifact_generated"
+    USER_ACCOUNT_CREATED = "user_account_created"
+    USER_ACCOUNT_ROLES_CHANGED = "user_account_roles_changed"
+    USER_ACCOUNT_DEACTIVATED = "user_account_deactivated"
+    USER_SESSION_REVOKED = "user_session_revoked"
     WORKFLOW_TRANSITIONED = "workflow_transitioned"
 
 
