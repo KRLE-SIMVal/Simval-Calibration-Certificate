@@ -204,6 +204,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 |---|---|---|
 | CERT-001 | Allocate internal certificate number. | Unique sequential or configured value. |
 | CERT-002 | Prevent duplicate certificate number. | Duplicate rejected. |
+| CERT-003 | Allocate next number from internal sequence. | Number uses configured prefix and zero padding, then increments the stored next value. |
+| CERT-004 | Allocate number from missing sequence. | Allocation is rejected until the sequence is configured. |
+| CERT-005 | Configure invalid internal sequence. | Blank prefix, non-positive next value, and invalid padding are rejected. |
 | CERT-020 | One artifact per DUT. | Correct artifact count. |
 | CERT-021 | Combined batch summary. | Summary references all DUTs. |
 | CERT-030 | Preview required before export. | Export blocked without preview. |
@@ -222,6 +225,33 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUD-004 | Approval audit event. | Approver and timestamp stored. |
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
 | AUD-006 | Workflow transition audit event. | Previous and new workflow states are stored. |
+| PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
+| PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
+| PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
+| PERSIST-004 | Attempt to update or delete an audit event. | Database rejects mutation because audit events are append-only. |
+| PERSIST-005 | Workflow transition persistence writes state and audit together. | Job state changes and exactly one audit event is appended in the same transaction. |
+| PERSIST-006 | Invalid persisted workflow transition. | Job state remains unchanged and no audit event is appended. |
+| PERSIST-007 | Stale workflow state update. | Update is rejected and persisted state remains unchanged. |
+| PERSIST-008 | Store and reload uploaded-file evidence. | Filename, checksum, file kind, parser version, storage URI, and upload timestamp round-trip unchanged. |
+| PERSIST-009 | Store uploaded file for unknown job. | Insert is rejected by referential integrity. |
+| PERSIST-010 | Store and list DUT records for a job. | DUT identity fields round-trip unchanged and list in deterministic order. |
+| PERSIST-011 | Store duplicate DUT identity in same job. | Duplicate job/serial/channel identity is rejected. |
+| PERSIST-012 | Store and reload selected measurement window with readings. | Readings, source file IDs, source rows/columns, timestamps, and selected-window metadata round-trip unchanged. |
+| PERSIST-013 | Store measurement window with unknown source file ID. | Insert is rejected by referential integrity. |
+| PERSIST-014 | Store measurement window for unknown DUT. | Insert is rejected by referential integrity. |
+| PERSIST-015 | Store and reload measurement-point calculation summary. | Raw values, rounded values, decimals, CMC floor, and version references round-trip unchanged. |
+| PERSIST-016 | Store calculation summary for unknown measurement window. | Insert is rejected by referential integrity. |
+| PERSIST-017 | Store and reload released certificate record. | Summary IDs, export artifacts, approval/release evidence, and version references round-trip unchanged. |
+| PERSIST-018 | Store duplicate certificate number. | Duplicate certificate number is rejected. |
+| PERSIST-019 | Mutate released certificate row directly. | Database rejects update/delete because released certificate records are immutable. |
+| PERSIST-020 | Store released certificate with unknown calculation summary. | Insert is rejected by referential integrity. |
+| PERSIST-021 | Store and reload certificate revision evidence. | Revision reason, original certificate link, user, and timestamp round-trip unchanged. |
+| PERSIST-022 | Store and reload constant-set version record. | Discipline, status, effective date, and approval evidence round-trip unchanged. |
+| PERSIST-023 | Store duplicate constant-set version. | Duplicate version is rejected. |
+| PERSIST-024 | Store and reload uncertainty-budget version record. | Budget type, method, discipline, linked constant set, status, and approval evidence round-trip unchanged. |
+| PERSIST-025 | Store budget linked to unknown constant-set version. | Insert is rejected by referential integrity. |
+| PERSIST-026 | List approved constant and budget versions. | Only approved records are returned, ordered by version. |
+| PERSIST-027 | Initialize SQLite schema. | Schema version marker is recorded once with a timezone-aware applied timestamp. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | ENV-001 | Clean Python 3.12 environment installs project test dependencies. | `pip install -e .[test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
