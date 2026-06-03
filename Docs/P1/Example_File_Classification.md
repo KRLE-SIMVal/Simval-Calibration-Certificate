@@ -4,7 +4,8 @@ Status: active P1 control.
 
 ## Decision
 
-The raw files in `Docs/Input and output file examples/` are classified as:
+The raw files in `Docs/Input and output file examples/` and controlled
+certificate layout reference files in `Docs/Design Document/` are classified as:
 
 ```text
 controlled_internal_confidential
@@ -19,6 +20,8 @@ They are not approved for Git tracking or CI execution at this stage.
 | `Calibration_input_file_Valprobe RT Loggers.xlsx` | `71B6AAE2BCF599A65F25B16330473B1D7B60D3A3C0D3FD169D929E25CB362B02` | `controlled_internal_confidential` | No | No |
 | `KAYE Verification file - Valprobe Logger.pdf` | `AD60CBA78FFEC2B9FF9D23BC4440DD849C6337FD3C407F773A4CA36B18F8F0F5` | `controlled_internal_confidential` | No | No |
 | `Calibration Certificate Output file.pdf` | `C1D02553D14EC400099A48A4E1F8AA506E18DB4FD3FC0FFD15CA85FCEDFF1DC6` | `controlled_internal_confidential` | No | No |
+| `SIMVal Certificate.xlsx` | `BD742DD5965CC4AAC5FD819D65CD885FAF5B7AD99D869C1B24280C3A77EE4E3A` | `controlled_internal_confidential` | No | No |
+| `3rd Party Certificate.pdf` | `3B280A9ABE17DABCF774E15EF46FC61AA4CDB9CF0C68F67FF6561CC929922AFB` | `controlled_internal_confidential` | No | No |
 
 ## Rationale
 
@@ -43,4 +46,3 @@ Before enabling these examples in CI or committing equivalent fixtures:
 - Create sanitized fixtures where possible.
 - Retain checksum and source metadata for any controlled fixtures.
 - Update the fixture manifest and this classification record.
-

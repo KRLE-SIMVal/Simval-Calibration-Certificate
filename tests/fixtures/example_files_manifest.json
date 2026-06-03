@@ -23,6 +23,22 @@
       "intended_use": "Controlled output-content reference; not authoritative calculation evidence.",
       "confidentiality": "controlled_internal_confidential",
       "allowed_in_ci": false
+    },
+    {
+      "fixture_id": "simval_certificate_layout_xlsx",
+      "path": "Docs/Design Document/SIMVal Certificate.xlsx",
+      "sha256": "BD742DD5965CC4AAC5FD819D65CD885FAF5B7AD99D869C1B24280C3A77EE4E3A",
+      "intended_use": "Controlled SIMVal certificate layout reference for renderer template matching.",
+      "confidentiality": "controlled_internal_confidential",
+      "allowed_in_ci": false
+    },
+    {
+      "fixture_id": "third_party_certificate_design_reference_pdf",
+      "path": "Docs/Design Document/3rd Party Certificate.pdf",
+      "sha256": "3B280A9ABE17DABCF774E15EF46FC61AA4CDB9CF0C68F67FF6561CC929922AFB",
+      "intended_use": "Controlled real-life certificate layout/content reference; not authoritative calculation evidence.",
+      "confidentiality": "controlled_internal_confidential",
+      "allowed_in_ci": false
     }
   ]
 }

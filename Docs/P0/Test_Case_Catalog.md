@@ -282,6 +282,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-128 | Rendered release service. | Service renders, stores, and releases a certificate using generated artifact checksum and URI. |
 | CERT-129 | Rendered release without matching preview. | Rendering/release is blocked before artifact bytes or certificate release evidence are written. |
 | CERT-130 | Rendered release by unauthorized actor. | Rendering/release is blocked before artifact bytes or certificate release evidence are written. |
+| CERT-131 | SIMVal certificate page structure. | Rendered PDF contains cover, result, and reference-equipment pages with bilingual SIMVal certificate headings. |
+| CERT-132 | Multi-DUT certificate rendering. | One certificate can group multiple DUT result sections while single-DUT certificates remain supported. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |

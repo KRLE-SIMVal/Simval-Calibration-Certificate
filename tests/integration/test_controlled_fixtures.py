@@ -21,6 +21,8 @@ def test_fixture_manifest_registers_examples_as_controlled_data():
     assert {record.fixture_id for record in records} == {
         "kaye_valprobe_calibration_xlsx",
         "kaye_valprobe_verification_pdf",
+        "simval_certificate_layout_xlsx",
+        "third_party_certificate_design_reference_pdf",
         "third_party_certificate_output_pdf",
     }
     assert all(
