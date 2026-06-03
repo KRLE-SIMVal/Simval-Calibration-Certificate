@@ -1,0 +1,138 @@
+from datetime import datetime, timezone
+
+import pytest
+
+from app.backend.auth.permissions import Role
+from app.backend.domain.workflow import WorkflowState
+from app.backend.persistence.sqlite import (
+    SQLiteCertificateRecordRepository,
+)
+from app.backend.services.authentication import AuthenticationServiceError
+from app.backend.services.certificates import (
+    CertificateReleaseServiceError,
+    build_certificate_preview_for_session,
+    render_and_release_certificate_pdf_for_session,
+)
+from tests.unit.test_certificate_release_service import _connection_with_release_data
+
+
+def test_render_and_release_certificate_pdf_for_session_uses_generated_artifact(tmp_path):
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    result = render_and_release_certificate_pdf_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        artifact_id="artifact-001",
+        artifact_directory=tmp_path,
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+    )
+
+    stored_path = tmp_path / "SIMVAL-CAL-0001.pdf"
+    assert stored_path.read_bytes() == result.rendered_artifact.content_bytes
+    assert result.stored_artifact.checksum_sha256 == (
+        result.rendered_artifact.checksum_sha256
+    )
+    assert result.release.certificate.primary_artifact.checksum_sha256 == (
+        result.rendered_artifact.checksum_sha256
+    )
+    assert result.release.certificate.primary_artifact.storage_uri == (
+        "controlled-local://SIMVAL-CAL-0001.pdf"
+    )
+    assert SQLiteCertificateRecordRepository(connection).get("cert-001") == (
+        result.release.certificate
+    )
+
+
+def test_render_and_release_certificate_pdf_blocks_missing_preview_before_file_write(
+    tmp_path,
+):
+    connection = _connection_with_release_data()
+
+    with pytest.raises(CertificateReleaseServiceError):
+        render_and_release_certificate_pdf_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_directory=tmp_path,
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_render_and_release_certificate_pdf_blocks_unauthorized_actor_before_file_write(
+    tmp_path,
+):
+    connection = _connection_with_release_data(actor_roles=(Role.OPERATOR,))
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(AuthenticationServiceError):
+        render_and_release_certificate_pdf_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_directory=tmp_path,
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_render_and_release_certificate_pdf_blocks_before_approved_state(tmp_path):
+    connection = _connection_with_release_data(job_state=WorkflowState.CALCULATED)
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(CertificateReleaseServiceError):
+        render_and_release_certificate_pdf_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_directory=tmp_path,
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()

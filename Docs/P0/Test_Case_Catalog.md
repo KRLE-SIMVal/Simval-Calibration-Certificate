@@ -275,6 +275,13 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-121 | Export artifact checksum stored. | Artifact checksum is a valid SHA-256 digest. |
 | CERT-122 | Released certificate requires export artifact. | Release record is rejected without artifact evidence. |
 | CERT-123 | Certificate revision requires reason. | Revision record is rejected without reason and links original release. |
+| CERT-124 | Render certificate PDF from locked preview. | Renderer produces deterministic PDF bytes, filename, artifact type, and SHA-256 checksum. |
+| CERT-125 | Renderer uses locked preview display values. | Rendered result row uses preview display values and does not recalculate error of indication. |
+| CERT-126 | Store rendered certificate artifact. | Artifact bytes are written once under controlled local storage with checksum and storage URI evidence. |
+| CERT-127 | Rendered artifact storage rejects overwrite. | Existing artifact bytes cannot be overwritten. |
+| CERT-128 | Rendered release service. | Service renders, stores, and releases a certificate using generated artifact checksum and URI. |
+| CERT-129 | Rendered release without matching preview. | Rendering/release is blocked before artifact bytes or certificate release evidence are written. |
+| CERT-130 | Rendered release by unauthorized actor. | Rendering/release is blocked before artifact bytes or certificate release evidence are written. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |

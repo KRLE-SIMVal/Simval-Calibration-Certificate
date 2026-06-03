@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 import sqlite3
 
 from app.backend.audit.events import AuditAction, AuditEvent
@@ -18,6 +19,14 @@ from app.backend.certificates.preview import (
     CertificatePreview,
     CertificatePreviewError,
     CertificatePreviewRow,
+)
+from app.backend.certificates.rendering import (
+    RenderedCertificateArtifact,
+    render_certificate_pdf,
+)
+from app.backend.certificates.storage import (
+    StoredCertificateArtifact,
+    store_rendered_artifact,
 )
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
@@ -55,6 +64,13 @@ class CertificateRelease:
     release_audit_event: AuditEvent
     workflow_audit_event_id: int
     workflow_audit_event: AuditEvent
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedCertificateRelease:
+    rendered_artifact: RenderedCertificateArtifact
+    stored_artifact: StoredCertificateArtifact
+    release: CertificateRelease
 
 
 def build_certificate_preview_for_session(
@@ -142,6 +158,63 @@ def build_certificate_preview(
     )
 
 
+def render_and_release_certificate_pdf_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    certificate_id: str,
+    certificate_number: str,
+    artifact_id: str,
+    artifact_directory: Path,
+    template_version: str,
+    software_version: str,
+    timestamp: datetime,
+) -> RenderedCertificateRelease:
+    """Render, store, and release a PDF certificate from locked preview evidence."""
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.RELEASE_CERTIFICATE,
+        timestamp=timestamp,
+    )
+    preview = _preview_for_release_rendering(
+        connection=connection,
+        job_id=job_id,
+        template_version=template_version,
+        software_version=software_version,
+    )
+    rendered_artifact = render_certificate_pdf(
+        certificate_id=certificate_id,
+        certificate_number=certificate_number,
+        preview=preview,
+    )
+    stored_artifact = store_rendered_artifact(
+        base_path=artifact_directory,
+        artifact=rendered_artifact,
+    )
+    release = release_certificate(
+        connection=connection,
+        job_id=job_id,
+        certificate_id=certificate_id,
+        certificate_number=certificate_number,
+        artifact_id=artifact_id,
+        artifact_type=rendered_artifact.artifact_type,
+        filename=stored_artifact.filename,
+        checksum_sha256=stored_artifact.checksum_sha256,
+        storage_uri=stored_artifact.storage_uri,
+        released_by=actor.user_id,
+        template_version=template_version,
+        software_version=software_version,
+        timestamp=timestamp,
+    )
+    return RenderedCertificateRelease(
+        rendered_artifact=rendered_artifact,
+        stored_artifact=stored_artifact,
+        release=release,
+    )
+
+
 def release_certificate_for_session(
     *,
     connection: sqlite3.Connection,
@@ -180,6 +253,66 @@ def release_certificate_for_session(
         software_version=software_version,
         timestamp=timestamp,
     )
+
+
+def _preview_for_release_rendering(
+    *,
+    connection: sqlite3.Connection,
+    job_id: str,
+    template_version: str,
+    software_version: str,
+) -> CertificatePreview:
+    job_repository = SQLiteCalibrationJobRepository(connection)
+    summary_repository = SQLiteMeasurementPointSummaryRepository(connection)
+    audit_repository = SQLiteAuditEventRepository(connection)
+
+    job = job_repository.get(job_id)
+    if job.state is not WorkflowState.APPROVED:
+        raise CertificateReleaseServiceError(
+            "Certificate rendering for release requires approved workflow state."
+        )
+    summaries = summary_repository.list_for_job(job_id)
+    if len(summaries) == 0:
+        raise CertificateReleaseServiceError(
+            "Certificate rendering for release requires calculation summaries."
+        )
+    summary_ids = tuple(summary.point_id for summary in summaries)
+    calculation_engine_version = _single_release_version(
+        {summary.calculation_engine_version for summary in summaries},
+        "calculation engine",
+    )
+    constant_set_version = _single_release_version(
+        {summary.constant_set_version for summary in summaries},
+        "constant set",
+    )
+    budget_version = _single_release_version(
+        {summary.budget_version for summary in summaries},
+        "budget",
+    )
+    preview_event = _matching_preview_event(
+        audit_repository.list_for_entity("calibration_job", job_id),
+        summary_ids=summary_ids,
+        template_version=template_version,
+        software_version=software_version,
+        calculation_engine_version=calculation_engine_version,
+        constant_set_version=constant_set_version,
+        budget_version=budget_version,
+    )
+    if preview_event is None:
+        raise CertificateReleaseServiceError(
+            "Certificate rendering for release requires matching preview audit evidence."
+        )
+    try:
+        return _preview_from_summaries(
+            job_id=job_id,
+            generated_by=preview_event.user_id,
+            generated_at=preview_event.timestamp,
+            software_version=software_version,
+            template_version=template_version,
+            summaries=summaries,
+        )
+    except CertificatePreviewServiceError as exc:
+        raise CertificateReleaseServiceError(str(exc)) from exc
 
 
 def release_certificate(
@@ -410,6 +543,30 @@ def _matching_preview_exists(
     constant_set_version: str,
     budget_version: str,
 ) -> bool:
+    return (
+        _matching_preview_event(
+            audit_events,
+            summary_ids=summary_ids,
+            template_version=template_version,
+            software_version=software_version,
+            calculation_engine_version=calculation_engine_version,
+            constant_set_version=constant_set_version,
+            budget_version=budget_version,
+        )
+        is not None
+    )
+
+
+def _matching_preview_event(
+    audit_events: tuple[AuditEvent, ...],
+    *,
+    summary_ids: tuple[str, ...],
+    template_version: str,
+    software_version: str,
+    calculation_engine_version: str,
+    constant_set_version: str,
+    budget_version: str,
+) -> AuditEvent | None:
     expected_summary_ids = list(summary_ids)
     for event in audit_events:
         if event.action is not AuditAction.CERTIFICATE_PREVIEW_GENERATED:
@@ -428,8 +585,8 @@ def _matching_preview_exists(
             continue
         if event.budget_version != budget_version:
             continue
-        return True
-    return False
+        return event
+    return None
 
 
 def _export_artifact_audit_event(
