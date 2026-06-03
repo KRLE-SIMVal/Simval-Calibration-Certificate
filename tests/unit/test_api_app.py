@@ -71,6 +71,75 @@ def test_api_me_returns_authenticated_actor():
     }
 
 
+def test_api_certificate_metadata_capture_records_metadata_and_audits():
+    connection = _connection_with_metadata_capture_data()
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json=_metadata_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-001"
+    assert payload["client_name"] == "SIMVal customer"
+    assert payload["purchase_order"] == "PO-12345"
+    assert payload["recorded_by"] == "user-001"
+    assert payload["metadata_audit_event_id"] == 1
+    assert payload["workflow_audit_event_id"] == 2
+    assert payload["workflow_state"] == "metadata_complete"
+    assert SQLiteCertificateMetadataRepository(connection).get(
+        "job-001"
+    ).recorded_by == "user-001"
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.METADATA_COMPLETE
+    )
+
+
+def test_api_certificate_metadata_capture_rejects_unauthorized_session():
+    connection = _connection_with_metadata_capture_data(user_roles=(Role.READ_ONLY,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json=_metadata_payload(),
+    )
+
+    assert response.status_code == 403
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.DRAFT
+    )
+
+
+def test_api_certificate_metadata_capture_rejects_wrong_workflow_state():
+    connection = _connection_with_metadata_capture_data(
+        job_state=WorkflowState.CALCULATED,
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json=_metadata_payload(),
+    )
+
+    assert response.status_code == 409
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
 def test_api_certificate_preview_returns_locked_rows_and_audit_id():
     connection = _connection_with_preview_data()
 
@@ -278,6 +347,19 @@ def _connection_with_preview_data(
     return connection
 
 
+def _connection_with_metadata_capture_data(
+    *,
+    job_state: WorkflowState = WorkflowState.DRAFT,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(_job(job_state))
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
+    return connection
+
+
 def _fixed_now() -> datetime:
     return datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc)
 
@@ -316,6 +398,28 @@ def _metadata() -> CertificateMetadata:
         recorded_by="operator-001",
         recorded_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
     )
+
+
+def _metadata_payload() -> dict:
+    return {
+        "job_id": "job-001",
+        "certificate_date": "2026-06-03",
+        "calibration_date": "2026-06-01",
+        "receipt_date": "2026-05-31",
+        "task_number": "TASK-2026-001",
+        "purchase_order": "PO-12345",
+        "client_name": "SIMVal customer",
+        "client_address": "Validated Road 1, 2800 Lyngby",
+        "procedure": "SIMVal SOP-TEMP-001",
+        "place": "SIMVal Temperature Laboratory, Lyngby",
+        "approved_by_label": "QA User",
+        "remarks": "Aflæsning af logger data via ValProbe RT.",
+        "traceability_statement": "Measurements are metrologically traceable.",
+        "uncertainty_statement": "Expanded uncertainty uses k=2.",
+        "ambient_conditions": "Room temperature 23 +/- 2 deg C.",
+        "temperature_scale": "ITS-90",
+        "software_version": "app-0.1.0",
+    }
 
 
 def _uploaded_file() -> UploadedFile:

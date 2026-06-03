@@ -17,6 +17,9 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   conditions, temperature scale, and recorded-by evidence.
 - SQLite certificate metadata repository with add-once storage and database-level
   update/delete blockers.
+- Session-backed certificate metadata capture service with role resolution,
+  metadata audit evidence, and draft-to-`metadata_complete` workflow transition.
+- `POST /certificate-metadata` API endpoint for controlled metadata capture.
 - Certificate preview now requires persisted metadata and DUT display details
   before preview audit evidence can be generated.
 - Renderer uses locked preview metadata for page 1 and result-page
@@ -32,7 +35,7 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 
 - No exact SIMVal/DANAK visual certificate template matching yet.
 - No image/logo embedding yet.
-- No API endpoint or audited edit workflow for certificate metadata capture yet.
+- No controlled metadata revision/edit workflow after initial capture yet.
 - No reference-equipment table values in the renderer yet.
 - No XLSX uncertainty-budget export yet.
 - No API endpoint for rendered release yet.
@@ -65,13 +68,17 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   suite: 43 passed on Python 3.12.10.
 - Default regression suite after certificate metadata slice: 297 passed,
   2 skipped on Python 3.12.10.
+- Focused certificate metadata capture, preview, rendering, release, API, and
+  workflow suite: 54 passed on Python 3.12.10.
+- Default regression suite after audited metadata capture slice: 303 passed,
+  2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
 | PDF output has SIMVal-oriented page structure but does not exactly match the approved certificate template. | Add exact template-contract tests, logo/DANAK mark handling, and visual/text extraction checks before treating output as customer-ready. |
-| Certificate metadata is persisted as an immutable snapshot but has no API capture/edit workflow yet. | Add session-backed metadata capture with audit evidence before UI work depends on it. |
+| Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
 | Reference equipment is not yet available to the renderer. | Connect approved selected reference equipment to the preview model and block release when reference-equipment content is missing. |
 | Many result rows on one DUT page may overflow. | Add deterministic page-break rules and tests for row limits before production validation. |
 | Local artifact storage path is not yet configurable through API settings. | Add `SIMVAL_ARTIFACT_STORAGE_PATH` and an API rendered-release endpoint after renderer/storage behavior is validated. |

@@ -60,8 +60,9 @@ tests must use generated or sanitized data only.
 
 ## Remaining Gaps
 
-- Certificate metadata is now persisted in an immutable preview snapshot, but
-  metadata capture/editing is not yet exposed through an audited service/API.
+- Certificate metadata is now persisted through an audited service/API capture
+  path and included in immutable preview snapshots. Post-capture metadata
+  revision/editing is still not implemented.
 - Reference-equipment selection is not yet available to the renderer.
 - Logos, DANAK mark placement, and exact visual grid matching are not yet
   implemented.

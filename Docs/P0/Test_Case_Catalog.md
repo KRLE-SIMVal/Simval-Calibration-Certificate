@@ -286,6 +286,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-132 | Multi-DUT certificate rendering. | One certificate can group multiple DUT result sections while single-DUT certificates remain supported. |
 | CERT-133 | Certificate metadata required for preview. | Preview is blocked until certificate date, task, client, PO, procedure, place, remarks, traceability, uncertainty, and conditions are captured. |
 | CERT-134 | Renderer uses certificate metadata. | Rendered PDF uses locked metadata values and contains no placeholder text for page 1 or result-page remarks/conditions. |
+| CERT-135 | Capture certificate metadata through service. | Authorized metadata capture stores immutable metadata, records metadata audit evidence, and transitions the job to `metadata_complete`. |
+| CERT-136 | Unauthorized certificate metadata capture. | Unauthorized metadata capture is rejected before metadata, audit, or workflow evidence is written. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
@@ -313,6 +315,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-008 | API certificate release without preview. | Request returns a controlled conflict response and writes no certificate record. |
 | API-009 | API request connection lifecycle. | API connection provider opens and closes one SQLite connection per request. |
 | API-010 | API settings load database path. | `SIMVAL_DATABASE_PATH` is required and resolves to the SQLite database path. |
+| API-011 | API certificate metadata capture. | `POST /certificate-metadata` stores metadata, records audit evidence, and returns metadata/workflow audit ids. |
+| API-012 | API certificate metadata capture with insufficient role. | Request is rejected with `403` before metadata, audit, or workflow evidence is written. |
+| API-013 | API certificate metadata capture in wrong workflow state. | Request returns a controlled conflict response and writes no metadata evidence. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 import sqlite3
 
 from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.auth.permissions import Action
-from app.backend.certificates.metadata import CertificateMetadata
+from app.backend.certificates.metadata import (
+    CertificateMetadata,
+    CertificateMetadataError,
+)
 from app.backend.certificates.records import (
     ArtifactType,
     CertificateRecord,
@@ -54,6 +57,19 @@ class CertificateReleaseServiceError(ValueError):
     """Raised when a certificate cannot be released safely."""
 
 
+class CertificateMetadataServiceError(ValueError):
+    """Raised when certificate metadata cannot be captured safely."""
+
+
+@dataclass(frozen=True, slots=True)
+class CertificateMetadataCapture:
+    metadata: CertificateMetadata
+    metadata_audit_event_id: int
+    metadata_audit_event: AuditEvent
+    workflow_audit_event_id: int
+    workflow_audit_event: AuditEvent
+
+
 @dataclass(frozen=True, slots=True)
 class CertificatePreviewGeneration:
     preview: CertificatePreview
@@ -77,6 +93,106 @@ class RenderedCertificateRelease:
     rendered_artifact: RenderedCertificateArtifact
     stored_artifact: StoredCertificateArtifact
     release: CertificateRelease
+
+
+def capture_certificate_metadata_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    certificate_date: date,
+    calibration_date: date,
+    receipt_date: date,
+    task_number: str,
+    purchase_order: str,
+    client_name: str,
+    client_address: str,
+    procedure: str,
+    place: str,
+    approved_by_label: str,
+    remarks: str,
+    traceability_statement: str,
+    uncertainty_statement: str,
+    ambient_conditions: str,
+    temperature_scale: str,
+    software_version: str,
+    timestamp: datetime,
+) -> CertificateMetadataCapture:
+    """Capture immutable certificate metadata and move a draft job forward."""
+    _require_metadata_text(software_version, "Software version")
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.EDIT_DRAFT_JOB_METADATA,
+        timestamp=timestamp,
+    )
+    try:
+        metadata = CertificateMetadata(
+            job_id=job_id,
+            certificate_date=certificate_date,
+            calibration_date=calibration_date,
+            receipt_date=receipt_date,
+            task_number=task_number,
+            purchase_order=purchase_order,
+            client_name=client_name,
+            client_address=client_address,
+            procedure=procedure,
+            place=place,
+            approved_by_label=approved_by_label,
+            remarks=remarks,
+            traceability_statement=traceability_statement,
+            uncertainty_statement=uncertainty_statement,
+            ambient_conditions=ambient_conditions,
+            temperature_scale=temperature_scale,
+            recorded_by=actor.user_id,
+            recorded_at=timestamp,
+        )
+    except CertificateMetadataError as exc:
+        raise CertificateMetadataServiceError(str(exc)) from exc
+
+    with connection:
+        job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+        metadata_repository = SQLiteCertificateMetadataRepository(
+            connection,
+            autocommit=False,
+        )
+        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+
+        job = job_repository.get(job_id)
+        if job.state is not WorkflowState.DRAFT:
+            raise CertificateMetadataServiceError(
+                "Certificate metadata capture requires draft workflow state."
+            )
+
+        metadata_repository.add(metadata)
+        metadata_audit_event = _certificate_metadata_audit_event(
+            metadata=metadata,
+            software_version=software_version,
+            timestamp=timestamp,
+        )
+        metadata_audit_event_id = audit_repository.append(metadata_audit_event)
+        transition = transition_calibration_job(
+            job_id=job_id,
+            current=job.state,
+            target=WorkflowState.METADATA_COMPLETE,
+            user_id=actor.user_id,
+            software_version=software_version,
+            timestamp=timestamp,
+        )
+        job_repository.update_state(
+            job_id=job_id,
+            expected_state=job.state,
+            new_state=transition.state,
+        )
+        workflow_audit_event_id = audit_repository.append(transition.audit_event)
+
+    return CertificateMetadataCapture(
+        metadata=metadata,
+        metadata_audit_event_id=metadata_audit_event_id,
+        metadata_audit_event=metadata_audit_event,
+        workflow_audit_event_id=workflow_audit_event_id,
+        workflow_audit_event=transition.audit_event,
+    )
 
 
 def build_certificate_preview_for_session(
@@ -559,6 +675,34 @@ def _preview_dut(dut: DeviceUnderTest) -> CertificatePreviewDut:
     )
 
 
+def _certificate_metadata_audit_event(
+    *,
+    metadata: CertificateMetadata,
+    software_version: str,
+    timestamp: datetime,
+) -> AuditEvent:
+    return AuditEvent(
+        entity_type="calibration_job",
+        entity_id=metadata.job_id,
+        action=AuditAction.METADATA_CHANGED,
+        user_id=metadata.recorded_by,
+        timestamp=timestamp,
+        new_value={
+            "certificate_date": metadata.certificate_date.isoformat(),
+            "calibration_date": metadata.calibration_date.isoformat(),
+            "receipt_date": metadata.receipt_date.isoformat(),
+            "task_number": metadata.task_number,
+            "purchase_order": metadata.purchase_order,
+            "client_name": metadata.client_name,
+            "procedure": metadata.procedure,
+            "place": metadata.place,
+            "temperature_scale": metadata.temperature_scale,
+            "recorded_at": metadata.recorded_at.isoformat(),
+        },
+        software_version=software_version,
+    )
+
+
 def _preview_audit_event(preview: CertificatePreview) -> AuditEvent:
     return AuditEvent(
         entity_type="calibration_job",
@@ -724,6 +868,11 @@ def _validate_release_inputs(
 def _require_release_text(value: str, field_name: str) -> None:
     if value.strip() == "":
         raise CertificateReleaseServiceError(f"{field_name} is required.")
+
+
+def _require_metadata_text(value: str, field_name: str) -> None:
+    if value.strip() == "":
+        raise CertificateMetadataServiceError(f"{field_name} is required.")
 
 
 def _require_release_timezone_aware(value: datetime, field_name: str) -> None:

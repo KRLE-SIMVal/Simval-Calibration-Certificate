@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import sqlite3
 
@@ -21,11 +21,14 @@ from app.backend.services.authentication import (
     resolve_actor_for_session,
 )
 from app.backend.services.certificates import (
+    CertificateMetadataCapture,
+    CertificateMetadataServiceError,
     CertificateRelease,
     CertificateReleaseServiceError,
     CertificatePreviewGeneration,
     CertificatePreviewServiceError,
     build_certificate_preview_for_session,
+    capture_certificate_metadata_for_session,
     release_certificate_for_session,
 )
 
@@ -44,6 +47,52 @@ class CertificatePreviewRequest(BaseModel):
     job_id: str
     template_version: str
     software_version: str
+
+
+class CertificateMetadataRequest(BaseModel):
+    job_id: str
+    certificate_date: date
+    calibration_date: date
+    receipt_date: date
+    task_number: str
+    purchase_order: str
+    client_name: str
+    client_address: str
+    procedure: str
+    place: str
+    approved_by_label: str
+    remarks: str
+    traceability_statement: str
+    uncertainty_statement: str
+    ambient_conditions: str
+    temperature_scale: str
+    software_version: str
+
+
+class CertificateMetadataResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    certificate_date: str
+    calibration_date: str
+    receipt_date: str
+    task_number: str
+    purchase_order: str
+    client_name: str
+    client_address: str
+    procedure: str
+    place: str
+    approved_by_label: str
+    remarks: str
+    traceability_statement: str
+    uncertainty_statement: str
+    ambient_conditions: str
+    temperature_scale: str
+    recorded_by: str
+    recorded_at: str
+    metadata_audit_event_id: int
+    workflow_audit_event_id: int
+    workflow_state: str
 
 
 class CertificatePreviewRowResponse(BaseModel):
@@ -163,6 +212,53 @@ def create_app(
             display_name=actor.display_name,
             roles=tuple(role.value for role in actor.roles),
         )
+
+    @app.post(
+        "/certificate-metadata",
+        response_model=CertificateMetadataResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def certificate_metadata(
+        request: CertificateMetadataRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateMetadataResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = capture_certificate_metadata_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    certificate_date=request.certificate_date,
+                    calibration_date=request.calibration_date,
+                    receipt_date=request.receipt_date,
+                    task_number=request.task_number,
+                    purchase_order=request.purchase_order,
+                    client_name=request.client_name,
+                    client_address=request.client_address,
+                    procedure=request.procedure,
+                    place=request.place,
+                    approved_by_label=request.approved_by_label,
+                    remarks=request.remarks,
+                    traceability_statement=request.traceability_statement,
+                    uncertainty_statement=request.uncertainty_statement,
+                    ambient_conditions=request.ambient_conditions,
+                    temperature_scale=request.temperature_scale,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except CertificateMetadataServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _metadata_response(result)
 
     @app.post(
         "/certificate-previews",
@@ -285,6 +381,36 @@ def _preview_response(
             for row in preview.rows
         ),
         audit_event_id=result.audit_event_id,
+    )
+
+
+def _metadata_response(result: CertificateMetadataCapture) -> CertificateMetadataResponse:
+    metadata = result.metadata
+    workflow_state = ""
+    if result.workflow_audit_event.new_value is not None:
+        workflow_state = str(result.workflow_audit_event.new_value["state"])
+    return CertificateMetadataResponse(
+        job_id=metadata.job_id,
+        certificate_date=metadata.certificate_date.isoformat(),
+        calibration_date=metadata.calibration_date.isoformat(),
+        receipt_date=metadata.receipt_date.isoformat(),
+        task_number=metadata.task_number,
+        purchase_order=metadata.purchase_order,
+        client_name=metadata.client_name,
+        client_address=metadata.client_address,
+        procedure=metadata.procedure,
+        place=metadata.place,
+        approved_by_label=metadata.approved_by_label,
+        remarks=metadata.remarks,
+        traceability_statement=metadata.traceability_statement,
+        uncertainty_statement=metadata.uncertainty_statement,
+        ambient_conditions=metadata.ambient_conditions,
+        temperature_scale=metadata.temperature_scale,
+        recorded_by=metadata.recorded_by,
+        recorded_at=metadata.recorded_at.isoformat(),
+        metadata_audit_event_id=result.metadata_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
+        workflow_state=workflow_state,
     )
 
 

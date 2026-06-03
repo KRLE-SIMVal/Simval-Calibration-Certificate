@@ -21,7 +21,7 @@ Status values:
 | F-010 discipline selection | Temperature, pressure, differential pressure branches. | WF-010, WF-011, WF-012 | Planned |
 | F-011 manual/automatic mode | Required fields and calculation path selection. | WF-020, TEMP-010, PRESS-010 | Planned |
 | F-012 language/template | Template selection and required labels. | CERT-010, CERT-011 | Planned |
-| F-013 certificate metadata | Required metadata validation. | CERT-133, CERT-134, PERSIST-037, PERSIST-038 | Partial |
+| F-013 certificate metadata | Required metadata validation. | CERT-133 to CERT-136, API-011 to API-013, PERSIST-037, PERSIST-038 | Partial |
 | F-014 certificate numbers | Internal sequence, duplicate prevention, future provider boundary. | CERT-001, CERT-002, INT-001 | Planned |
 | F-015 one certificate per DUT and batch generation | Batch grouping, per-DUT artifacts, combined summary. | CERT-020, CERT-021, CERT-022 | Planned |
 | F-016 preview and calculation summary before export | Export blocked until preview/review complete. | CERT-030, CALC-001, WF-040 | Planned |
