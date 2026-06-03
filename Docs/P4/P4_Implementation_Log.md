@@ -59,6 +59,11 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   are present.
 - Logo placement keeps the SIMVal logo larger than the DANAK/ILAC mark in line
   with the SIMVal design requirement and DANAK AB02 prominence constraint.
+- Certificate preview and release paths now carry an explicit
+  `accreditation_mark_allowed` decision in preview/release audit evidence and
+  API responses.
+- Rendered release rejects preview/release accreditation-scope mismatches and
+  suppresses the DANAK/ILAC mark when the approved scope decision disallows it.
 
 ## Scope Not Implemented
 
@@ -69,8 +74,7 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   result XLSX rendering yet.
 - No PDF/A, digital signature, or qualified-signature support.
 - No customer-facing UI.
-- No final accredited-scope rule switch for when the DANAK/ILAC mark must be
-  suppressed or replaced by accreditation text.
+- No final customer-facing UI control for the accreditation-scope decision.
 
 ## Compliance Notes
 
@@ -86,8 +90,9 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   equipment use date and the locked calculation summary reference value/unit as
   the checked measurement point.
 - The supplied DANAK file is a combined ILAC/DANAK mark. This slice embeds the
-  supplied asset and enforces relative prominence only; final use remains
-  subject to approved SIMVal/DANAK scope controls.
+  supplied asset only when the preview/release accreditation scope allows it;
+  the business decision remains subject to approved SIMVal/DANAK scope
+  controls.
 
 ## Verification
 
@@ -137,13 +142,17 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   release, and API suite after logo embedding: 51 passed on Python 3.12.10.
 - Default regression suite after certificate logo embedding: 328 passed,
   2 skipped on Python 3.12.10.
+- Focused certificate rendering, preview, release, rendered release, and API
+  suite after accreditation-scope control: 52 passed on Python 3.12.10.
+- Default regression suite after accreditation-scope control: 331 passed,
+  2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
 | PDF output has SIMVal-oriented page structure and controlled logos, but does not exactly match the approved certificate template. | Add exact template-contract tests and visual/text extraction checks before treating output as customer-ready. |
-| The supplied accreditation mark is always embedded when the local asset exists; no accredited-scope suppression path exists yet. | Add an approved template/accreditation-scope control before production release so non-accredited or out-of-scope certificates cannot display the DANAK/ILAC mark. |
+| The supplied accreditation mark now has backend/API scope control, but no customer-facing UI control exists yet. | Add a reviewer-visible UI control and QMS-approved decision rule before production validation. |
 | Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
 | Reference-equipment selection is audited and point-level suitability is checked at preview/release, but full equipment-library CRUD is not yet implemented. | Add controlled equipment-library management before production workflow validation. |
 | XLSX uncertainty-budget rendering covers locked automatic temperature calculation output, not a full editable budget-editor export. | Add controlled budget-editor export once the budget module is implemented and approved. |

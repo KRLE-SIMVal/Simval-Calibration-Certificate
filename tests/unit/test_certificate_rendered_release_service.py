@@ -56,6 +56,43 @@ def test_render_and_release_certificate_pdf_for_session_uses_generated_artifact(
     )
 
 
+def test_render_and_release_certificate_pdf_for_session_can_suppress_danak_mark(
+    tmp_path,
+):
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        accreditation_mark_allowed=False,
+    )
+
+    result = render_and_release_certificate_pdf_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        artifact_id="artifact-001",
+        artifact_directory=tmp_path,
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        accreditation_mark_allowed=False,
+    )
+
+    content_text = result.rendered_artifact.content_bytes.decode("latin-1")
+    assert result.release.accreditation_mark_allowed is False
+    assert "/ImSimval" in content_text
+    assert "/ImDanak" not in content_text
+    assert "Accreditation mark: not applied for this certificate scope." in (
+        content_text
+    )
+
+
 def test_render_and_release_certificate_pdf_blocks_missing_preview_before_file_write(
     tmp_path,
 ):

@@ -133,6 +133,7 @@ class CertificatePreview:
     duts: tuple[CertificatePreviewDut, ...]
     reference_equipment: tuple[CertificatePreviewReferenceEquipment, ...]
     rows: tuple[CertificatePreviewRow, ...]
+    accreditation_mark_allowed: bool = True
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -164,6 +165,10 @@ class CertificatePreview:
                 )
         if len(self.rows) == 0:
             raise CertificatePreviewError("Certificate preview requires result rows.")
+        if not isinstance(self.accreditation_mark_allowed, bool):
+            raise CertificatePreviewError(
+                "Certificate accreditation mark decision must be a bool."
+            )
         dut_ids = {dut.dut_id for dut in self.duts}
         missing_dut_ids = sorted({row.dut_id for row in self.rows} - dut_ids)
         if missing_dut_ids:

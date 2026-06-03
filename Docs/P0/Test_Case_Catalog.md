@@ -302,6 +302,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-139 | Renderer paginates large DUT result tables. | A DUT with more result rows than the page limit is split deterministically across result pages before the reference-equipment page. |
 | CERT-140 | Certificate preview blocks unsuitable reference equipment. | Preview is rejected before audit evidence when no selected reference equipment covers the calculated point, unit, discipline, and calibration date. |
 | CERT-141 | Certificate release rechecks reference equipment suitability. | Release is rejected even with matching preview evidence if selected reference equipment no longer satisfies point suitability rules. |
+| CERT-142 | Certificate preview and release lock accreditation mark scope. | Release is rejected if the accreditation mark decision differs from the matching preview, and rendered PDFs suppress the DANAK/ILAC mark when scope disallows it. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |

@@ -86,7 +86,10 @@ def render_certificate_pdf(
     _require_text(certificate_id, "Certificate id")
     _require_certificate_number(certificate_number)
 
-    images = _load_logo_images(logo_assets or default_certificate_logo_assets())
+    images = _load_logo_images(
+        logo_assets or default_certificate_logo_assets(),
+        include_danak=preview.accreditation_mark_allowed,
+    )
     page_lines = _certificate_pages(
         certificate_id=certificate_id,
         certificate_number=certificate_number,
@@ -180,6 +183,7 @@ def _cover_page_lines(
         "SIMVal A/S",
         "Kalibreringscertifikat",
         "Calibration certificate",
+        _accreditation_line(preview.accreditation_mark_allowed),
         _page_label(1, total_pages),
         f"Certifikat dato / Certificate date: {metadata.certificate_date.isoformat()}",
         f"Godkendt af / Approved by: {metadata.approved_by_label}",
@@ -449,13 +453,19 @@ def _pdf_image_object(image: _PdfImage) -> bytes:
     )
 
 
-def _load_logo_images(logo_assets: CertificateLogoAssets) -> tuple[_PdfImage, ...]:
+def _load_logo_images(
+    logo_assets: CertificateLogoAssets,
+    *,
+    include_danak: bool,
+) -> tuple[_PdfImage, ...]:
     logo_paths = (
         ("ImSimval", logo_assets.simval_logo_path),
         ("ImDanak", logo_assets.danak_logo_path),
     )
     loaded: list[_PdfImage] = []
     for image_name, raw_path in logo_paths:
+        if image_name == "ImDanak" and not include_danak:
+            continue
         if raw_path is None:
             continue
         path = Path(raw_path)
@@ -713,6 +723,12 @@ def _decimal_to_text(value: Decimal) -> str:
 
 def _pdf_number(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".")
+
+
+def _accreditation_line(accreditation_mark_allowed: bool) -> str:
+    if accreditation_mark_allowed:
+        return "Accreditation mark: DANAK/ILAC CAL Reg.nr. 647"
+    return "Accreditation mark: not applied for this certificate scope."
 
 
 def _require_certificate_number(value: str) -> None:

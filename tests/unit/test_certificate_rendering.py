@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 import re
@@ -72,6 +73,22 @@ def test_render_certificate_pdf_embeds_default_simval_and_danak_logo_assets():
     assert danak_draw is not None
     assert float(simval_draw.group("width")) > float(danak_draw.group("width"))
     assert float(simval_draw.group("height")) > float(danak_draw.group("height"))
+
+
+def test_render_certificate_pdf_suppresses_danak_mark_when_scope_disallows_it():
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=replace(_preview(), accreditation_mark_allowed=False),
+    )
+
+    content_text = artifact.content_bytes.decode("latin-1")
+    assert "/ImSimval" in content_text
+    assert "/ImDanak" not in content_text
+    assert content_text.count("/Subtype /Image") == 1
+    assert "Accreditation mark: not applied for this certificate scope." in (
+        content_text
+    )
 
 
 def test_render_certificate_pdf_rejects_corrupt_logo_asset(tmp_path):

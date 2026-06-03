@@ -105,6 +105,7 @@ def test_build_certificate_preview_for_session_consumes_locked_summaries_and_aud
         "metadata_recorded_at": "2026-06-01T14:00:00+00:00",
         "row_count": 1,
         "template_version": "template-2026-001",
+        "accreditation_mark_allowed": True,
     }
     assert SQLiteAuditEventRepository(connection).list_for_entity(
         "calibration_job",

@@ -98,6 +98,7 @@ class CertificatePreviewGeneration:
 @dataclass(frozen=True, slots=True)
 class CertificateRelease:
     certificate: CertificateRecord
+    accreditation_mark_allowed: bool
     export_audit_event_id: int
     export_audit_event: AuditEvent
     release_audit_event_id: int
@@ -296,6 +297,7 @@ def build_certificate_preview_for_session(
     template_version: str,
     software_version: str,
     timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
 ) -> CertificatePreviewGeneration:
     """Build a certificate preview from locked summaries after actor resolution."""
     actor = resolve_actor_for_action(
@@ -310,6 +312,7 @@ def build_certificate_preview_for_session(
         generated_by=actor.user_id,
         template_version=template_version,
         software_version=software_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
         timestamp=timestamp,
     )
 
@@ -322,6 +325,7 @@ def build_certificate_preview(
     template_version: str,
     software_version: str,
     timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
 ) -> CertificatePreviewGeneration:
     """Build and audit a certificate preview from persisted calculation summaries."""
     _require_text(job_id, "Job id")
@@ -394,6 +398,7 @@ def build_certificate_preview(
             generated_at=timestamp,
             software_version=software_version,
             template_version=template_version,
+            accreditation_mark_allowed=accreditation_mark_allowed,
             metadata=metadata,
             duts=duts,
             selected_reference_equipment=selected_reference_equipment,
@@ -421,6 +426,7 @@ def render_and_release_certificate_pdf_for_session(
     template_version: str,
     software_version: str,
     timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
 ) -> RenderedCertificateRelease:
     """Render, store, and release a PDF certificate from locked preview evidence."""
     actor = resolve_actor_for_action(
@@ -434,6 +440,7 @@ def render_and_release_certificate_pdf_for_session(
         job_id=job_id,
         template_version=template_version,
         software_version=software_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
     )
     rendered_artifact = render_certificate_pdf(
         certificate_id=certificate_id,
@@ -457,6 +464,7 @@ def render_and_release_certificate_pdf_for_session(
         released_by=actor.user_id,
         template_version=template_version,
         software_version=software_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
         timestamp=timestamp,
     )
     return RenderedCertificateRelease(
@@ -481,6 +489,7 @@ def release_certificate_for_session(
     template_version: str,
     software_version: str,
     timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
 ) -> CertificateRelease:
     """Release a certificate only after matching preview evidence exists."""
     actor = resolve_actor_for_action(
@@ -502,6 +511,7 @@ def release_certificate_for_session(
         released_by=actor.user_id,
         template_version=template_version,
         software_version=software_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
         timestamp=timestamp,
     )
 
@@ -512,6 +522,7 @@ def _preview_for_release_rendering(
     job_id: str,
     template_version: str,
     software_version: str,
+    accreditation_mark_allowed: bool = True,
 ) -> CertificatePreview:
     job_repository = SQLiteCalibrationJobRepository(connection)
     metadata_repository = SQLiteCertificateMetadataRepository(connection)
@@ -575,6 +586,7 @@ def _preview_for_release_rendering(
         calculation_engine_version=calculation_engine_version,
         constant_set_version=constant_set_version,
         budget_version=budget_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
     )
     if preview_event is None:
         raise CertificateReleaseServiceError(
@@ -587,6 +599,7 @@ def _preview_for_release_rendering(
             generated_at=preview_event.timestamp,
             software_version=software_version,
             template_version=template_version,
+            accreditation_mark_allowed=accreditation_mark_allowed,
             metadata=metadata,
             duts=duts,
             selected_reference_equipment=selected_reference_equipment,
@@ -611,6 +624,7 @@ def release_certificate(
     template_version: str,
     software_version: str,
     timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
 ) -> CertificateRelease:
     """Persist immutable release evidence and transition the job to released."""
     _validate_release_inputs(
@@ -704,6 +718,7 @@ def release_certificate(
             calculation_engine_version=calculation_engine_version,
             constant_set_version=constant_set_version,
             budget_version=budget_version,
+            accreditation_mark_allowed=accreditation_mark_allowed,
         ):
             raise CertificateReleaseServiceError(
                 "Certificate release requires matching preview audit evidence."
@@ -746,6 +761,7 @@ def release_certificate(
         export_audit_event_id = audit_repository.append(export_audit_event)
         release_audit_event = _certificate_release_audit_event(
             certificate=certificate,
+            accreditation_mark_allowed=accreditation_mark_allowed,
             timestamp=timestamp,
         )
         release_audit_event_id = audit_repository.append(release_audit_event)
@@ -766,6 +782,7 @@ def release_certificate(
 
     return CertificateRelease(
         certificate=certificate,
+        accreditation_mark_allowed=accreditation_mark_allowed,
         export_audit_event_id=export_audit_event_id,
         export_audit_event=export_audit_event,
         release_audit_event_id=release_audit_event_id,
@@ -786,6 +803,7 @@ def _preview_from_summaries(
     duts: tuple[DeviceUnderTest, ...],
     selected_reference_equipment: tuple[SelectedReferenceEquipment, ...],
     summaries: tuple[MeasurementPointSummary, ...],
+    accreditation_mark_allowed: bool,
 ) -> CertificatePreview:
     calculation_engine_version = _single_version(
         {summary.calculation_engine_version for summary in summaries},
@@ -816,6 +834,7 @@ def _preview_from_summaries(
                 for selection in selected_reference_equipment
             ),
             rows=tuple(_preview_row(summary) for summary in summaries),
+            accreditation_mark_allowed=accreditation_mark_allowed,
         )
     except CertificatePreviewError as exc:
         raise CertificatePreviewServiceError(str(exc)) from exc
@@ -986,6 +1005,7 @@ def _preview_audit_event(preview: CertificatePreview) -> AuditEvent:
             "metadata_recorded_at": preview.metadata.recorded_at.isoformat(),
             "row_count": len(preview.rows),
             "template_version": preview.template_version,
+            "accreditation_mark_allowed": preview.accreditation_mark_allowed,
         },
         software_version=preview.software_version,
         calculation_engine_version=preview.calculation_engine_version,
@@ -1003,6 +1023,7 @@ def _matching_preview_exists(
     calculation_engine_version: str,
     constant_set_version: str,
     budget_version: str,
+    accreditation_mark_allowed: bool,
 ) -> bool:
     return (
         _matching_preview_event(
@@ -1013,6 +1034,7 @@ def _matching_preview_exists(
             calculation_engine_version=calculation_engine_version,
             constant_set_version=constant_set_version,
             budget_version=budget_version,
+            accreditation_mark_allowed=accreditation_mark_allowed,
         )
         is not None
     )
@@ -1027,6 +1049,7 @@ def _matching_preview_event(
     calculation_engine_version: str,
     constant_set_version: str,
     budget_version: str,
+    accreditation_mark_allowed: bool,
 ) -> AuditEvent | None:
     expected_summary_ids = list(summary_ids)
     for event in audit_events:
@@ -1037,6 +1060,11 @@ def _matching_preview_event(
         if event.new_value.get("summary_ids") != expected_summary_ids:
             continue
         if event.new_value.get("template_version") != template_version:
+            continue
+        if (
+            event.new_value.get("accreditation_mark_allowed", True)
+            != accreditation_mark_allowed
+        ):
             continue
         if event.software_version != software_version:
             continue
@@ -1080,6 +1108,7 @@ def _export_artifact_audit_event(
 def _certificate_release_audit_event(
     *,
     certificate: CertificateRecord,
+    accreditation_mark_allowed: bool,
     timestamp: datetime,
 ) -> AuditEvent:
     return AuditEvent(
@@ -1093,6 +1122,7 @@ def _certificate_release_audit_event(
             "certificate_id": certificate.certificate_id,
             "certificate_number": certificate.certificate_number,
             "template_version": certificate.template_version,
+            "accreditation_mark_allowed": accreditation_mark_allowed,
         },
         software_version=certificate.software_version,
         calculation_engine_version=certificate.calculation_engine_version,

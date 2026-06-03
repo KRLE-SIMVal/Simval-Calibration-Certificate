@@ -82,8 +82,10 @@ def test_release_certificate_for_session_requires_preview_and_records_release():
     assert result.certificate.released_by == "qa-001"
     assert result.certificate.calculation_summary_ids == ("point-001",)
     assert result.certificate.primary_artifact.generated_by == "qa-001"
+    assert result.accreditation_mark_allowed is True
     assert result.export_audit_event.action is AuditAction.EXPORT_ARTIFACT_GENERATED
     assert result.release_audit_event.action is AuditAction.CERTIFICATE_RELEASED
+    assert result.release_audit_event.new_value["accreditation_mark_allowed"] is True
     assert result.workflow_audit_event.action is AuditAction.WORKFLOW_TRANSITIONED
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.RELEASED
@@ -159,6 +161,42 @@ def test_release_certificate_for_session_rejects_mismatched_preview_template():
             template_version="template-2026-001",
             software_version="app-0.1.0",
             timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.APPROVED
+    )
+
+
+def test_release_certificate_for_session_rejects_mismatched_accreditation_scope():
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        accreditation_mark_allowed=False,
+    )
+
+    with pytest.raises(CertificateReleaseServiceError):
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+            accreditation_mark_allowed=True,
         )
 
     assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()

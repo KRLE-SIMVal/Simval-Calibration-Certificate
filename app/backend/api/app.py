@@ -59,6 +59,7 @@ class CertificatePreviewRequest(BaseModel):
     job_id: str
     template_version: str
     software_version: str
+    accreditation_mark_allowed: bool
 
 
 class CertificateMetadataRequest(BaseModel):
@@ -183,6 +184,7 @@ class CertificatePreviewResponse(BaseModel):
     constant_set_version: str
     budget_version: str
     template_version: str
+    accreditation_mark_allowed: bool
     summary_ids: tuple[str, ...]
     reference_equipment: tuple[CertificatePreviewReferenceEquipmentResponse, ...]
     rows: tuple[CertificatePreviewRowResponse, ...]
@@ -200,6 +202,7 @@ class CertificateReleaseRequest(BaseModel):
     storage_uri: str
     template_version: str
     software_version: str
+    accreditation_mark_allowed: bool
 
 
 class RenderedCertificateReleaseRequest(BaseModel):
@@ -209,6 +212,7 @@ class RenderedCertificateReleaseRequest(BaseModel):
     artifact_id: str
     template_version: str
     software_version: str
+    accreditation_mark_allowed: bool
 
 
 class ExportArtifactResponse(BaseModel):
@@ -234,6 +238,7 @@ class CertificateReleaseResponse(BaseModel):
     constant_set_version: str
     budget_version: str
     template_version: str
+    accreditation_mark_allowed: bool
     released_by: str
     released_at: str
     artifacts: tuple[ExportArtifactResponse, ...]
@@ -411,6 +416,9 @@ def create_app(
                     job_id=request.job_id,
                     template_version=request.template_version,
                     software_version=request.software_version,
+                    accreditation_mark_allowed=(
+                        request.accreditation_mark_allowed
+                    ),
                     timestamp=clock_fn(),
                 )
         except AuthenticationFailureError as exc:
@@ -451,6 +459,9 @@ def create_app(
                     storage_uri=request.storage_uri,
                     template_version=request.template_version,
                     software_version=request.software_version,
+                    accreditation_mark_allowed=(
+                        request.accreditation_mark_allowed
+                    ),
                     timestamp=clock_fn(),
                 )
         except AuthenticationFailureError as exc:
@@ -493,6 +504,9 @@ def create_app(
                     artifact_directory=artifact_directory,
                     template_version=request.template_version,
                     software_version=request.software_version,
+                    accreditation_mark_allowed=(
+                        request.accreditation_mark_allowed
+                    ),
                     timestamp=clock_fn(),
                 )
         except AuthenticationFailureError as exc:
@@ -534,6 +548,7 @@ def _preview_response(
         constant_set_version=preview.constant_set_version,
         budget_version=preview.budget_version,
         template_version=preview.template_version,
+        accreditation_mark_allowed=preview.accreditation_mark_allowed,
         summary_ids=preview.summary_ids,
         reference_equipment=tuple(
             CertificatePreviewReferenceEquipmentResponse(
@@ -649,6 +664,7 @@ def _release_response(result: CertificateRelease) -> CertificateReleaseResponse:
         constant_set_version=certificate.constant_set_version,
         budget_version=certificate.budget_version,
         template_version=certificate.template_version,
+        accreditation_mark_allowed=result.accreditation_mark_allowed,
         released_by=certificate.released_by or "",
         released_at=(
             certificate.released_at.isoformat()

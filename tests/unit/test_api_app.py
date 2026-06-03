@@ -233,6 +233,7 @@ def test_api_certificate_preview_returns_locked_rows_and_audit_id():
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -240,6 +241,7 @@ def test_api_certificate_preview_returns_locked_rows_and_audit_id():
     payload = response.json()
     assert payload["job_id"] == "job-001"
     assert payload["generated_by"] == "user-001"
+    assert payload["accreditation_mark_allowed"] is True
     assert payload["summary_ids"] == ["point-001"]
     assert payload["reference_equipment"][0]["simval_id"] == "SIM-T-001"
     assert payload["reference_equipment"][0]["serial_number"] == "IRT-123"
@@ -268,6 +270,7 @@ def test_api_certificate_release_returns_release_evidence_after_preview():
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
     assert preview_response.status_code == 200
@@ -288,6 +291,7 @@ def test_api_certificate_release_returns_release_evidence_after_preview():
             "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -295,6 +299,7 @@ def test_api_certificate_release_returns_release_evidence_after_preview():
     payload = response.json()
     assert payload["certificate_id"] == "cert-001"
     assert payload["status"] == "released"
+    assert payload["accreditation_mark_allowed"] is True
     assert payload["calculation_summary_ids"] == ["point-001"]
     assert payload["artifacts"][0]["checksum_sha256"] == "b" * 64
     assert payload["export_audit_event_id"] == 2
@@ -330,6 +335,7 @@ def test_api_certificate_release_rejects_missing_preview():
             "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -356,6 +362,7 @@ def test_api_certificate_rendered_release_generates_pdf_and_release_evidence(tmp
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
     assert preview_response.status_code == 200
@@ -372,6 +379,7 @@ def test_api_certificate_rendered_release_generates_pdf_and_release_evidence(tmp
             "artifact_id": "artifact-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -381,6 +389,7 @@ def test_api_certificate_rendered_release_generates_pdf_and_release_evidence(tmp
     assert artifact_path.exists()
     assert payload["certificate_id"] == "cert-001"
     assert payload["status"] == "released"
+    assert payload["accreditation_mark_allowed"] is True
     assert payload["artifacts"][0]["filename"] == "SIMVAL-CAL-0001.pdf"
     assert payload["artifacts"][0]["checksum_sha256"] == hashlib.sha256(
         artifact_path.read_bytes()
@@ -411,6 +420,7 @@ def test_api_certificate_rendered_release_rejects_missing_storage_configuration(
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
     assert preview_response.status_code == 200
@@ -427,6 +437,7 @@ def test_api_certificate_rendered_release_rejects_missing_storage_configuration(
             "artifact_id": "artifact-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -456,6 +467,7 @@ def test_api_certificate_rendered_release_rejects_unauthorized_session_before_fi
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
     assert preview_response.status_code == 200
@@ -472,6 +484,7 @@ def test_api_certificate_rendered_release_rejects_unauthorized_session_before_fi
             "artifact_id": "artifact-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -492,6 +505,7 @@ def test_api_certificate_preview_rejects_unauthorized_session_before_audit():
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -514,6 +528,7 @@ def test_api_certificate_preview_rejects_unknown_session_before_audit():
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
@@ -536,6 +551,7 @@ def test_api_certificate_preview_returns_conflict_for_wrong_workflow_state():
             "job_id": "job-001",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
         },
     )
 
