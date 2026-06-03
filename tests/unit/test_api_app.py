@@ -563,6 +563,77 @@ def test_api_certificate_revision_records_revision_and_workflow():
     )
 
 
+def test_api_certificate_history_returns_artifacts_and_revisions():
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    app = create_app(connection=connection, clock=_fixed_now)
+    assert _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    ).status_code == 200
+    assert _api_request(
+        app,
+        "POST",
+        "/certificate-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "artifact_type": "pdf",
+            "filename": "SIMVAL-CAL-0001.pdf",
+            "checksum_sha256": "b" * 64,
+            "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    ).status_code == 200
+    assert _api_request(
+        app,
+        "POST",
+        "/certificate-revisions",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "certificate_id": "cert-001",
+            "revision_id": "rev-001",
+            "reason": "Corrected customer address after QA approval.",
+            "software_version": "app-0.1.0",
+        },
+    ).status_code == 200
+
+    response = _api_request(
+        app,
+        "GET",
+        "/certificate-history/job-001",
+        headers={"X-Session-Id": "session-001"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-001"
+    assert payload["entries"][0]["certificate_id"] == "cert-001"
+    assert payload["entries"][0]["artifacts"][0]["storage_uri"] == (
+        "controlled-local://SIMVAL-CAL-0001.pdf"
+    )
+    assert payload["entries"][0]["artifacts"][0]["checksum_sha256"] == "b" * 64
+    assert payload["entries"][0]["revisions"][0]["revision_id"] == "rev-001"
+    assert payload["entries"][0]["revisions"][0]["reason"] == (
+        "Corrected customer address after QA approval."
+    )
+
+
 def test_api_certificate_preview_rejects_unauthorized_session_before_audit():
     connection = _connection_with_preview_data(user_roles=(Role.READ_ONLY,))
 

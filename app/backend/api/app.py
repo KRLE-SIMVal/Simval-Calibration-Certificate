@@ -29,6 +29,7 @@ from app.backend.services.authentication import (
     resolve_actor_for_session,
 )
 from app.backend.services.certificates import (
+    CertificateHistory,
     CertificateMetadataCapture,
     CertificateMetadataServiceError,
     CertificateReferenceEquipmentSelection,
@@ -41,6 +42,7 @@ from app.backend.services.certificates import (
     CertificatePreviewServiceError,
     build_certificate_preview_for_session,
     capture_certificate_metadata_for_session,
+    get_certificate_history_for_session,
     release_certificate_for_session,
     render_and_release_certificate_pdf_for_session,
     revise_released_certificate_for_session,
@@ -271,6 +273,35 @@ class CertificateRevisionResponse(BaseModel):
     workflow_state: str
 
 
+class CertificateHistoryRevisionResponse(BaseModel):
+    revision_id: str
+    reason: str
+    revised_by: str
+    revised_at: str
+
+
+class CertificateHistoryEntryResponse(BaseModel):
+    certificate_id: str
+    certificate_number: str
+    status: str
+    software_version: str
+    calculation_engine_version: str
+    constant_set_version: str
+    budget_version: str
+    template_version: str
+    released_by: str
+    released_at: str
+    artifacts: tuple[ExportArtifactResponse, ...]
+    revisions: tuple[CertificateHistoryRevisionResponse, ...]
+
+
+class CertificateHistoryResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    entries: tuple[CertificateHistoryEntryResponse, ...]
+
+
 def create_app(
     *,
     connection: sqlite3.Connection | None = None,
@@ -317,6 +348,34 @@ def create_app(
             display_name=actor.display_name,
             roles=tuple(role.value for role in actor.roles),
         )
+
+    @app.get(
+        "/certificate-history/{job_id}",
+        response_model=CertificateHistoryResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+        },
+    )
+    def certificate_history(
+        job_id: str,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateHistoryResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = get_certificate_history_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        return _history_response(result)
 
     @app.post(
         "/certificate-metadata",
@@ -755,6 +814,46 @@ def _revision_response(
         revision_audit_event_id=result.revision_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
         workflow_state=workflow_state,
+    )
+
+
+def _history_response(result: CertificateHistory) -> CertificateHistoryResponse:
+    return CertificateHistoryResponse(
+        job_id=result.job_id,
+        entries=tuple(
+            CertificateHistoryEntryResponse(
+                certificate_id=entry.certificate.certificate_id,
+                certificate_number=entry.certificate.certificate_number,
+                status=entry.certificate.status.value,
+                software_version=entry.certificate.software_version,
+                calculation_engine_version=(
+                    entry.certificate.calculation_engine_version
+                ),
+                constant_set_version=entry.certificate.constant_set_version,
+                budget_version=entry.certificate.budget_version,
+                template_version=entry.certificate.template_version,
+                released_by=entry.certificate.released_by or "",
+                released_at=(
+                    entry.certificate.released_at.isoformat()
+                    if entry.certificate.released_at is not None
+                    else ""
+                ),
+                artifacts=tuple(
+                    _artifact_response(artifact)
+                    for artifact in entry.certificate.export_artifacts
+                ),
+                revisions=tuple(
+                    CertificateHistoryRevisionResponse(
+                        revision_id=revision.revision_id,
+                        reason=revision.reason,
+                        revised_by=revision.revised_by,
+                        revised_at=revision.revised_at.isoformat(),
+                    )
+                    for revision in entry.revisions
+                ),
+            )
+            for entry in result.entries
+        ),
     )
 
 

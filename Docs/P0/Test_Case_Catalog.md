@@ -304,6 +304,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-141 | Certificate release rechecks reference equipment suitability. | Release is rejected even with matching preview evidence if selected reference equipment no longer satisfies point suitability rules. |
 | CERT-142 | Certificate preview and release lock accreditation mark scope. | Release is rejected if the accreditation mark decision differs from the matching preview, and rendered PDFs suppress the DANAK/ILAC mark when scope disallows it. |
 | CERT-143 | Released certificate revision workflow. | Authorized QA revision records immutable revision evidence, audit reason, and transitions the job from `released` to `revised`; unauthorized or reasonless attempts are rejected. |
+| CERT-144 | Certificate history retrieval. | History returns released certificate records, artifact checksum/storage URI evidence, and linked revision evidence for authorized sessions. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
@@ -341,6 +342,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-018 | API reference equipment selection with insufficient role. | Request is rejected with `403` before selection, audit, or workflow evidence is written. |
 | API-019 | API reference equipment selection in wrong workflow state. | Request returns a controlled conflict response and writes no selection evidence. |
 | API-020 | API certificate revision. | `POST /certificate-revisions` records revision evidence, audit reason, and workflow transition for a released certificate. |
+| API-021 | API certificate history. | `GET /certificate-history/{job_id}` returns artifact and revision evidence for authorized sessions. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

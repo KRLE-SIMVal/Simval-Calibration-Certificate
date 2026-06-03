@@ -68,6 +68,10 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   evidence, audit reason, and `released` to `revised` workflow transition.
 - `POST /certificate-revisions` exposes the controlled revision path through
   the session-backed API.
+- Session-backed certificate history service returns released certificate
+  records, artifact checksum/storage URI evidence, and linked revision evidence.
+- `GET /certificate-history/{job_id}` exposes certificate history retrieval
+  through the API for authorized sessions.
 
 ## Scope Not Implemented
 
@@ -157,6 +161,12 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   workflow: 97 passed on Python 3.12.10.
 - Default regression suite after released-certificate revision workflow:
   336 passed, 2 skipped on Python 3.12.10.
+- Focused certificate history, revision, and API suite: 25 passed on Python
+  3.12.10.
+- Focused certificate, API, and certificate persistence suite after history
+  retrieval: 100 passed on Python 3.12.10.
+- Default regression suite after certificate history retrieval: 339 passed,
+  2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 

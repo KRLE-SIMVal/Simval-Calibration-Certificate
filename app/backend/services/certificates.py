@@ -131,6 +131,18 @@ class CertificateRevisionRegistration:
     workflow_audit_event: AuditEvent
 
 
+@dataclass(frozen=True, slots=True)
+class CertificateHistoryEntry:
+    certificate: CertificateRecord
+    revisions: tuple[CertificateRevision, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CertificateHistory:
+    job_id: str
+    entries: tuple[CertificateHistoryEntry, ...]
+
+
 def capture_certificate_metadata_for_session(
     *,
     connection: sqlite3.Connection,
@@ -809,6 +821,38 @@ def release_certificate(
     )
 
 
+def get_certificate_history_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    timestamp: datetime,
+) -> CertificateHistory:
+    """Return released certificate artifact and revision evidence for a job."""
+    _require_history_text(job_id, "Job id")
+    resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.VIEW_RELEASED_CERTIFICATE,
+        timestamp=timestamp,
+    )
+    certificate_repository = SQLiteCertificateRecordRepository(connection)
+    revision_repository = SQLiteCertificateRevisionRepository(connection)
+    certificates = certificate_repository.list_for_job(job_id)
+    return CertificateHistory(
+        job_id=job_id,
+        entries=tuple(
+            CertificateHistoryEntry(
+                certificate=certificate,
+                revisions=revision_repository.list_for_original(
+                    certificate.certificate_id
+                ),
+            )
+            for certificate in certificates
+        ),
+    )
+
+
 def revise_released_certificate_for_session(
     *,
     connection: sqlite3.Connection,
@@ -1324,6 +1368,11 @@ def _require_reference_equipment_text(value: str, field_name: str) -> None:
 def _require_revision_text(value: str, field_name: str) -> None:
     if value.strip() == "":
         raise CertificateRevisionServiceError(f"{field_name} is required.")
+
+
+def _require_history_text(value: str, field_name: str) -> None:
+    if value.strip() == "":
+        raise CertificatePreviewServiceError(f"{field_name} is required.")
 
 
 def _equipment_range_text(equipment: ReferenceEquipment) -> str:
