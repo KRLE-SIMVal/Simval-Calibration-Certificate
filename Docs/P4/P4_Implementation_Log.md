@@ -48,6 +48,8 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   transitions `metadata_complete` jobs to `equipment_selected`.
 - `POST /reference-equipment-selections` exposes the controlled selection path
   through the API.
+- Deterministic dependency-free XLSX uncertainty-budget artifact renderer for
+  locked automatic temperature calculation outputs.
 
 ## Scope Not Implemented
 
@@ -57,7 +59,8 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 - No full equipment-library CRUD workflow yet.
 - No point-level suitability check at selection time yet; suitability blockers
   remain domain rules until linked into the end-to-end workflow.
-- No XLSX uncertainty-budget export yet.
+- No full uncertainty-budget editor/export workflow beyond locked calculation
+  result XLSX rendering yet.
 - No PDF/A, digital signature, or qualified-signature support.
 - No customer-facing UI.
 
@@ -106,6 +109,10 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   Python 3.12.10.
 - Default regression suite after renderer pagination slice: 321 passed,
   2 skipped on Python 3.12.10.
+- Focused uncertainty-budget XLSX export, calculation, artifact, and record
+  suite: 21 passed on Python 3.12.10.
+- Default regression suite after uncertainty-budget XLSX export slice:
+  323 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -114,5 +121,6 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 | PDF output has SIMVal-oriented page structure but does not exactly match the approved certificate template. | Add exact template-contract tests, logo/DANAK mark handling, and visual/text extraction checks before treating output as customer-ready. |
 | Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
 | Reference-equipment selection is audited and available to preview/rendering, but full library CRUD and point-level suitability checks are not yet wired into workflow. | Add controlled equipment-library management and run `reference_equipment_blockers` against actual selected points before production workflow validation. |
+| XLSX uncertainty-budget rendering covers locked automatic temperature calculation output, not a full editable budget-editor export. | Add controlled budget-editor export once the budget module is implemented and approved. |
 | Rendered release can leave an orphan artifact if file storage succeeds but the later database release transaction fails. | Add a pending/finalized artifact state or transactional artifact registry before production deployment. |
 | No PDF/A or digital-signature support exists. | Decide signature/PDF archival requirements before final production validation. |

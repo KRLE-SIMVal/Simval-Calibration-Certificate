@@ -134,6 +134,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | UB-041 | Certificate links to approved budget version. | Link stored and immutable after release. |
 | UB-042 | Approved budget requires approval evidence. | Approver and approval timestamp are required. |
 | UB-043 | Budget links to a constant-set version. | Missing linked constant-set version is rejected. |
+| UB-050 | Export uncertainty budget XLSX. | Existing calculation contributions, combined uncertainty, expanded uncertainty, reported uncertainty, and version locks are written to a deterministic XLSX artifact without recalculation. |
+| UB-051 | Uncertainty budget XLSX rejects unsafe certificate number. | Blank or unsafe certificate numbers are rejected before workbook bytes are generated. |
 | UB-060 | Required contribution missing. | Warning or block according to method rule. |
 
 ## Constant Sets And Version Locks

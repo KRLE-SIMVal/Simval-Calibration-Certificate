@@ -57,7 +57,7 @@ Status values:
 | UB-003 combined uncertainty | RSS, sensitivity coefficient, expanded uncertainty. | UB-020 to UB-029 | Planned |
 | UB-004 distributions | Normal, rectangular, triangular, U-shaped. | UB-030 to UB-039 | Planned |
 | UB-005 budget versioning | Draft, approved, retired, certificate link. | UB-040 to UB-049 | Planned |
-| UB-006 export evidence | PDF/XLSX content and independent recalculation summary. | UB-050 to UB-059 | Planned |
+| UB-006 export evidence | PDF/XLSX content and independent recalculation summary. | UB-050 to UB-059 | Partial |
 | UB-007 missing contribution warning | Required method contribution checks. | UB-060 to UB-069 | Planned |
 
 ## Output, Audit, And Compliance Requirements
