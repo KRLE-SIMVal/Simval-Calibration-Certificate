@@ -7,7 +7,11 @@ from decimal import Decimal
 import hashlib
 import re
 
-from app.backend.certificates.preview import CertificatePreview, CertificatePreviewRow
+from app.backend.certificates.preview import (
+    CertificatePreview,
+    CertificatePreviewDut,
+    CertificatePreviewRow,
+)
 from app.backend.certificates.records import ArtifactType
 
 
@@ -76,13 +80,14 @@ def _certificate_pages(
     preview: CertificatePreview,
 ) -> tuple[tuple[str, ...], ...]:
     dut_groups = _group_rows_by_dut(preview.rows)
+    duts_by_id = _duts_by_id(preview.duts)
     total_pages = len(dut_groups) + 2
     pages = [
         _cover_page_lines(
             certificate_id=certificate_id,
             certificate_number=certificate_number,
             preview=preview,
-            dut_ids=tuple(dut_groups),
+            duts=tuple(duts_by_id[dut_id] for dut_id in dut_groups),
             total_pages=total_pages,
         )
     ]
@@ -90,7 +95,8 @@ def _certificate_pages(
         pages.append(
             _result_page_lines(
                 certificate_number=certificate_number,
-                dut_id=dut_id,
+                dut=duts_by_id[dut_id],
+                preview=preview,
                 rows=rows,
                 page_number=page_index,
                 total_pages=total_pages,
@@ -112,38 +118,42 @@ def _cover_page_lines(
     certificate_id: str,
     certificate_number: str,
     preview: CertificatePreview,
-    dut_ids: tuple[str, ...],
+    duts: tuple[CertificatePreviewDut, ...],
     total_pages: int,
 ) -> tuple[str, ...]:
-    certificate_date = preview.generated_at.date().isoformat()
-    item_text = dut_ids[0] if len(dut_ids) == 1 else ", ".join(dut_ids)
+    metadata = preview.metadata
+    item_text = (
+        duts[0].display_name
+        if len(duts) == 1
+        else f"{len(duts)} devices: " + ", ".join(dut.display_name for dut in duts)
+    )
     return (
         "SIMVal A/S",
         "Kalibreringscertifikat",
         "Calibration certificate",
         _page_label(1, total_pages),
-        f"Certifikat dato / Certificate date: {certificate_date}",
-        f"Godkendt af / Approved by: {preview.generated_by}",
+        f"Certifikat dato / Certificate date: {metadata.certificate_date.isoformat()}",
+        f"Godkendt af / Approved by: {metadata.approved_by_label}",
         "Digital Signatur / Digital Signature",
         f"Certifikat nummer / Certificate number: {certificate_number}",
         f"Certificate ID: {certificate_id}",
         f"Job ID: {preview.job_id}",
-        "Rekvirent / Client: not captured in P4 preview model",
+        f"Tasknummer / Task number: {metadata.task_number}",
+        f"Rekvisitionsnummer / Purchase order: {metadata.purchase_order}",
+        f"Rekvirent / Client: {metadata.client_name}",
+        f"Client address: {metadata.client_address}",
         f"Kalibreringsobjekt / Item calibrated: {item_text}",
-        f"Kalibreringsdato / Date of calibration: {certificate_date}",
-        f"Modtagelsesdato / Date of receipt: {certificate_date}",
+        (
+            "Kalibreringsdato / Date of calibration: "
+            f"{metadata.calibration_date.isoformat()}"
+        ),
+        f"Modtagelsesdato / Date of receipt: {metadata.receipt_date.isoformat()}",
         "Sporbarhed / Traceability:",
-        (
-            "This calibration certificate is intended to support metrological "
-            "traceability under ILAC/EA/DANAK principles."
-        ),
-        "Kalibreringssted / Place of calibration: SIMVal laboratory",
-        "Procedure / Procedure: SIMVal SOP for calibration",
+        metadata.traceability_statement,
+        f"Kalibreringssted / Place of calibration: {metadata.place}",
+        f"Procedure / Procedure: {metadata.procedure}",
         "Måleusikkerhed / Uncertainty:",
-        (
-            "Reported expanded uncertainty is based on standard uncertainty "
-            "multiplied by coverage factor k=2."
-        ),
+        metadata.uncertainty_statement,
         f"Template Version: {preview.template_version}",
         f"Software Version: {preview.software_version}",
         f"Calculation Engine Version: {preview.calculation_engine_version}",
@@ -158,7 +168,8 @@ def _cover_page_lines(
 def _result_page_lines(
     *,
     certificate_number: str,
-    dut_id: str,
+    dut: CertificatePreviewDut,
+    preview: CertificatePreview,
     rows: tuple[CertificatePreviewRow, ...],
     page_number: int,
     total_pages: int,
@@ -167,10 +178,13 @@ def _result_page_lines(
         f"Certifikat nummer / Certificate number: {certificate_number}",
         _page_label(page_number, total_pages),
         "KALIBRERINGSCERTIFIKAT / Calibration Certificate",
-        f"Kalibreringsobjekt / Item calibrated: DUT: {dut_id}",
-        "Bemærkninger / Remarks: not captured in P4 preview model",
-        "Omgivelsesforhold / Measurement conditions: not captured in P4 preview model",
-        "Temperaturskala / Temperature scale: ITS-90",
+        f"Kalibreringsobjekt / Item calibrated: {dut.display_name}",
+        f"Bemærkninger / Remarks: {preview.metadata.remarks}",
+        (
+            "Omgivelsesforhold / Measurement conditions: "
+            f"{preview.metadata.ambient_conditions}"
+        ),
+        f"Temperaturskala / Temperature scale: {preview.metadata.temperature_scale}",
         "Måleresultater / Measurement Results:",
         (
             "Reference value | Indication | Error of indication +/- expanded "
@@ -224,6 +238,12 @@ def _group_rows_by_dut(
     for row in rows:
         grouped.setdefault(row.dut_id, []).append(row)
     return {dut_id: tuple(dut_rows) for dut_id, dut_rows in grouped.items()}
+
+
+def _duts_by_id(
+    duts: tuple[CertificatePreviewDut, ...],
+) -> dict[str, CertificatePreviewDut]:
+    return {dut.dut_id: dut for dut in duts}
 
 
 def _page_label(page_number: int, total_pages: int) -> str:

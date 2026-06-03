@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from app.backend.certificates.metadata import CertificateMetadata
+
 
 class CertificatePreviewError(ValueError):
     """Raised when a certificate preview would be incomplete or inconsistent."""
@@ -42,6 +44,33 @@ class CertificatePreviewRow:
 
 
 @dataclass(frozen=True, slots=True)
+class CertificatePreviewDut:
+    dut_id: str
+    make: str
+    model: str
+    serial_number: str
+    channel_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "dut_id",
+            "make",
+            "model",
+            "serial_number",
+        ):
+            _require_text(getattr(self, field_name), field_name)
+        if self.channel_id is not None:
+            _require_text(self.channel_id, "channel_id")
+
+    @property
+    def display_name(self) -> str:
+        base = f"{self.make} {self.model} SN: {self.serial_number}"
+        if self.channel_id is None:
+            return base
+        return f"{base} Channel: {self.channel_id}"
+
+
+@dataclass(frozen=True, slots=True)
 class CertificatePreview:
     job_id: str
     generated_by: str
@@ -51,6 +80,8 @@ class CertificatePreview:
     constant_set_version: str
     budget_version: str
     template_version: str
+    metadata: CertificateMetadata
+    duts: tuple[CertificatePreviewDut, ...]
     rows: tuple[CertificatePreviewRow, ...]
 
     def __post_init__(self) -> None:
@@ -65,8 +96,22 @@ class CertificatePreview:
         ):
             _require_text(getattr(self, field_name), field_name)
         _require_timezone_aware(self.generated_at, "Preview generated_at")
+        if not isinstance(self.metadata, CertificateMetadata):
+            raise CertificatePreviewError("Certificate metadata is invalid.")
+        if self.metadata.job_id != self.job_id:
+            raise CertificatePreviewError("Certificate metadata must belong to the job.")
+        for dut in self.duts:
+            if not isinstance(dut, CertificatePreviewDut):
+                raise CertificatePreviewError("Certificate DUT metadata is invalid.")
         if len(self.rows) == 0:
             raise CertificatePreviewError("Certificate preview requires result rows.")
+        dut_ids = {dut.dut_id for dut in self.duts}
+        missing_dut_ids = sorted({row.dut_id for row in self.rows} - dut_ids)
+        if missing_dut_ids:
+            raise CertificatePreviewError(
+                "Certificate preview missing DUT metadata for: "
+                + ", ".join(missing_dut_ids)
+            )
 
     @property
     def summary_ids(self) -> tuple[str, ...]:

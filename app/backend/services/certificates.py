@@ -9,6 +9,7 @@ import sqlite3
 
 from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.auth.permissions import Action
+from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.certificates.records import (
     ArtifactType,
     CertificateRecord,
@@ -17,6 +18,7 @@ from app.backend.certificates.records import (
 )
 from app.backend.certificates.preview import (
     CertificatePreview,
+    CertificatePreviewDut,
     CertificatePreviewError,
     CertificatePreviewRow,
 )
@@ -28,11 +30,15 @@ from app.backend.certificates.storage import (
     StoredCertificateArtifact,
     store_rendered_artifact,
 )
+from app.backend.domain.entities import DeviceUnderTest
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
+    RecordNotFoundError,
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteCertificateMetadataRepository,
     SQLiteCertificateRecordRepository,
+    SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
 )
 from app.backend.services.authentication import resolve_actor_for_action
@@ -117,6 +123,11 @@ def build_certificate_preview(
 
     with connection:
         job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+        metadata_repository = SQLiteCertificateMetadataRepository(
+            connection,
+            autocommit=False,
+        )
+        dut_repository = SQLiteDeviceUnderTestRepository(connection, autocommit=False)
         summary_repository = SQLiteMeasurementPointSummaryRepository(
             connection,
             autocommit=False,
@@ -139,6 +150,13 @@ def build_certificate_preview(
             raise CertificatePreviewServiceError(
                 "Certificate preview requires calculation summaries."
             )
+        try:
+            metadata = metadata_repository.get(job_id)
+        except RecordNotFoundError as exc:
+            raise CertificatePreviewServiceError(
+                "Certificate preview requires certificate metadata."
+            ) from exc
+        duts = dut_repository.list_for_job(job_id)
 
         preview = _preview_from_summaries(
             job_id=job_id,
@@ -146,6 +164,8 @@ def build_certificate_preview(
             generated_at=timestamp,
             software_version=software_version,
             template_version=template_version,
+            metadata=metadata,
+            duts=duts,
             summaries=summaries,
         )
         audit_event = _preview_audit_event(preview)
@@ -263,6 +283,8 @@ def _preview_for_release_rendering(
     software_version: str,
 ) -> CertificatePreview:
     job_repository = SQLiteCalibrationJobRepository(connection)
+    metadata_repository = SQLiteCertificateMetadataRepository(connection)
+    dut_repository = SQLiteDeviceUnderTestRepository(connection)
     summary_repository = SQLiteMeasurementPointSummaryRepository(connection)
     audit_repository = SQLiteAuditEventRepository(connection)
 
@@ -276,6 +298,13 @@ def _preview_for_release_rendering(
         raise CertificateReleaseServiceError(
             "Certificate rendering for release requires calculation summaries."
         )
+    try:
+        metadata = metadata_repository.get(job_id)
+    except RecordNotFoundError as exc:
+        raise CertificateReleaseServiceError(
+            "Certificate rendering for release requires certificate metadata."
+        ) from exc
+    duts = dut_repository.list_for_job(job_id)
     summary_ids = tuple(summary.point_id for summary in summaries)
     calculation_engine_version = _single_release_version(
         {summary.calculation_engine_version for summary in summaries},
@@ -309,6 +338,8 @@ def _preview_for_release_rendering(
             generated_at=preview_event.timestamp,
             software_version=software_version,
             template_version=template_version,
+            metadata=metadata,
+            duts=duts,
             summaries=summaries,
         )
     except CertificatePreviewServiceError as exc:
@@ -470,6 +501,8 @@ def _preview_from_summaries(
     generated_at: datetime,
     software_version: str,
     template_version: str,
+    metadata: CertificateMetadata,
+    duts: tuple[DeviceUnderTest, ...],
     summaries: tuple[MeasurementPointSummary, ...],
 ) -> CertificatePreview:
     calculation_engine_version = _single_version(
@@ -494,6 +527,8 @@ def _preview_from_summaries(
             constant_set_version=constant_set_version,
             budget_version=budget_version,
             template_version=template_version,
+            metadata=metadata,
+            duts=tuple(_preview_dut(dut) for dut in duts),
             rows=tuple(_preview_row(summary) for summary in summaries),
         )
     except CertificatePreviewError as exc:
@@ -514,6 +549,16 @@ def _preview_row(summary: MeasurementPointSummary) -> CertificatePreviewRow:
     )
 
 
+def _preview_dut(dut: DeviceUnderTest) -> CertificatePreviewDut:
+    return CertificatePreviewDut(
+        dut_id=dut.id,
+        make=dut.make,
+        model=dut.model,
+        serial_number=dut.serial_number,
+        channel_id=dut.channel_id,
+    )
+
+
 def _preview_audit_event(preview: CertificatePreview) -> AuditEvent:
     return AuditEvent(
         entity_type="calibration_job",
@@ -523,6 +568,8 @@ def _preview_audit_event(preview: CertificatePreview) -> AuditEvent:
         timestamp=preview.generated_at,
         new_value={
             "summary_ids": list(preview.summary_ids),
+            "dut_ids": [dut.dut_id for dut in preview.duts],
+            "metadata_recorded_at": preview.metadata.recorded_at.isoformat(),
             "row_count": len(preview.rows),
             "template_version": preview.template_version,
         },

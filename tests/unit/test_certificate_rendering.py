@@ -1,9 +1,11 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
 
+from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.certificates.preview import CertificatePreview, CertificatePreviewRow
+from app.backend.certificates.preview import CertificatePreviewDut
 from app.backend.certificates.rendering import (
     CertificateRenderingError,
     render_certificate_pdf,
@@ -55,7 +57,14 @@ def test_render_certificate_pdf_uses_simval_three_page_structure_for_single_dut(
     assert "Side 1 af 3 / Page 1 of 3" in content_text
     assert "Side 2 af 3 / Page 2 of 3" in content_text
     assert "Side 3 af 3 / Page 3 of 3" in content_text
-    assert "DUT: dut-001" in content_text
+    assert "TASK-2026-001" in content_text
+    assert "PO-12345" in content_text
+    assert "SIMVal customer" in content_text
+    assert "Validated Road 1, 2800 Lyngby" in content_text
+    assert "Kaye ValProbe RT SN: MJT1 Channel: MJT1-A" in content_text
+    assert "SIMVal SOP-TEMP-001" in content_text
+    assert "Room temperature 23 +/- 2 deg C." in content_text
+    assert "not captured in P4 preview model" not in content_text
 
 
 def test_render_certificate_pdf_uses_locked_preview_values_without_recalculation():
@@ -68,6 +77,8 @@ def test_render_certificate_pdf_uses_locked_preview_values_without_recalculation
         constant_set_version="constants-2026-001",
         budget_version="budget-temp-001",
         template_version="template-2026-001",
+        metadata=_metadata(),
+        duts=(_dut(),),
         rows=(
             CertificatePreviewRow(
                 point_id="point-001",
@@ -107,8 +118,8 @@ def test_render_certificate_pdf_groups_multiple_duts_in_one_certificate():
     assert "Side 2 af 4 / Page 2 of 4" in content_text
     assert "Side 3 af 4 / Page 3 of 4" in content_text
     assert "Side 4 af 4 / Page 4 of 4" in content_text
-    assert "DUT: dut-001" in content_text
-    assert "DUT: dut-002" in content_text
+    assert "Kaye ValProbe RT SN: MJT1 Channel: MJT1-A" in content_text
+    assert "Kaye ValProbe RT SN: NWU2 Channel: NWU2-A" in content_text
     assert "Point point-001" in content_text
     assert "Point point-002" in content_text
 
@@ -132,6 +143,8 @@ def _preview() -> CertificatePreview:
         constant_set_version="constants-2026-001",
         budget_version="budget-temp-001",
         template_version="template-2026-001",
+        metadata=_metadata(),
+        duts=(_dut(),),
         rows=(
             CertificatePreviewRow(
                 point_id="point-001",
@@ -158,6 +171,17 @@ def _multi_dut_preview() -> CertificatePreview:
         constant_set_version="constants-2026-001",
         budget_version="budget-temp-001",
         template_version="template-2026-001",
+        metadata=_metadata(),
+        duts=(
+            _dut(),
+            CertificatePreviewDut(
+                dut_id="dut-002",
+                make="Kaye",
+                model="ValProbe RT",
+                serial_number="NWU2",
+                channel_id="NWU2-A",
+            ),
+        ),
         rows=(
             CertificatePreviewRow(
                 point_id="point-001",
@@ -182,4 +206,43 @@ def _multi_dut_preview() -> CertificatePreview:
                 unit="deg C",
             ),
         ),
+    )
+
+
+def _metadata() -> CertificateMetadata:
+    return CertificateMetadata(
+        job_id="job-001",
+        certificate_date=date(2026, 6, 3),
+        calibration_date=date(2026, 6, 1),
+        receipt_date=date(2026, 5, 31),
+        task_number="TASK-2026-001",
+        purchase_order="PO-12345",
+        client_name="SIMVal customer",
+        client_address="Validated Road 1, 2800 Lyngby",
+        procedure="SIMVal SOP-TEMP-001",
+        place="SIMVal Temperature Laboratory, Lyngby",
+        approved_by_label="QA User",
+        remarks="Aflæsning af logger data via ValProbe RT.",
+        traceability_statement=(
+            "Measurements are metrologically traceable through calibrated "
+            "reference equipment under ILAC/EA/DANAK principles."
+        ),
+        uncertainty_statement=(
+            "The reported expanded uncertainty is based on standard uncertainty "
+            "multiplied by coverage factor k=2."
+        ),
+        ambient_conditions="Room temperature 23 +/- 2 deg C.",
+        temperature_scale="ITS-90",
+        recorded_by="operator-001",
+        recorded_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _dut() -> CertificatePreviewDut:
+    return CertificatePreviewDut(
+        dut_id="dut-001",
+        make="Kaye",
+        model="ValProbe RT",
+        serial_number="MJT1",
+        channel_id="MJT1-A",
     )

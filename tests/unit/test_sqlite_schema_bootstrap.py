@@ -13,13 +13,14 @@ def test_bootstrap_sqlite_schema_creates_current_schema_and_records_baseline():
 
     result = bootstrap_sqlite_schema(connection)
 
-    assert list_schema_versions(connection) == ("p3-sqlite-schema-v1",)
-    assert result.schema_versions == ("p3-sqlite-schema-v1",)
+    assert list_schema_versions(connection) == ("p4-sqlite-schema-v1",)
+    assert result.schema_versions == ("p4-sqlite-schema-v1",)
     assert result.controlled_migrations[0].version == (
         SQLITE_BASELINE_SCHEMA_MIGRATION.version
     )
     connection.execute("SELECT id FROM user_accounts").fetchall()
     connection.execute("SELECT id FROM audit_events").fetchall()
+    connection.execute("SELECT job_id FROM certificate_metadata").fetchall()
 
 
 def test_bootstrap_sqlite_schema_is_idempotent_for_matching_baseline_checksum():

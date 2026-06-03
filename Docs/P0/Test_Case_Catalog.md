@@ -284,6 +284,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-130 | Rendered release by unauthorized actor. | Rendering/release is blocked before artifact bytes or certificate release evidence are written. |
 | CERT-131 | SIMVal certificate page structure. | Rendered PDF contains cover, result, and reference-equipment pages with bilingual SIMVal certificate headings. |
 | CERT-132 | Multi-DUT certificate rendering. | One certificate can group multiple DUT result sections while single-DUT certificates remain supported. |
+| CERT-133 | Certificate metadata required for preview. | Preview is blocked until certificate date, task, client, PO, procedure, place, remarks, traceability, uncertainty, and conditions are captured. |
+| CERT-134 | Renderer uses certificate metadata. | Rendered PDF uses locked metadata values and contains no placeholder text for page 1 or result-page remarks/conditions. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
@@ -347,6 +349,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PERSIST-034 | Store and reload required temperature setpoints for a job. | Setpoint, unit, sequence, creator, and timestamp round-trip unchanged in deterministic order. |
 | PERSIST-035 | Store required temperature setpoint for unknown job. | Insert is rejected by referential integrity. |
 | PERSIST-036 | Store duplicate required temperature setpoint sequence or value. | Duplicate plan entries are rejected. |
+| PERSIST-037 | Store and reload certificate metadata. | Certificate metadata fields and recorded-by/timestamp evidence round-trip unchanged. |
+| PERSIST-038 | Mutate certificate metadata directly. | Database rejects update/delete because certificate metadata snapshots are immutable. |
 | MIG-001 | Apply controlled SQLite migrations. | Migrations apply in supplied order and record version, description, checksum, and timestamp. |
 | MIG-002 | Re-run applied migration with same checksum. | Migration runner is idempotent and does not duplicate history. |
 | MIG-003 | Re-run applied migration with changed SQL. | Checksum mismatch blocks execution. |

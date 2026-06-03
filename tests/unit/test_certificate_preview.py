@@ -1,10 +1,12 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
 
+from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.certificates.preview import (
     CertificatePreview,
+    CertificatePreviewDut,
     CertificatePreviewError,
     CertificatePreviewRow,
 )
@@ -20,10 +22,14 @@ def test_certificate_preview_records_locked_summary_rows_and_versions():
         constant_set_version="constants-2026-001",
         budget_version="budget-temp-001",
         template_version="template-2026-001",
+        metadata=_metadata(),
+        duts=(_dut(),),
         rows=(_row(),),
     )
 
     assert preview.summary_ids == ("point-001",)
+    assert preview.metadata.client_name == "SIMVal customer"
+    assert preview.duts[0].serial_number == "MJT1"
     assert preview.rows[0].display_error_of_indication == Decimal("-0.004")
     assert preview.rows[0].reported_expanded_uncertainty == Decimal("0.012")
 
@@ -39,6 +45,8 @@ def test_certificate_preview_rejects_empty_rows():
             constant_set_version="constants-2026-001",
             budget_version="budget-temp-001",
             template_version="template-2026-001",
+            metadata=_metadata(),
+            duts=(_dut(),),
             rows=(),
         )
 
@@ -54,8 +62,60 @@ def test_certificate_preview_rejects_naive_timestamp():
             constant_set_version="constants-2026-001",
             budget_version="budget-temp-001",
             template_version="template-2026-001",
+            metadata=_metadata(),
+            duts=(_dut(),),
             rows=(_row(),),
         )
+
+
+def test_certificate_preview_rejects_row_without_dut_metadata():
+    with pytest.raises(CertificatePreviewError):
+        CertificatePreview(
+            job_id="job-001",
+            generated_by="user-001",
+            generated_at=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+            software_version="app-0.1.0",
+            calculation_engine_version="calc-engine-0.1.0",
+            constant_set_version="constants-2026-001",
+            budget_version="budget-temp-001",
+            template_version="template-2026-001",
+            metadata=_metadata(),
+            duts=(),
+            rows=(_row(),),
+        )
+
+
+def _metadata() -> CertificateMetadata:
+    return CertificateMetadata(
+        job_id="job-001",
+        certificate_date=date(2026, 6, 3),
+        calibration_date=date(2026, 6, 1),
+        receipt_date=date(2026, 5, 31),
+        task_number="TASK-2026-001",
+        purchase_order="PO-12345",
+        client_name="SIMVal customer",
+        client_address="Validated Road 1, 2800 Lyngby",
+        procedure="SIMVal SOP-TEMP-001",
+        place="SIMVal Temperature Laboratory, Lyngby",
+        approved_by_label="QA User",
+        remarks="Aflæsning af logger data via ValProbe RT.",
+        traceability_statement="Measurements are metrologically traceable.",
+        uncertainty_statement="Expanded uncertainty uses k=2.",
+        ambient_conditions="Room temperature 23 +/- 2 deg C.",
+        temperature_scale="ITS-90",
+        recorded_by="operator-001",
+        recorded_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _dut() -> CertificatePreviewDut:
+    return CertificatePreviewDut(
+        dut_id="dut-001",
+        make="Kaye",
+        model="ValProbe RT",
+        serial_number="MJT1",
+        channel_id="MJT1-A",
+    )
 
 
 def _row() -> CertificatePreviewRow:

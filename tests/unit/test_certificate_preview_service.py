@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -7,6 +7,7 @@ import pytest
 from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
+from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -23,6 +24,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteCertificateMetadataRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
@@ -43,10 +45,13 @@ def _connection_with_summary(
     *,
     job_state: WorkflowState = WorkflowState.CALCULATED,
     user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+    include_metadata: bool = True,
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
     SQLiteCalibrationJobRepository(connection).add(_job(job_state))
+    if include_metadata:
+        SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
     SQLiteMeasurementWindowRepository(connection).add(_window("window-001", -80.0))
@@ -70,6 +75,9 @@ def test_build_certificate_preview_for_session_consumes_locked_summaries_and_aud
 
     preview = result.preview
     assert preview.generated_by == "user-001"
+    assert preview.metadata.client_name == "SIMVal customer"
+    assert preview.metadata.purchase_order == "PO-12345"
+    assert preview.duts[0].serial_number == "MJT1"
     assert preview.summary_ids == ("point-001",)
     assert preview.rows[0].reference == pytest.approx(-80.0305)
     assert preview.rows[0].display_error_of_indication == Decimal("-0.004")
@@ -78,6 +86,8 @@ def test_build_certificate_preview_for_session_consumes_locked_summaries_and_aud
     assert result.audit_event.user_id == "user-001"
     assert result.audit_event.new_value == {
         "summary_ids": ["point-001"],
+        "dut_ids": ["dut-001"],
+        "metadata_recorded_at": "2026-06-01T14:00:00+00:00",
         "row_count": 1,
         "template_version": "template-2026-001",
     }
@@ -143,6 +153,26 @@ def test_build_certificate_preview_for_session_rejects_missing_summaries():
         )
 
 
+def test_build_certificate_preview_for_session_rejects_missing_metadata():
+    connection = _connection_with_summary(include_metadata=False)
+
+    with pytest.raises(CertificatePreviewServiceError) as exc_info:
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "metadata" in str(exc_info.value).lower()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
 def test_build_certificate_preview_for_session_rejects_mismatched_versions():
     connection = _connection_with_summary()
     SQLiteMeasurementWindowRepository(connection).add(_window("window-002", 0.0))
@@ -181,6 +211,29 @@ def _job(state: WorkflowState) -> CalibrationJob:
         created_by="operator-001",
         state=state,
         created_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _metadata() -> CertificateMetadata:
+    return CertificateMetadata(
+        job_id="job-001",
+        certificate_date=date(2026, 6, 3),
+        calibration_date=date(2026, 6, 1),
+        receipt_date=date(2026, 5, 31),
+        task_number="TASK-2026-001",
+        purchase_order="PO-12345",
+        client_name="SIMVal customer",
+        client_address="Validated Road 1, 2800 Lyngby",
+        procedure="SIMVal SOP-TEMP-001",
+        place="SIMVal Temperature Laboratory, Lyngby",
+        approved_by_label="QA User",
+        remarks="Aflæsning af logger data via ValProbe RT.",
+        traceability_statement="Measurements are metrologically traceable.",
+        uncertainty_statement="Expanded uncertainty uses k=2.",
+        ambient_conditions="Room temperature 23 +/- 2 deg C.",
+        temperature_scale="ITS-90",
+        recorded_by="operator-001",
+        recorded_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
     )
 
 

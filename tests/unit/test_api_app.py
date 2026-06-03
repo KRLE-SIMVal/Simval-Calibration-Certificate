@@ -1,6 +1,6 @@
 import sqlite3
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import httpx
@@ -8,6 +8,7 @@ import httpx
 from app.backend.api.app import create_app
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
+from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -24,6 +25,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteCertificateMetadataRepository,
     SQLiteCertificateRecordRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
@@ -266,6 +268,7 @@ def _connection_with_preview_data(
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     initialize_schema(connection)
     SQLiteCalibrationJobRepository(connection).add(_job(job_state))
+    SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
     SQLiteMeasurementWindowRepository(connection).add(_window())
@@ -289,6 +292,29 @@ def _job(state: WorkflowState) -> CalibrationJob:
         created_by="operator-001",
         state=state,
         created_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _metadata() -> CertificateMetadata:
+    return CertificateMetadata(
+        job_id="job-001",
+        certificate_date=date(2026, 6, 3),
+        calibration_date=date(2026, 6, 1),
+        receipt_date=date(2026, 5, 31),
+        task_number="TASK-2026-001",
+        purchase_order="PO-12345",
+        client_name="SIMVal customer",
+        client_address="Validated Road 1, 2800 Lyngby",
+        procedure="SIMVal SOP-TEMP-001",
+        place="SIMVal Temperature Laboratory, Lyngby",
+        approved_by_label="QA User",
+        remarks="Aflæsning af logger data via ValProbe RT.",
+        traceability_statement="Measurements are metrologically traceable.",
+        uncertainty_statement="Expanded uncertainty uses k=2.",
+        ambient_conditions="Room temperature 23 +/- 2 deg C.",
+        temperature_scale="ITS-90",
+        recorded_by="operator-001",
+        recorded_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
     )
 
 

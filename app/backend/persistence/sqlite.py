@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import json
 import sqlite3
@@ -17,6 +17,7 @@ from app.backend.certificates.records import (
     CertificateStatus,
     ExportArtifact,
 )
+from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.domain.entities import (
     CalibrationJob,
@@ -37,7 +38,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
 
-SCHEMA_VERSION = "p3-sqlite-schema-v1"
+SCHEMA_VERSION = "p4-sqlite-schema-v1"
 
 
 class PersistenceError(RuntimeError):
@@ -285,6 +286,27 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS ix_certificates_job
             ON certificates(job_id, certificate_id);
 
+        CREATE TABLE IF NOT EXISTS certificate_metadata (
+            job_id TEXT PRIMARY KEY REFERENCES calibration_jobs(id),
+            certificate_date TEXT NOT NULL,
+            calibration_date TEXT NOT NULL,
+            receipt_date TEXT NOT NULL,
+            task_number TEXT NOT NULL,
+            purchase_order TEXT NOT NULL,
+            client_name TEXT NOT NULL,
+            client_address TEXT NOT NULL,
+            procedure TEXT NOT NULL,
+            place TEXT NOT NULL,
+            approved_by_label TEXT NOT NULL,
+            remarks TEXT NOT NULL,
+            traceability_statement TEXT NOT NULL,
+            uncertainty_statement TEXT NOT NULL,
+            ambient_conditions TEXT NOT NULL,
+            temperature_scale TEXT NOT NULL,
+            recorded_by TEXT NOT NULL,
+            recorded_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS certificate_number_sequences (
             prefix TEXT PRIMARY KEY,
             next_value INTEGER NOT NULL CHECK (next_value > 0)
@@ -367,6 +389,18 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             WHEN OLD.status = 'released'
             BEGIN
                 SELECT RAISE(ABORT, 'released certificates are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS certificate_metadata_no_update
+            BEFORE UPDATE ON certificate_metadata
+            BEGIN
+                SELECT RAISE(ABORT, 'certificate metadata is immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS certificate_metadata_no_delete
+            BEFORE DELETE ON certificate_metadata
+            BEGIN
+                SELECT RAISE(ABORT, 'certificate metadata is immutable');
             END;
 
         CREATE TRIGGER IF NOT EXISTS measurement_point_summaries_no_update
@@ -1873,6 +1907,109 @@ class SQLiteCertificateNumberAllocator:
             self._connection.rollback()
 
 
+class SQLiteCertificateMetadataRepository:
+    """Repository for immutable certificate metadata snapshots."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add(self, metadata: CertificateMetadata) -> None:
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO certificate_metadata (
+                    job_id,
+                    certificate_date,
+                    calibration_date,
+                    receipt_date,
+                    task_number,
+                    purchase_order,
+                    client_name,
+                    client_address,
+                    procedure,
+                    place,
+                    approved_by_label,
+                    remarks,
+                    traceability_statement,
+                    uncertainty_statement,
+                    ambient_conditions,
+                    temperature_scale,
+                    recorded_by,
+                    recorded_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    metadata.job_id,
+                    _date_to_text(metadata.certificate_date, "Certificate date"),
+                    _date_to_text(metadata.calibration_date, "Calibration date"),
+                    _date_to_text(metadata.receipt_date, "Receipt date"),
+                    metadata.task_number,
+                    metadata.purchase_order,
+                    metadata.client_name,
+                    metadata.client_address,
+                    metadata.procedure,
+                    metadata.place,
+                    metadata.approved_by_label,
+                    metadata.remarks,
+                    metadata.traceability_statement,
+                    metadata.uncertainty_statement,
+                    metadata.ambient_conditions,
+                    metadata.temperature_scale,
+                    metadata.recorded_by,
+                    _datetime_to_text(metadata.recorded_at, "Metadata recorded_at"),
+                ),
+            )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError("Could not store certificate metadata.") from error
+
+    def get(self, job_id: str) -> CertificateMetadata:
+        row = self._connection.execute(
+            """
+            SELECT
+                job_id,
+                certificate_date,
+                calibration_date,
+                receipt_date,
+                task_number,
+                purchase_order,
+                client_name,
+                client_address,
+                procedure,
+                place,
+                approved_by_label,
+                remarks,
+                traceability_statement,
+                uncertainty_statement,
+                ambient_conditions,
+                temperature_scale,
+                recorded_by,
+                recorded_at
+            FROM certificate_metadata
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(
+                f"Certificate metadata for job {job_id!r} was not found."
+            )
+        return _certificate_metadata_from_row(row)
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
+
+
 class SQLiteCertificateRecordRepository:
     """Repository for certificate records and generated export artifacts."""
 
@@ -2475,6 +2612,29 @@ def _uncertainty_budget_from_row(row: sqlite3.Row) -> UncertaintyBudget:
     )
 
 
+def _certificate_metadata_from_row(row: sqlite3.Row) -> CertificateMetadata:
+    return CertificateMetadata(
+        job_id=row["job_id"],
+        certificate_date=_date_from_text(row["certificate_date"], "Certificate date"),
+        calibration_date=_date_from_text(row["calibration_date"], "Calibration date"),
+        receipt_date=_date_from_text(row["receipt_date"], "Receipt date"),
+        task_number=row["task_number"],
+        purchase_order=row["purchase_order"],
+        client_name=row["client_name"],
+        client_address=row["client_address"],
+        procedure=row["procedure"],
+        place=row["place"],
+        approved_by_label=row["approved_by_label"],
+        remarks=row["remarks"],
+        traceability_statement=row["traceability_statement"],
+        uncertainty_statement=row["uncertainty_statement"],
+        ambient_conditions=row["ambient_conditions"],
+        temperature_scale=row["temperature_scale"],
+        recorded_by=row["recorded_by"],
+        recorded_at=_datetime_from_text(row["recorded_at"], "Metadata recorded_at"),
+    )
+
+
 def _certificate_from_row(
     row: sqlite3.Row,
     calculation_summary_ids: tuple[str, ...],
@@ -2530,6 +2690,19 @@ def _certificate_revision_from_row(row: sqlite3.Row) -> CertificateRevision:
         revised_by=row["revised_by"],
         revised_at=_datetime_from_text(row["revised_at"], "Revision revised_at"),
     )
+
+
+def _date_to_text(value: date, field_name: str) -> str:
+    if not isinstance(value, date) or isinstance(value, datetime):
+        raise PersistenceError(f"{field_name} must be a date.")
+    return value.isoformat()
+
+
+def _date_from_text(value: str, field_name: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise PersistenceError(f"{field_name} is not a valid ISO date.") from error
 
 
 def _audit_event_from_row(row: sqlite3.Row) -> AuditEvent:
