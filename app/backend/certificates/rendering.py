@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 import hashlib
+from pathlib import Path
 import re
+import struct
+import zlib
 
 from app.backend.certificates.preview import (
     CertificatePreview,
@@ -21,6 +24,8 @@ class CertificateRenderingError(ValueError):
 
 _CERTIFICATE_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _MAX_RESULT_ROWS_PER_PAGE = 34
+_PDF_PAGE_WIDTH = 595.0
+_LOGO_TOP_Y = 814.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,11 +48,35 @@ class RenderedCertificateArtifact:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class CertificateLogoAssets:
+    simval_logo_path: Path | str | None = None
+    danak_logo_path: Path | str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PdfImage:
+    name: str
+    width: int
+    height: int
+    rgb_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _ImageDraw:
+    image_name: str
+    width: float
+    height: float
+    x: float
+    y: float
+
+
 def render_certificate_pdf(
     *,
     certificate_id: str,
     certificate_number: str,
     preview: CertificatePreview,
+    logo_assets: CertificateLogoAssets | None = None,
 ) -> RenderedCertificateArtifact:
     """Render a minimal PDF artifact from locked preview rows.
 
@@ -57,20 +86,34 @@ def render_certificate_pdf(
     _require_text(certificate_id, "Certificate id")
     _require_certificate_number(certificate_number)
 
-    pages = tuple(
-        _pdf_content_stream(page_lines)
-        for page_lines in _certificate_pages(
-            certificate_id=certificate_id,
-            certificate_number=certificate_number,
-            preview=preview,
-        )
+    images = _load_logo_images(logo_assets or default_certificate_logo_assets())
+    page_lines = _certificate_pages(
+        certificate_id=certificate_id,
+        certificate_number=certificate_number,
+        preview=preview,
     )
-    pdf_bytes = _pdf_document(pages)
+    pages = tuple(
+        _pdf_content_stream(
+            lines,
+            image_draws=_cover_logo_draws(images) if index == 0 else (),
+        )
+        for index, lines in enumerate(page_lines)
+    )
+    pdf_bytes = _pdf_document(pages, images=images)
     return RenderedCertificateArtifact(
         artifact_type=ArtifactType.PDF,
         filename=f"{certificate_number}.pdf",
         content_bytes=pdf_bytes,
         checksum_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
+    )
+
+
+def default_certificate_logo_assets() -> CertificateLogoAssets:
+    repo_root = Path(__file__).resolve().parents[3]
+    design_doc_dir = repo_root / "Docs" / "Design Document"
+    return CertificateLogoAssets(
+        simval_logo_path=design_doc_dir / "Logo - SIMVal.png",
+        danak_logo_path=design_doc_dir / "DANAK Logo 647.png",
     )
 
 
@@ -286,8 +329,26 @@ def _page_label(page_number: int, total_pages: int) -> str:
     return f"Side {page_number} af {total_pages} / Page {page_number} of {total_pages}"
 
 
-def _pdf_content_stream(lines: tuple[str, ...]) -> bytes:
-    content_lines = ["BT", "/F1 10 Tf", "50 800 Td"]
+def _pdf_content_stream(
+    lines: tuple[str, ...],
+    *,
+    image_draws: tuple[_ImageDraw, ...] = (),
+) -> bytes:
+    content_lines: list[str] = []
+    for draw in image_draws:
+        content_lines.extend(
+            (
+                "q",
+                (
+                    f"{_pdf_number(draw.width)} 0 0 {_pdf_number(draw.height)} "
+                    f"{_pdf_number(draw.x)} {_pdf_number(draw.y)} cm"
+                ),
+                f"/{draw.image_name} Do",
+                "Q",
+            )
+        )
+    text_start_y = 660 if image_draws else 800
+    content_lines.extend(("BT", "/F1 10 Tf", f"50 {text_start_y} Td"))
     emitted_lines = 0
     for line in lines:
         for wrapped_line in _wrap_line(line):
@@ -299,10 +360,19 @@ def _pdf_content_stream(lines: tuple[str, ...]) -> bytes:
     return ("\n".join(content_lines) + "\n").encode("latin-1")
 
 
-def _pdf_document(page_contents: tuple[bytes, ...]) -> bytes:
+def _pdf_document(
+    page_contents: tuple[bytes, ...],
+    *,
+    images: tuple[_PdfImage, ...] = (),
+) -> bytes:
     page_count = len(page_contents)
     page_object_numbers = tuple(range(4, 4 + page_count))
     content_object_numbers = tuple(range(4 + page_count, 4 + page_count * 2))
+    first_image_object_number = 4 + page_count * 2
+    image_object_numbers = {
+        image.name: first_image_object_number + index
+        for index, image in enumerate(images)
+    }
     kids = " ".join(f"{number} 0 R" for number in page_object_numbers)
     objects: list[bytes] = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
@@ -313,7 +383,9 @@ def _pdf_document(page_contents: tuple[bytes, ...]) -> bytes:
         objects.append(
             (
                 b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
-                b"/Resources << /Font << /F1 3 0 R >> >> /Contents "
+                b"/Resources "
+                + _page_resources(image_object_numbers)
+                + b" /Contents "
                 + f"{content_number} 0 R".encode("ascii")
                 + b" >>"
             )
@@ -324,6 +396,8 @@ def _pdf_document(page_contents: tuple[bytes, ...]) -> bytes:
             + content
             + b"endstream"
         )
+    for image in images:
+        objects.append(_pdf_image_object(image))
 
     output = bytearray(b"%PDF-1.4\n")
     offsets = [0]
@@ -344,6 +418,269 @@ def _pdf_document(page_contents: tuple[bytes, ...]) -> bytes:
         ).encode("ascii")
     )
     return bytes(output)
+
+
+def _page_resources(image_object_numbers: dict[str, int]) -> bytes:
+    if not image_object_numbers:
+        return b"<< /Font << /F1 3 0 R >> >>"
+    xobjects = " ".join(
+        f"/{name} {object_number} 0 R"
+        for name, object_number in image_object_numbers.items()
+    )
+    return (
+        b"<< /Font << /F1 3 0 R >> /XObject << "
+        + xobjects.encode("ascii")
+        + b" >> >>"
+    )
+
+
+def _pdf_image_object(image: _PdfImage) -> bytes:
+    compressed_rgb = zlib.compress(image.rgb_bytes)
+    return (
+        (
+            "<< /Type /XObject /Subtype /Image "
+            f"/Width {image.width} /Height {image.height} "
+            "/ColorSpace /DeviceRGB /BitsPerComponent 8 "
+            f"/Filter /FlateDecode /Length {len(compressed_rgb)} >>\n"
+            "stream\n"
+        ).encode("ascii")
+        + compressed_rgb
+        + b"\nendstream"
+    )
+
+
+def _load_logo_images(logo_assets: CertificateLogoAssets) -> tuple[_PdfImage, ...]:
+    logo_paths = (
+        ("ImSimval", logo_assets.simval_logo_path),
+        ("ImDanak", logo_assets.danak_logo_path),
+    )
+    loaded: list[_PdfImage] = []
+    for image_name, raw_path in logo_paths:
+        if raw_path is None:
+            continue
+        path = Path(raw_path)
+        if not path.is_file():
+            continue
+        loaded.append(_decode_png_for_pdf(path=path, image_name=image_name))
+    return tuple(loaded)
+
+
+def _cover_logo_draws(images: tuple[_PdfImage, ...]) -> tuple[_ImageDraw, ...]:
+    draws: list[_ImageDraw] = []
+    for image in images:
+        if image.name == "ImSimval":
+            width = 120.0
+            height = _scaled_height(image=image, width=width)
+            draws.append(
+                _ImageDraw(
+                    image_name=image.name,
+                    width=width,
+                    height=height,
+                    x=50.0,
+                    y=_LOGO_TOP_Y - height,
+                )
+            )
+        elif image.name == "ImDanak":
+            width = 95.0
+            height = _scaled_height(image=image, width=width)
+            draws.append(
+                _ImageDraw(
+                    image_name=image.name,
+                    width=width,
+                    height=height,
+                    x=_PDF_PAGE_WIDTH - 50.0 - width,
+                    y=_LOGO_TOP_Y - height,
+                )
+            )
+    return tuple(draws)
+
+
+def _scaled_height(*, image: _PdfImage, width: float) -> float:
+    return width * image.height / image.width
+
+
+def _decode_png_for_pdf(*, path: Path, image_name: str) -> _PdfImage:
+    try:
+        png = _decode_png(path.read_bytes())
+    except (OSError, ValueError, zlib.error, struct.error) as exc:
+        raise CertificateRenderingError(
+            f"Certificate logo asset is not a supported PNG: {path}"
+        ) from exc
+    return _PdfImage(
+        name=image_name,
+        width=png.width,
+        height=png.height,
+        rgb_bytes=png.rgb_bytes,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _DecodedPng:
+    width: int
+    height: int
+    rgb_bytes: bytes
+
+
+def _decode_png(data: bytes) -> _DecodedPng:
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("PNG signature is missing.")
+    offset = 8
+    width: int | None = None
+    height: int | None = None
+    bit_depth: int | None = None
+    color_type: int | None = None
+    idat_chunks: list[bytes] = []
+    while offset < len(data):
+        chunk_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        chunk_type = data[offset + 4 : offset + 8]
+        chunk_data_start = offset + 8
+        chunk_data_end = chunk_data_start + chunk_length
+        chunk_data = data[chunk_data_start:chunk_data_end]
+        offset = chunk_data_end + 4
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type = struct.unpack(
+                ">IIBB", chunk_data[:10]
+            )
+        elif chunk_type == b"IDAT":
+            idat_chunks.append(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+    if width is None or height is None or bit_depth is None or color_type is None:
+        raise ValueError("PNG IHDR chunk is missing.")
+    if width <= 0 or height <= 0:
+        raise ValueError("PNG dimensions must be positive.")
+    if bit_depth != 8:
+        raise ValueError("Only 8-bit PNG assets are supported.")
+    channel_count = _png_channel_count(color_type)
+    scanlines = _unfilter_png_scanlines(
+        raw=zlib.decompress(b"".join(idat_chunks)),
+        width=width,
+        height=height,
+        channel_count=channel_count,
+    )
+    return _DecodedPng(
+        width=width,
+        height=height,
+        rgb_bytes=_png_scanlines_to_rgb(
+            scanlines=scanlines,
+            color_type=color_type,
+            channel_count=channel_count,
+        ),
+    )
+
+
+def _png_channel_count(color_type: int) -> int:
+    if color_type == 0:
+        return 1
+    if color_type == 2:
+        return 3
+    if color_type == 4:
+        return 2
+    if color_type == 6:
+        return 4
+    raise ValueError("Only grayscale, RGB, and RGBA PNG assets are supported.")
+
+
+def _unfilter_png_scanlines(
+    *,
+    raw: bytes,
+    width: int,
+    height: int,
+    channel_count: int,
+) -> tuple[bytes, ...]:
+    row_length = width * channel_count
+    expected_length = height * (row_length + 1)
+    if len(raw) != expected_length:
+        raise ValueError("PNG scanline data length is invalid.")
+    rows: list[bytes] = []
+    previous = bytearray(row_length)
+    offset = 0
+    for _row_index in range(height):
+        filter_type = raw[offset]
+        offset += 1
+        row = bytearray(raw[offset : offset + row_length])
+        offset += row_length
+        for index in range(row_length):
+            left = row[index - channel_count] if index >= channel_count else 0
+            up = previous[index]
+            upper_left = (
+                previous[index - channel_count] if index >= channel_count else 0
+            )
+            if filter_type == 0:
+                adjustment = 0
+            elif filter_type == 1:
+                adjustment = left
+            elif filter_type == 2:
+                adjustment = up
+            elif filter_type == 3:
+                adjustment = (left + up) // 2
+            elif filter_type == 4:
+                adjustment = _paeth_predictor(left, up, upper_left)
+            else:
+                raise ValueError("PNG filter type is unsupported.")
+            row[index] = (row[index] + adjustment) & 0xFF
+        rows.append(bytes(row))
+        previous = row
+    return tuple(rows)
+
+
+def _png_scanlines_to_rgb(
+    *,
+    scanlines: tuple[bytes, ...],
+    color_type: int,
+    channel_count: int,
+) -> bytes:
+    output = bytearray()
+    for row in scanlines:
+        for index in range(0, len(row), channel_count):
+            pixel = row[index : index + channel_count]
+            if color_type == 0:
+                output.extend((pixel[0], pixel[0], pixel[0]))
+            elif color_type == 2:
+                output.extend(pixel)
+            elif color_type == 4:
+                output.extend(_blend_gray_alpha(pixel[0], pixel[1]))
+            elif color_type == 6:
+                output.extend(
+                    _blend_rgb_alpha(pixel[0], pixel[1], pixel[2], pixel[3])
+                )
+            else:
+                raise ValueError("PNG color type is unsupported.")
+    return bytes(output)
+
+
+def _blend_gray_alpha(gray: int, alpha: int) -> tuple[int, int, int]:
+    blended = _blend_channel_with_white(gray, alpha)
+    return (blended, blended, blended)
+
+
+def _blend_rgb_alpha(
+    red: int,
+    green: int,
+    blue: int,
+    alpha: int,
+) -> tuple[int, int, int]:
+    return (
+        _blend_channel_with_white(red, alpha),
+        _blend_channel_with_white(green, alpha),
+        _blend_channel_with_white(blue, alpha),
+    )
+
+
+def _blend_channel_with_white(value: int, alpha: int) -> int:
+    return (value * alpha + 255 * (255 - alpha) + 127) // 255
+
+
+def _paeth_predictor(left: int, up: int, upper_left: int) -> int:
+    estimate = left + up - upper_left
+    distance_left = abs(estimate - left)
+    distance_up = abs(estimate - up)
+    distance_upper_left = abs(estimate - upper_left)
+    if distance_left <= distance_up and distance_left <= distance_upper_left:
+        return left
+    if distance_up <= distance_upper_left:
+        return up
+    return upper_left
 
 
 def _wrap_line(line: str, limit: int = 92) -> tuple[str, ...]:
@@ -372,6 +709,10 @@ def _escape_pdf_text(value: str) -> str:
 
 def _decimal_to_text(value: Decimal) -> str:
     return format(value, "f")
+
+
+def _pdf_number(value: float) -> str:
+    return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
 def _require_certificate_number(value: str) -> None:

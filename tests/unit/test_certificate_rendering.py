@@ -1,5 +1,7 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
+import re
 
 import pytest
 
@@ -11,8 +13,18 @@ from app.backend.certificates.preview import (
 )
 from app.backend.certificates.preview import CertificatePreviewDut
 from app.backend.certificates.rendering import (
+    CertificateLogoAssets,
     CertificateRenderingError,
     render_certificate_pdf,
+)
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SIMVAL_LOGO_PATH = (
+    _REPO_ROOT / "Docs" / "Design Document" / "Logo - SIMVal.png"
+)
+_DANAK_LOGO_PATH = (
+    _REPO_ROOT / "Docs" / "Design Document" / "DANAK Logo 647.png"
 )
 
 
@@ -36,6 +48,43 @@ def test_render_certificate_pdf_returns_deterministic_pdf_bytes_and_checksum():
     assert first.artifact_type.value == "pdf"
     assert first.content_bytes.startswith(b"%PDF-1.4\n")
     assert first.checksum_sha256 == first.checksum_sha256.lower()
+
+
+def test_render_certificate_pdf_embeds_default_simval_and_danak_logo_assets():
+    assert _SIMVAL_LOGO_PATH.is_file()
+    assert _DANAK_LOGO_PATH.is_file()
+
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=_preview(),
+    )
+
+    content_text = artifact.content_bytes.decode("latin-1")
+    assert "/XObject << /ImSimval" in content_text
+    assert "/ImDanak" in content_text
+    assert content_text.count("/Subtype /Image") == 2
+    assert "/Width 701 /Height 725" in content_text
+    assert "/Width 176 /Height 75" in content_text
+    simval_draw = _image_draw(content_text, "ImSimval")
+    danak_draw = _image_draw(content_text, "ImDanak")
+    assert simval_draw is not None
+    assert danak_draw is not None
+    assert float(simval_draw.group("width")) > float(danak_draw.group("width"))
+    assert float(simval_draw.group("height")) > float(danak_draw.group("height"))
+
+
+def test_render_certificate_pdf_rejects_corrupt_logo_asset(tmp_path):
+    corrupt_logo_path = tmp_path / "corrupt-logo.png"
+    corrupt_logo_path.write_bytes(b"not a png")
+
+    with pytest.raises(CertificateRenderingError, match="not a supported PNG"):
+        render_certificate_pdf(
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            preview=_preview(),
+            logo_assets=CertificateLogoAssets(simval_logo_path=corrupt_logo_path),
+        )
 
 
 def test_render_certificate_pdf_uses_simval_three_page_structure_for_single_dut():
@@ -162,6 +211,14 @@ def test_render_certificate_pdf_rejects_blank_certificate_number():
             certificate_number=" ",
             preview=_preview(),
         )
+
+
+def _image_draw(content_text: str, image_name: str) -> re.Match[str] | None:
+    return re.search(
+        rf"q\n(?P<width>[0-9.]+) 0 0 (?P<height>[0-9.]+) "
+        rf"(?P<x>[0-9.]+) (?P<y>[0-9.]+) cm\n/{image_name} Do\nQ",
+        content_text,
+    )
 
 
 def _preview() -> CertificatePreview:

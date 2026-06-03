@@ -279,7 +279,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-051 | Released certificate tied to uncertainty budget version. | Later budget changes do not alter released record. |
 | CERT-052 | Released certificate tied to calculation summary IDs. | Released record contains immutable calculation summary references. |
 | CERT-053 | Released certificate tied to software, calculation engine, and template versions. | Version references are present and immutable. |
-| CERT-100 | DANAK mark/reference area present when accredited. | Required text/logo placeholder present. |
+| CERT-100 | SIMVal and DANAK/ILAC logo assets embedded on the certificate cover page. | PDF contains both image XObjects and draws SIMVal larger than the DANAK/ILAC mark. |
 | CERT-120 | Released PDF immutable. | Regeneration creates revision path. |
 | CERT-121 | Export artifact checksum stored. | Artifact checksum is a valid SHA-256 digest. |
 | CERT-122 | Released certificate requires export artifact. | Release record is rejected without artifact evidence. |
