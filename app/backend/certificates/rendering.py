@@ -20,6 +20,7 @@ class CertificateRenderingError(ValueError):
 
 
 _CERTIFICATE_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MAX_RESULT_ROWS_PER_PAGE = 34
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +82,12 @@ def _certificate_pages(
 ) -> tuple[tuple[str, ...], ...]:
     dut_groups = _group_rows_by_dut(preview.rows)
     duts_by_id = _duts_by_id(preview.duts)
-    total_pages = len(dut_groups) + 2
+    result_sections = tuple(
+        (dut_id, row_chunk)
+        for dut_id, rows in dut_groups.items()
+        for row_chunk in _result_row_chunks(rows)
+    )
+    total_pages = len(result_sections) + 2
     pages = [
         _cover_page_lines(
             certificate_id=certificate_id,
@@ -91,7 +97,7 @@ def _certificate_pages(
             total_pages=total_pages,
         )
     ]
-    for page_index, (dut_id, rows) in enumerate(dut_groups.items(), start=2):
+    for page_index, (dut_id, rows) in enumerate(result_sections, start=2):
         pages.append(
             _result_page_lines(
                 certificate_number=certificate_number,
@@ -259,6 +265,15 @@ def _group_rows_by_dut(
     for row in rows:
         grouped.setdefault(row.dut_id, []).append(row)
     return {dut_id: tuple(dut_rows) for dut_id, dut_rows in grouped.items()}
+
+
+def _result_row_chunks(
+    rows: tuple[CertificatePreviewRow, ...],
+) -> tuple[tuple[CertificatePreviewRow, ...], ...]:
+    return tuple(
+        rows[index : index + _MAX_RESULT_ROWS_PER_PAGE]
+        for index in range(0, len(rows), _MAX_RESULT_ROWS_PER_PAGE)
+    )
 
 
 def _duts_by_id(

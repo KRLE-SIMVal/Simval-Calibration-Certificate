@@ -135,6 +135,26 @@ def test_render_certificate_pdf_groups_multiple_duts_in_one_certificate():
     assert "Point point-002" in content_text
 
 
+def test_render_certificate_pdf_splits_large_dut_result_table_across_pages():
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=_many_row_preview(),
+    )
+
+    content_text = artifact.content_bytes.decode("latin-1")
+    assert "/Count 4" in content_text
+    assert "Side 1 af 4 / Page 1 of 4" in content_text
+    assert "Side 2 af 4 / Page 2 of 4" in content_text
+    assert "Side 3 af 4 / Page 3 of 4" in content_text
+    assert "Side 4 af 4 / Page 4 of 4" in content_text
+    assert "Point point-001" in content_text
+    assert "Point point-034" in content_text
+    assert "Point point-035" in content_text
+    assert "Point point-040" in content_text
+    assert content_text.count("Referenceudstyr / Reference equipment:") == 1
+
+
 def test_render_certificate_pdf_rejects_blank_certificate_number():
     with pytest.raises(CertificateRenderingError):
         render_certificate_pdf(
@@ -218,6 +238,36 @@ def _multi_dut_preview() -> CertificatePreview:
                 reported_expanded_uncertainty=Decimal("0.012"),
                 unit="deg C",
             ),
+        ),
+    )
+
+
+def _many_row_preview() -> CertificatePreview:
+    return CertificatePreview(
+        job_id="job-001",
+        generated_by="qa-001",
+        generated_at=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        software_version="app-0.1.0",
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version="constants-2026-001",
+        budget_version="budget-temp-001",
+        template_version="template-2026-001",
+        metadata=_metadata(),
+        duts=(_dut(),),
+        reference_equipment=(_reference_equipment(),),
+        rows=tuple(
+            CertificatePreviewRow(
+                point_id=f"point-{index:03d}",
+                dut_id="dut-001",
+                measurement_window_id=f"window-{index:03d}",
+                reference=-80.0305 + index,
+                indication=-80.035 + index,
+                error_of_indication=-0.0045,
+                display_error_of_indication=Decimal("-0.004"),
+                reported_expanded_uncertainty=Decimal("0.012"),
+                unit="deg C",
+            )
+            for index in range(1, 41)
         ),
     )
 

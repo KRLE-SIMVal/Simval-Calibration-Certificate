@@ -60,6 +60,8 @@ tests must use generated or sanitized data only.
 - Page 3 now consumes locked selected reference-equipment snapshots from the
   preview model and lists SIMVal ID, type, serial, certificate reference, due
   date, range, and traceability statement.
+- Large DUT result tables are split deterministically across additional result
+  pages before the final reference-equipment page.
 
 ## Remaining Gaps
 
@@ -71,5 +73,3 @@ tests must use generated or sanitized data only.
   point-level suitability checks are not yet implemented.
 - Logos, DANAK mark placement, and exact visual grid matching are not yet
   implemented.
-- Page overflow handling for many result rows per DUT still needs a renderer
-  rule before production validation.

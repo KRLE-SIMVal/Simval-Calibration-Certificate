@@ -41,6 +41,8 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   reference-equipment rows in the API preview response.
 - The renderer populates the reference-equipment page from locked preview
   equipment snapshots.
+- The renderer deterministically splits large DUT result tables across multiple
+  result pages before the reference-equipment page.
 - Session-backed reference-equipment selection service stores immutable
   selected-equipment evidence, records explicit selection audit evidence, and
   transitions `metadata_complete` jobs to `equipment_selected`.
@@ -100,6 +102,10 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   API, permissions, and schema suite: 71 passed on Python 3.12.10.
 - Default regression suite after audited reference-equipment selection slice:
   320 passed, 2 skipped on Python 3.12.10.
+- Focused renderer pagination, rendered release, and API suite: 27 passed on
+  Python 3.12.10.
+- Default regression suite after renderer pagination slice: 321 passed,
+  2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -108,6 +114,5 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 | PDF output has SIMVal-oriented page structure but does not exactly match the approved certificate template. | Add exact template-contract tests, logo/DANAK mark handling, and visual/text extraction checks before treating output as customer-ready. |
 | Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
 | Reference-equipment selection is audited and available to preview/rendering, but full library CRUD and point-level suitability checks are not yet wired into workflow. | Add controlled equipment-library management and run `reference_equipment_blockers` against actual selected points before production workflow validation. |
-| Many result rows on one DUT page may overflow. | Add deterministic page-break rules and tests for row limits before production validation. |
 | Rendered release can leave an orphan artifact if file storage succeeds but the later database release transaction fails. | Add a pending/finalized artifact state or transactional artifact registry before production deployment. |
 | No PDF/A or digital-signature support exists. | Decide signature/PDF archival requirements before final production validation. |
