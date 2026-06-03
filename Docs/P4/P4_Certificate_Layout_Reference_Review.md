@@ -1,6 +1,6 @@
 # P4 Certificate Layout Reference Review
 
-Status: active P4 reference record.
+Status: closed P4 reference record.
 
 ## Reference Files
 
@@ -69,14 +69,20 @@ tests must use generated or sanitized data only.
   controlled asset files are present.
 - The SIMVal logo is drawn larger than the DANAK/ILAC mark to satisfy the
   design requirement and AB02 prominence constraint.
+- The accreditation mark is emitted only when the locked preview/release
+  `accreditation_mark_allowed` decision permits it.
+- Released artifacts are staged as pending files and finalized only after
+  release persistence succeeds.
 
 ## Remaining Gaps
 
 - Certificate metadata is now persisted through an audited service/API capture
-  path and included in immutable preview snapshots. Post-capture metadata
-  revision/editing is still not implemented.
+  path and included in immutable preview snapshots. Released-certificate
+  corrections use revision evidence, but replacement-certificate generation
+  remains future work.
 - Reference-equipment snapshots are available to the renderer and can be
   selected through an audited service/API. Point-level suitability is checked at
   preview/release, but full equipment-library CRUD is not yet implemented.
-- Exact visual grid matching and final DANAK/ILAC scope-language review are not
-  yet implemented.
+- Exact visual grid matching, customer-facing UI controls, PDF/A or digital
+  signature handling, and final DANAK/ILAC scope-language review are not yet
+  implemented.

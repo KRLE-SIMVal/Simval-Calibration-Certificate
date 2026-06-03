@@ -1,6 +1,6 @@
 # P4 Implementation Log
 
-Status: started.
+Status: completed for backend certificate rendering/export hardening.
 
 P4 begins certificate rendering and export artifact generation after the P3 backend control gates were closed.
 
@@ -76,17 +76,24 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   final artifact only after release persistence succeeds, and discards pending
   bytes if release persistence fails.
 
-## Scope Not Implemented
+## Deferred / Not Implemented In P4
 
-- No exact SIMVal/DANAK visual certificate template matching yet.
-- No metadata mutation in place after initial capture; released certificates now
-  use controlled revision evidence instead.
-- No full equipment-library CRUD workflow yet.
-- No full uncertainty-budget editor/export workflow beyond locked calculation
-  result XLSX rendering yet.
-- No PDF/A, digital signature, or qualified-signature support.
-- No customer-facing UI.
-- No final customer-facing UI control for the accreditation-scope decision.
+- Exact SIMVal/DANAK visual certificate template matching and visual regression
+  checks are not complete.
+- Metadata mutation in place after initial capture is intentionally not
+  implemented; released certificates now use controlled revision evidence
+  instead.
+- Replacement-certificate generation from a revised job is not complete.
+- Full equipment-library CRUD is not complete. P4 implements immutable selected
+  reference-equipment snapshots and suitability gates only.
+- Full uncertainty-budget editor/export is not complete. P4 implements locked
+  calculation-result XLSX rendering only.
+- PDF/A, digital signature, and qualified-signature support remain policy and
+  tooling decisions.
+- Customer-facing UI is not implemented.
+- Final customer-facing UI control for the accreditation-scope decision is not
+  implemented.
+- Stale `.pending` artifact cleanup after process crash is not implemented.
 
 ## Compliance Notes
 
@@ -105,6 +112,9 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   supplied asset only when the preview/release accreditation scope allows it;
   the business decision remains subject to approved SIMVal/DANAK scope
   controls.
+- P4 closes the backend export, release evidence, history, revision, logo, and
+  artifact integrity controls. It does not claim customer-ready visual template
+  validation or final production validation.
 
 ## Verification
 
@@ -176,6 +186,7 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   artifact finalization: 103 passed on Python 3.12.10.
 - Default regression suite after staged artifact finalization: 342 passed,
   2 skipped on Python 3.12.10.
+- P4 closeout default regression suite: 342 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
