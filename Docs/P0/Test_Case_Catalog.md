@@ -390,7 +390,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | MIG-006 | Bootstrap SQLite schema through controlled baseline. | Current schema is created and `p3-baseline-schema-v1` is recorded in controlled migration history. |
 | MIG-007 | Re-run SQLite schema bootstrap. | Bootstrap is idempotent when the baseline migration checksum is unchanged. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
+| VAL-002 | Validation report classifies run context. | Report records trigger event, run type, quarter, CI metadata, platform, and controlled-fixture policy. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
 | REG-003 | Regression failure creates issue/deviation. | Failure path records tracked item. |
+| REG-004 | Quarterly evidence path is quarter-scoped. | Scheduled CI runs write validation evidence under `Docs/Validation/evidence/<year>/Q<n>/`; push/manual runs use `latest`. |

@@ -73,5 +73,5 @@ Status values:
 | Access control | Edit/approve/regenerate restrictions. | RBAC-001 to RBAC-099 | Planned |
 | Data integrity | Raw files unchanged, checksum, parsed row/column traceability. | IMP-020, DATA-001 to DATA-010 | Planned |
 | Independent recalculation | Calculation summary has all inputs and intermediate values. | CALC-090 to CALC-099 | Planned |
-| Validation package | IQ/OQ/PQ-style or equivalent evidence report. | VAL-001 to VAL-020 | Planned |
-| Quarterly regression | Scheduled full-suite execution and evidence retention. | REG-001 to REG-010 | Planned |
+| Validation package | IQ/OQ/PQ-style or equivalent evidence report. | VAL-001 to VAL-020 | Partial |
+| Quarterly regression | Scheduled full-suite execution and evidence retention. | REG-001 to REG-010 | Partial |

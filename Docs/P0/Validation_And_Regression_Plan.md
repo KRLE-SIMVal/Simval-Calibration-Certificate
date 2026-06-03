@@ -72,6 +72,16 @@ Docs/Validation/evidence/<year>/<quarter>/
 
 Final storage layout can change when CI tooling is selected, but the evidence content must remain.
 
+Current CI implementation:
+
+- Scheduled quarterly runs write generated evidence under
+  `Docs/Validation/evidence/<year>/Q<n>/` in the workflow workspace.
+- Push, pull-request, and manual runs write generated evidence under
+  `Docs/Validation/evidence/latest`.
+- The workflow uploads the generated evidence tree as a GitHub Actions artifact.
+- The validation report records trigger event, run type, quarter, CI metadata,
+  platform metadata, controlled-fixture policy, and evidence paths.
+
 ## Failure Handling
 
 Any quarterly regression failure must:
