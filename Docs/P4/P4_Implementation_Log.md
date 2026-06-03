@@ -30,6 +30,10 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 - Rendered release service prechecks approved workflow state and matching preview audit evidence before rendering.
 - Rendered release service stores generated artifact bytes and calls the existing certificate release gate with the generated checksum and storage URI.
 - Rendered release blocks missing preview evidence, wrong workflow state, and unauthorized actors before writing artifact files.
+- API settings require an explicit `SIMVAL_ARTIFACT_STORAGE_PATH` for
+  controlled rendered artifact storage.
+- `POST /certificate-rendered-releases` exposes the controlled PDF render,
+  store, and release path through the session-backed API.
 
 ## Scope Not Implemented
 
@@ -38,8 +42,6 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 - No controlled metadata revision/edit workflow after initial capture yet.
 - No reference-equipment table values in the renderer yet.
 - No XLSX uncertainty-budget export yet.
-- No API endpoint for rendered release yet.
-- No configurable artifact storage path in API settings yet.
 - No PDF/A, digital signature, or qualified-signature support.
 - No customer-facing UI.
 
@@ -72,6 +74,10 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   workflow suite: 54 passed on Python 3.12.10.
 - Default regression suite after audited metadata capture slice: 303 passed,
   2 skipped on Python 3.12.10.
+- Focused API rendered release, artifact storage, renderer, release, and
+  runtime settings suite: 36 passed on Python 3.12.10.
+- Default regression suite after API rendered release slice: 308 passed,
+  2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -81,6 +87,5 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 | Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
 | Reference equipment is not yet available to the renderer. | Connect approved selected reference equipment to the preview model and block release when reference-equipment content is missing. |
 | Many result rows on one DUT page may overflow. | Add deterministic page-break rules and tests for row limits before production validation. |
-| Local artifact storage path is not yet configurable through API settings. | Add `SIMVAL_ARTIFACT_STORAGE_PATH` and an API rendered-release endpoint after renderer/storage behavior is validated. |
 | Rendered release can leave an orphan artifact if file storage succeeds but the later database release transaction fails. | Add a pending/finalized artifact state or transactional artifact registry before production deployment. |
 | No PDF/A or digital-signature support exists. | Decide signature/PDF archival requirements before final production validation. |

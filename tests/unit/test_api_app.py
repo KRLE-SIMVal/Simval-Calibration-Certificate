@@ -2,6 +2,7 @@ import sqlite3
 import asyncio
 from datetime import date, datetime, timezone
 from decimal import Decimal
+import hashlib
 
 import httpx
 
@@ -251,6 +252,149 @@ def test_api_certificate_release_rejects_missing_preview():
     )
 
     assert response.status_code == 409
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_api_certificate_rendered_release_generates_pdf_and_release_evidence(tmp_path):
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
+    preview_response = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert preview_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    artifact_path = tmp_path / "SIMVAL-CAL-0001.pdf"
+    assert artifact_path.exists()
+    assert payload["certificate_id"] == "cert-001"
+    assert payload["status"] == "released"
+    assert payload["artifacts"][0]["filename"] == "SIMVAL-CAL-0001.pdf"
+    assert payload["artifacts"][0]["checksum_sha256"] == hashlib.sha256(
+        artifact_path.read_bytes()
+    ).hexdigest()
+    assert payload["artifacts"][0]["storage_uri"] == (
+        "controlled-local://SIMVAL-CAL-0001.pdf"
+    )
+    assert payload["export_audit_event_id"] == 2
+    assert payload["release_audit_event_id"] == 3
+    assert payload["workflow_audit_event_id"] == 4
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.RELEASED
+    )
+
+
+def test_api_certificate_rendered_release_rejects_missing_storage_configuration():
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    app = create_app(connection=connection, clock=_fixed_now)
+    preview_response = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert preview_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Artifact storage path is not configured."
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_api_certificate_rendered_release_rejects_unauthorized_session_before_file_write(
+    tmp_path,
+):
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.OPERATOR,),
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
+    preview_response = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert preview_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 403
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
     assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
 
 

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 import sqlite3
 
 from fastapi import FastAPI, Header, HTTPException
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.backend.api.database import sqlite_connection_scope
 from app.backend.api.settings import ApiSettings
+from app.backend.certificates.storage import CertificateArtifactStorageError
 from app.backend.certificates.records import ArtifactType
 from app.backend.services.authentication import (
     AuthenticationFailureError,
@@ -30,6 +32,7 @@ from app.backend.services.certificates import (
     build_certificate_preview_for_session,
     capture_certificate_metadata_for_session,
     release_certificate_for_session,
+    render_and_release_certificate_pdf_for_session,
 )
 
 
@@ -136,6 +139,15 @@ class CertificateReleaseRequest(BaseModel):
     software_version: str
 
 
+class RenderedCertificateReleaseRequest(BaseModel):
+    job_id: str
+    certificate_id: str
+    certificate_number: str
+    artifact_id: str
+    template_version: str
+    software_version: str
+
+
 class ExportArtifactResponse(BaseModel):
     artifact_id: str
     artifact_type: str
@@ -174,6 +186,7 @@ def create_app(
         Callable[[], AbstractContextManager[sqlite3.Connection]] | None
     ) = None,
     clock: Callable[[], datetime] | None = None,
+    artifact_directory: Path | None = None,
 ) -> FastAPI:
     """Create the backend API with an injected connection or connection scope."""
     if connection is None and connection_provider is None:
@@ -333,6 +346,48 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _release_response(result)
 
+    @app.post(
+        "/certificate-rendered-releases",
+        response_model=CertificateReleaseResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def certificate_rendered_release(
+        request: RenderedCertificateReleaseRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateReleaseResponse:
+        if artifact_directory is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact storage path is not configured.",
+            )
+        try:
+            with connection_scope() as scoped_connection:
+                result = render_and_release_certificate_pdf_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    certificate_id=request.certificate_id,
+                    certificate_number=request.certificate_number,
+                    artifact_id=request.artifact_id,
+                    artifact_directory=artifact_directory,
+                    template_version=request.template_version,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CertificateReleaseServiceError, CertificateArtifactStorageError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _release_response(result.release)
+
     return app
 
 
@@ -345,6 +400,7 @@ def create_app_from_settings(
     return create_app(
         connection_provider=lambda: sqlite_connection_scope(settings.database_path),
         clock=clock,
+        artifact_directory=settings.artifact_storage_path,
     )
 
 

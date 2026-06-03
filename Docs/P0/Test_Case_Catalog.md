@@ -314,10 +314,13 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-007 | API certificate release after preview. | `POST /certificate-releases` stores release evidence and returns certificate, artifact, and audit ids. |
 | API-008 | API certificate release without preview. | Request returns a controlled conflict response and writes no certificate record. |
 | API-009 | API request connection lifecycle. | API connection provider opens and closes one SQLite connection per request. |
-| API-010 | API settings load database path. | `SIMVAL_DATABASE_PATH` is required and resolves to the SQLite database path. |
+| API-010 | API settings load runtime paths. | `SIMVAL_DATABASE_PATH` and `SIMVAL_ARTIFACT_STORAGE_PATH` are required and resolve to controlled runtime paths. |
 | API-011 | API certificate metadata capture. | `POST /certificate-metadata` stores metadata, records audit evidence, and returns metadata/workflow audit ids. |
 | API-012 | API certificate metadata capture with insufficient role. | Request is rejected with `403` before metadata, audit, or workflow evidence is written. |
 | API-013 | API certificate metadata capture in wrong workflow state. | Request returns a controlled conflict response and writes no metadata evidence. |
+| API-014 | API rendered certificate release. | `POST /certificate-rendered-releases` renders a PDF, stores controlled artifact bytes, releases the certificate, and returns artifact/audit evidence. |
+| API-015 | API rendered certificate release without configured storage. | Request returns a controlled conflict response and writes no certificate record. |
+| API-016 | API rendered certificate release with insufficient role. | Request is rejected with `403` before rendered bytes or release evidence are written. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
