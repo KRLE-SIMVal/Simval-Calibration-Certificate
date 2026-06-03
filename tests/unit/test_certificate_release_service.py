@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.backend.audit.events import AuditAction
+from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
 from app.backend.certificates.metadata import CertificateMetadata
@@ -167,6 +167,53 @@ def test_release_certificate_for_session_rejects_mismatched_preview_template():
     )
 
 
+def test_release_certificate_for_session_rechecks_reference_equipment_suitability():
+    connection = _connection_with_release_data(
+        selected_reference=_selected_reference(range_minimum=0.0, range_maximum=140.0)
+    )
+    SQLiteAuditEventRepository(connection).append(
+        AuditEvent(
+            entity_type="calibration_job",
+            entity_id="job-001",
+            action=AuditAction.CERTIFICATE_PREVIEW_GENERATED,
+            user_id="qa-001",
+            timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+            new_value={
+                "summary_ids": ["point-001"],
+                "dut_ids": ["dut-001"],
+                "reference_equipment_ids": ["ref-001"],
+                "metadata_recorded_at": "2026-06-01T14:00:00+00:00",
+                "row_count": 1,
+                "template_version": "template-2026-001",
+            },
+            software_version="app-0.1.0",
+            calculation_engine_version="calc-engine-0.1.0",
+            constant_set_version="constants-2026-001",
+            budget_version="budget-temp-001",
+        )
+    )
+
+    with pytest.raises(CertificateReleaseServiceError) as exc_info:
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "equipment_out_of_range" in str(exc_info.value)
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
 def test_release_certificate_for_session_rejects_before_approved_state():
     connection = _connection_with_release_data(job_state=WorkflowState.CALCULATED)
     build_certificate_preview_for_session(
@@ -242,6 +289,7 @@ def _connection_with_release_data(
     *,
     job_state: WorkflowState = WorkflowState.APPROVED,
     actor_roles: tuple[Role, ...] = (Role.QA_APPROVER,),
+    selected_reference: SelectedReferenceEquipment | None = None,
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
@@ -249,7 +297,9 @@ def _connection_with_release_data(
     SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
-    SQLiteSelectedReferenceEquipmentRepository(connection).add(_selected_reference())
+    SQLiteSelectedReferenceEquipmentRepository(connection).add(
+        selected_reference or _selected_reference()
+    )
     SQLiteMeasurementWindowRepository(connection).add(_window())
     SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
     SQLiteUserAccountRepository(connection).add(_qa_user(actor_roles))
@@ -317,7 +367,11 @@ def _dut() -> DeviceUnderTest:
     )
 
 
-def _selected_reference() -> SelectedReferenceEquipment:
+def _selected_reference(
+    *,
+    range_minimum: float = -90.0,
+    range_maximum: float = 140.0,
+) -> SelectedReferenceEquipment:
     return SelectedReferenceEquipment(
         job_id="job-001",
         equipment=ReferenceEquipment(
@@ -329,7 +383,11 @@ def _selected_reference() -> SelectedReferenceEquipment:
             calibration_certificate_reference="DANAK-CAL-12345",
             calibration_due_date=date(2027, 4, 30),
             status=EquipmentStatus.ACTIVE,
-            usable_range=EquipmentRange(minimum=-90.0, maximum=140.0, unit="deg C"),
+            usable_range=EquipmentRange(
+                minimum=range_minimum,
+                maximum=range_maximum,
+                unit="deg C",
+            ),
             traceability_statement="Accredited calibration with SI traceability.",
         ),
         selected_by="operator-001",

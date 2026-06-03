@@ -35,6 +35,7 @@ from app.backend.certificates.storage import (
     store_rendered_artifact,
 )
 from app.backend.domain.equipment import ReferenceEquipment, SelectedReferenceEquipment
+from app.backend.domain.equipment import reference_equipment_blockers
 from app.backend.domain.entities import DeviceUnderTest, DomainValidationError
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
@@ -376,6 +377,16 @@ def build_certificate_preview(
             raise CertificatePreviewServiceError(
                 "Certificate preview requires reference equipment."
             )
+        suitability_blockers = _reference_equipment_suitability_blockers(
+            job=job,
+            metadata=metadata,
+            selected_reference_equipment=selected_reference_equipment,
+            summaries=summaries,
+        )
+        if len(suitability_blockers) > 0:
+            raise CertificatePreviewServiceError(
+                _reference_equipment_suitability_message(suitability_blockers)
+            )
 
         preview = _preview_from_summaries(
             job_id=job_id,
@@ -533,6 +544,16 @@ def _preview_for_release_rendering(
         raise CertificateReleaseServiceError(
             "Certificate rendering for release requires reference equipment."
         )
+    suitability_blockers = _reference_equipment_suitability_blockers(
+        job=job,
+        metadata=metadata,
+        selected_reference_equipment=selected_reference_equipment,
+        summaries=summaries,
+    )
+    if len(suitability_blockers) > 0:
+        raise CertificateReleaseServiceError(
+            _reference_equipment_suitability_message(suitability_blockers)
+        )
     summary_ids = tuple(summary.point_id for summary in summaries)
     calculation_engine_version = _single_release_version(
         {summary.calculation_engine_version for summary in summaries},
@@ -610,6 +631,14 @@ def release_certificate(
 
     with connection:
         job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+        metadata_repository = SQLiteCertificateMetadataRepository(
+            connection,
+            autocommit=False,
+        )
+        selected_reference_repository = SQLiteSelectedReferenceEquipmentRepository(
+            connection,
+            autocommit=False,
+        )
         summary_repository = SQLiteMeasurementPointSummaryRepository(
             connection,
             autocommit=False,
@@ -630,6 +659,29 @@ def release_certificate(
         if len(summaries) == 0:
             raise CertificateReleaseServiceError(
                 "Certificate release requires calculation summaries."
+            )
+        try:
+            metadata = metadata_repository.get(job_id)
+        except RecordNotFoundError as exc:
+            raise CertificateReleaseServiceError(
+                "Certificate release requires certificate metadata."
+            ) from exc
+        selected_reference_equipment = selected_reference_repository.list_for_job(
+            job_id
+        )
+        if len(selected_reference_equipment) == 0:
+            raise CertificateReleaseServiceError(
+                "Certificate release requires reference equipment."
+            )
+        suitability_blockers = _reference_equipment_suitability_blockers(
+            job=job,
+            metadata=metadata,
+            selected_reference_equipment=selected_reference_equipment,
+            summaries=summaries,
+        )
+        if len(suitability_blockers) > 0:
+            raise CertificateReleaseServiceError(
+                _reference_equipment_suitability_message(suitability_blockers)
             )
         summary_ids = tuple(summary.point_id for summary in summaries)
         calculation_engine_version = _single_release_version(
@@ -811,6 +863,52 @@ def _preview_reference_equipment(
         range_unit=equipment.usable_range.unit,
         traceability_statement=equipment.traceability_statement,
     )
+
+
+def _reference_equipment_suitability_blockers(
+    *,
+    job,
+    metadata: CertificateMetadata,
+    selected_reference_equipment: tuple[SelectedReferenceEquipment, ...],
+    summaries: tuple[MeasurementPointSummary, ...],
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    for summary in summaries:
+        point_blockers: list[str] = []
+        for selection in selected_reference_equipment:
+            equipment_blockers = reference_equipment_blockers(
+                selection.equipment,
+                use_date=metadata.calibration_date,
+                point=summary.reference,
+                unit=summary.unit,
+                discipline=job.discipline,
+            )
+            if len(equipment_blockers) == 0:
+                point_blockers = []
+                break
+            point_blockers.extend(equipment_blockers)
+        blockers.extend(
+            f"{summary.point_id}:{blocker}" for blocker in _unique(point_blockers)
+        )
+    return tuple(blockers)
+
+
+def _reference_equipment_suitability_message(blockers: tuple[str, ...]) -> str:
+    return (
+        "Reference equipment is not suitable for certificate points: "
+        + ", ".join(blockers)
+    )
+
+
+def _unique(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    unique_values: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique_values.append(value)
+    return tuple(unique_values)
 
 
 def _reference_equipment_selection_audit_event(

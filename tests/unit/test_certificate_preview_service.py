@@ -54,6 +54,7 @@ def _connection_with_summary(
     user_roles: tuple[Role, ...] = (Role.OPERATOR,),
     include_metadata: bool = True,
     include_reference_equipment: bool = True,
+    selected_reference_equipment: SelectedReferenceEquipment | None = None,
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
@@ -64,7 +65,7 @@ def _connection_with_summary(
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
     if include_reference_equipment:
         SQLiteSelectedReferenceEquipmentRepository(connection).add(
-            _selected_reference_equipment()
+            selected_reference_equipment or _selected_reference_equipment()
         )
     SQLiteMeasurementWindowRepository(connection).add(_window("window-001", -80.0))
     SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
@@ -207,6 +208,55 @@ def test_build_certificate_preview_for_session_rejects_missing_reference_equipme
     ) == ()
 
 
+def test_build_certificate_preview_for_session_rejects_overdue_reference_equipment():
+    connection = _connection_with_summary(
+        selected_reference_equipment=_selected_reference_equipment(
+            calibration_due_date=date(2026, 5, 31)
+        )
+    )
+
+    with pytest.raises(CertificatePreviewServiceError) as exc_info:
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "equipment_overdue" in str(exc_info.value)
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_build_certificate_preview_for_session_rejects_out_of_range_reference_equipment():
+    connection = _connection_with_summary(
+        selected_reference_equipment=_selected_reference_equipment(
+            range_minimum=0.0,
+            range_maximum=140.0,
+        )
+    )
+
+    with pytest.raises(CertificatePreviewServiceError) as exc_info:
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "equipment_out_of_range" in str(exc_info.value)
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
 def test_build_certificate_preview_for_session_rejects_mismatched_versions():
     connection = _connection_with_summary()
     SQLiteMeasurementWindowRepository(connection).add(_window("window-002", 0.0))
@@ -295,7 +345,12 @@ def _dut() -> DeviceUnderTest:
     )
 
 
-def _selected_reference_equipment() -> SelectedReferenceEquipment:
+def _selected_reference_equipment(
+    *,
+    calibration_due_date: date = date(2027, 4, 30),
+    range_minimum: float = -90.0,
+    range_maximum: float = 140.0,
+) -> SelectedReferenceEquipment:
     return SelectedReferenceEquipment(
         job_id="job-001",
         equipment=ReferenceEquipment(
@@ -305,9 +360,13 @@ def _selected_reference_equipment() -> SelectedReferenceEquipment:
             serial_number="IRT-123",
             discipline=Discipline.TEMPERATURE,
             calibration_certificate_reference="DANAK-CAL-12345",
-            calibration_due_date=date(2027, 4, 30),
+            calibration_due_date=calibration_due_date,
             status=EquipmentStatus.ACTIVE,
-            usable_range=EquipmentRange(minimum=-90.0, maximum=140.0, unit="deg C"),
+            usable_range=EquipmentRange(
+                minimum=range_minimum,
+                maximum=range_maximum,
+                unit="deg C",
+            ),
             traceability_statement="Accredited calibration with SI traceability.",
         ),
         selected_by="operator-001",

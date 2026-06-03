@@ -69,7 +69,7 @@ tests must use generated or sanitized data only.
   path and included in immutable preview snapshots. Post-capture metadata
   revision/editing is still not implemented.
 - Reference-equipment snapshots are available to the renderer and can be
-  selected through an audited service/API, but full equipment-library CRUD and
-  point-level suitability checks are not yet implemented.
+  selected through an audited service/API. Point-level suitability is checked at
+  preview/release, but full equipment-library CRUD is not yet implemented.
 - Logos, DANAK mark placement, and exact visual grid matching are not yet
   implemented.
