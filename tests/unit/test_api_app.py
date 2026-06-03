@@ -10,6 +10,12 @@ from app.backend.api.app import create_app
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
 from app.backend.certificates.metadata import CertificateMetadata
+from app.backend.domain.equipment import (
+    EquipmentRange,
+    EquipmentStatus,
+    ReferenceEquipment,
+    SelectedReferenceEquipment,
+)
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -31,6 +37,7 @@ from app.backend.persistence.sqlite import (
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
+    SQLiteSelectedReferenceEquipmentRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -161,6 +168,8 @@ def test_api_certificate_preview_returns_locked_rows_and_audit_id():
     assert payload["job_id"] == "job-001"
     assert payload["generated_by"] == "user-001"
     assert payload["summary_ids"] == ["point-001"]
+    assert payload["reference_equipment"][0]["simval_id"] == "SIM-T-001"
+    assert payload["reference_equipment"][0]["serial_number"] == "IRT-123"
     assert payload["rows"][0]["display_error_of_indication"] == "-0.004"
     assert payload["rows"][0]["reported_expanded_uncertainty"] == "0.012"
     assert payload["audit_event_id"] == 1
@@ -484,6 +493,7 @@ def _connection_with_preview_data(
     SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
+    SQLiteSelectedReferenceEquipmentRepository(connection).add(_selected_reference())
     SQLiteMeasurementWindowRepository(connection).add(_window())
     SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
     SQLiteUserAccountRepository(connection).add(_user(user_roles))
@@ -587,6 +597,26 @@ def _dut() -> DeviceUnderTest:
         model="ValProbe RT",
         serial_number="MJT1",
         channel_id="MJT1-A",
+    )
+
+
+def _selected_reference() -> SelectedReferenceEquipment:
+    return SelectedReferenceEquipment(
+        job_id="job-001",
+        equipment=ReferenceEquipment(
+            id="ref-001",
+            simval_id="SIM-T-001",
+            equipment_type="IRTD",
+            serial_number="IRT-123",
+            discipline=Discipline.TEMPERATURE,
+            calibration_certificate_reference="DANAK-CAL-12345",
+            calibration_due_date=date(2027, 4, 30),
+            status=EquipmentStatus.ACTIVE,
+            usable_range=EquipmentRange(minimum=-90.0, maximum=140.0, unit="deg C"),
+            traceability_statement="Accredited calibration with SI traceability.",
+        ),
+        selected_by="operator-001",
+        selected_at=datetime(2026, 6, 1, 13, 0, tzinfo=timezone.utc),
     )
 
 

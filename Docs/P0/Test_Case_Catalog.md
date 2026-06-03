@@ -220,6 +220,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | EQ-002 | Equipment due date in future. | Selection allowed. |
 | EQ-003 | Reference equipment certificate reference missing. | Equipment record rejected. |
 | EQ-004 | Reference equipment range inverted. | Equipment range rejected. |
+| EQ-020 | Selected reference equipment is persisted for a job. | Selected equipment snapshot round-trips with traceability, range, status, selector, and timestamp evidence. |
+| EQ-021 | Duplicate selected reference equipment for a job. | Duplicate job/equipment selection is rejected and existing evidence is unchanged. |
+| EQ-022 | Selected reference equipment for unknown job. | Insert is rejected by referential integrity. |
+| EQ-023 | Selected reference equipment is immutable. | Direct update/delete is rejected at database level. |
 | EQ-030 | Overdue equipment selected. | Approval/export blocked or warning per rule. |
 | EQ-031 | Inactive equipment selected. | Approval/export blocked. |
 | EQ-032 | Equipment range incompatible with point. | Approval/export blocked. |
@@ -288,13 +292,15 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-134 | Renderer uses certificate metadata. | Rendered PDF uses locked metadata values and contains no placeholder text for page 1 or result-page remarks/conditions. |
 | CERT-135 | Capture certificate metadata through service. | Authorized metadata capture stores immutable metadata, records metadata audit evidence, and transitions the job to `metadata_complete`. |
 | CERT-136 | Unauthorized certificate metadata capture. | Unauthorized metadata capture is rejected before metadata, audit, or workflow evidence is written. |
+| CERT-137 | Certificate preview requires reference equipment. | Preview is blocked until selected reference equipment snapshots are available. |
+| CERT-138 | Renderer uses selected reference equipment. | Rendered reference-equipment page includes SIMVal ID, type, serial, certificate reference, due date, range, and traceability statement. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
 | AUD-004 | Approval audit event. | Approver and timestamp stored. |
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
 | AUD-006 | Workflow transition audit event. | Previous and new workflow states are stored. |
-| AUD-007 | Certificate preview audit event. | Preview event records summary ids, row count, template version, user, and version references. |
+| AUD-007 | Certificate preview audit event. | Preview event records summary ids, DUT ids, reference-equipment ids, row count, template version, user, and version references. |
 | AUTH-001 | Store and reload user account identity. | User id, display name, email, roles, active status, signature label, and created timestamp round-trip unchanged. |
 | AUTH-002 | Store duplicate user email. | Duplicate email is rejected. |
 | AUTH-003 | Store and reload user session. | Session id, user id, issued timestamp, expiry timestamp, and revocation status round-trip unchanged. |

@@ -4,7 +4,11 @@ from decimal import Decimal
 import pytest
 
 from app.backend.certificates.metadata import CertificateMetadata
-from app.backend.certificates.preview import CertificatePreview, CertificatePreviewRow
+from app.backend.certificates.preview import (
+    CertificatePreview,
+    CertificatePreviewReferenceEquipment,
+    CertificatePreviewRow,
+)
 from app.backend.certificates.preview import CertificatePreviewDut
 from app.backend.certificates.rendering import (
     CertificateRenderingError,
@@ -64,6 +68,12 @@ def test_render_certificate_pdf_uses_simval_three_page_structure_for_single_dut(
     assert "Kaye ValProbe RT SN: MJT1 Channel: MJT1-A" in content_text
     assert "SIMVal SOP-TEMP-001" in content_text
     assert "Room temperature 23 +/- 2 deg C." in content_text
+    assert "SIM-T-001" in content_text
+    assert "IRTD" in content_text
+    assert "IRT-123" in content_text
+    assert "DANAK-CAL-12345" in content_text
+    assert "-90 to 140 deg C" in content_text
+    assert "Accredited calibration with SI traceability." in content_text
     assert "not captured in P4 preview model" not in content_text
 
 
@@ -79,6 +89,7 @@ def test_render_certificate_pdf_uses_locked_preview_values_without_recalculation
         template_version="template-2026-001",
         metadata=_metadata(),
         duts=(_dut(),),
+        reference_equipment=(_reference_equipment(),),
         rows=(
             CertificatePreviewRow(
                 point_id="point-001",
@@ -145,6 +156,7 @@ def _preview() -> CertificatePreview:
         template_version="template-2026-001",
         metadata=_metadata(),
         duts=(_dut(),),
+        reference_equipment=(_reference_equipment(),),
         rows=(
             CertificatePreviewRow(
                 point_id="point-001",
@@ -182,6 +194,7 @@ def _multi_dut_preview() -> CertificatePreview:
                 channel_id="NWU2-A",
             ),
         ),
+        reference_equipment=(_reference_equipment(),),
         rows=(
             CertificatePreviewRow(
                 point_id="point-001",
@@ -245,4 +258,19 @@ def _dut() -> CertificatePreviewDut:
         model="ValProbe RT",
         serial_number="MJT1",
         channel_id="MJT1-A",
+    )
+
+
+def _reference_equipment() -> CertificatePreviewReferenceEquipment:
+    return CertificatePreviewReferenceEquipment(
+        equipment_id="ref-001",
+        simval_id="SIM-T-001",
+        equipment_type="IRTD",
+        serial_number="IRT-123",
+        calibration_certificate_reference="DANAK-CAL-12345",
+        calibration_due_date=date(2027, 4, 30),
+        range_minimum=-90.0,
+        range_maximum=140.0,
+        range_unit="deg C",
+        traceability_statement="Accredited calibration with SI traceability.",
     )

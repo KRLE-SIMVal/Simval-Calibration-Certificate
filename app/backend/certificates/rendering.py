@@ -203,16 +203,37 @@ def _reference_equipment_page_lines(
     page_number: int,
     total_pages: int,
 ) -> tuple[str, ...]:
-    return (
+    lines = [
         f"Certifikat nummer / Certificate number: {certificate_number}",
         _page_label(page_number, total_pages),
         "Referenceudstyr / Reference equipment:",
-        "Reference equipment selection is not yet captured in the P4 preview model.",
-        "Released certificate evidence remains tied to:",
-        f"Calculation Engine Version: {preview.calculation_engine_version}",
-        f"Constant Set Version: {preview.constant_set_version}",
-        f"Budget Version: {preview.budget_version}",
+    ]
+    for equipment in preview.reference_equipment:
+        lines.append(
+            " | ".join(
+                (
+                    f"SIMVal ID {equipment.simval_id}",
+                    f"Type {equipment.equipment_type}",
+                    f"Serial {equipment.serial_number}",
+                    (
+                        "Certificate "
+                        f"{equipment.calibration_certificate_reference}"
+                    ),
+                    f"Due {equipment.calibration_due_date.isoformat()}",
+                    f"Range {equipment.range_text}",
+                )
+            )
+        )
+        lines.append(f"Traceability: {equipment.traceability_statement}")
+    lines.extend(
+        (
+            "Released certificate evidence remains tied to:",
+            f"Calculation Engine Version: {preview.calculation_engine_version}",
+            f"Constant Set Version: {preview.constant_set_version}",
+            f"Budget Version: {preview.budget_version}",
+        )
     )
+    return tuple(lines)
 
 
 def _result_row_line(row: CertificatePreviewRow) -> str:

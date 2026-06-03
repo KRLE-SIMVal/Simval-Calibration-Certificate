@@ -8,6 +8,12 @@ from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
 from app.backend.certificates.metadata import CertificateMetadata
+from app.backend.domain.equipment import (
+    EquipmentRange,
+    EquipmentStatus,
+    ReferenceEquipment,
+    SelectedReferenceEquipment,
+)
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -28,6 +34,7 @@ from app.backend.persistence.sqlite import (
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
+    SQLiteSelectedReferenceEquipmentRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -46,6 +53,7 @@ def _connection_with_summary(
     job_state: WorkflowState = WorkflowState.CALCULATED,
     user_roles: tuple[Role, ...] = (Role.OPERATOR,),
     include_metadata: bool = True,
+    include_reference_equipment: bool = True,
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     initialize_schema(connection)
@@ -54,6 +62,10 @@ def _connection_with_summary(
         SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
+    if include_reference_equipment:
+        SQLiteSelectedReferenceEquipmentRepository(connection).add(
+            _selected_reference_equipment()
+        )
     SQLiteMeasurementWindowRepository(connection).add(_window("window-001", -80.0))
     SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
     SQLiteUserAccountRepository(connection).add(_user(user_roles))
@@ -78,6 +90,7 @@ def test_build_certificate_preview_for_session_consumes_locked_summaries_and_aud
     assert preview.metadata.client_name == "SIMVal customer"
     assert preview.metadata.purchase_order == "PO-12345"
     assert preview.duts[0].serial_number == "MJT1"
+    assert preview.reference_equipment[0].simval_id == "SIM-T-001"
     assert preview.summary_ids == ("point-001",)
     assert preview.rows[0].reference == pytest.approx(-80.0305)
     assert preview.rows[0].display_error_of_indication == Decimal("-0.004")
@@ -87,6 +100,7 @@ def test_build_certificate_preview_for_session_consumes_locked_summaries_and_aud
     assert result.audit_event.new_value == {
         "summary_ids": ["point-001"],
         "dut_ids": ["dut-001"],
+        "reference_equipment_ids": ["ref-001"],
         "metadata_recorded_at": "2026-06-01T14:00:00+00:00",
         "row_count": 1,
         "template_version": "template-2026-001",
@@ -167,6 +181,26 @@ def test_build_certificate_preview_for_session_rejects_missing_metadata():
         )
 
     assert "metadata" in str(exc_info.value).lower()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_build_certificate_preview_for_session_rejects_missing_reference_equipment():
+    connection = _connection_with_summary(include_reference_equipment=False)
+
+    with pytest.raises(CertificatePreviewServiceError) as exc_info:
+        build_certificate_preview_for_session(
+            connection=connection,
+            session_id="session-001",
+            job_id="job-001",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "reference equipment" in str(exc_info.value).lower()
     assert SQLiteAuditEventRepository(connection).list_for_entity(
         "calibration_job",
         "job-001",
@@ -258,6 +292,26 @@ def _dut() -> DeviceUnderTest:
         model="ValProbe RT",
         serial_number="MJT1",
         channel_id="MJT1-A",
+    )
+
+
+def _selected_reference_equipment() -> SelectedReferenceEquipment:
+    return SelectedReferenceEquipment(
+        job_id="job-001",
+        equipment=ReferenceEquipment(
+            id="ref-001",
+            simval_id="SIM-T-001",
+            equipment_type="IRTD",
+            serial_number="IRT-123",
+            discipline=Discipline.TEMPERATURE,
+            calibration_certificate_reference="DANAK-CAL-12345",
+            calibration_due_date=date(2027, 4, 30),
+            status=EquipmentStatus.ACTIVE,
+            usable_range=EquipmentRange(minimum=-90.0, maximum=140.0, unit="deg C"),
+            traceability_statement="Accredited calibration with SI traceability.",
+        ),
+        selected_by="operator-001",
+        selected_at=datetime(2026, 6, 1, 13, 0, tzinfo=timezone.utc),
     )
 
 

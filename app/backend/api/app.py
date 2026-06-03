@@ -110,6 +110,19 @@ class CertificatePreviewRowResponse(BaseModel):
     unit: str
 
 
+class CertificatePreviewReferenceEquipmentResponse(BaseModel):
+    equipment_id: str
+    simval_id: str
+    equipment_type: str
+    serial_number: str
+    calibration_certificate_reference: str
+    calibration_due_date: str
+    range_minimum: float
+    range_maximum: float
+    range_unit: str
+    traceability_statement: str
+
+
 class CertificatePreviewResponse(BaseModel):
     model_config = ConfigDict(json_schema_extra={"regulated_response": True})
 
@@ -122,6 +135,7 @@ class CertificatePreviewResponse(BaseModel):
     budget_version: str
     template_version: str
     summary_ids: tuple[str, ...]
+    reference_equipment: tuple[CertificatePreviewReferenceEquipmentResponse, ...]
     rows: tuple[CertificatePreviewRowResponse, ...]
     audit_event_id: int
 
@@ -418,6 +432,23 @@ def _preview_response(
         budget_version=preview.budget_version,
         template_version=preview.template_version,
         summary_ids=preview.summary_ids,
+        reference_equipment=tuple(
+            CertificatePreviewReferenceEquipmentResponse(
+                equipment_id=equipment.equipment_id,
+                simval_id=equipment.simval_id,
+                equipment_type=equipment.equipment_type,
+                serial_number=equipment.serial_number,
+                calibration_certificate_reference=(
+                    equipment.calibration_certificate_reference
+                ),
+                calibration_due_date=equipment.calibration_due_date.isoformat(),
+                range_minimum=equipment.range_minimum,
+                range_maximum=equipment.range_maximum,
+                range_unit=equipment.range_unit,
+                traceability_statement=equipment.traceability_statement,
+            )
+            for equipment in preview.reference_equipment
+        ),
         rows=tuple(
             CertificatePreviewRowResponse(
                 point_id=row.point_id,

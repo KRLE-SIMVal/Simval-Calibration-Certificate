@@ -9,6 +9,12 @@ from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
 from app.backend.certificates.metadata import CertificateMetadata
 from app.backend.certificates.records import ArtifactType, CertificateStatus
+from app.backend.domain.equipment import (
+    EquipmentRange,
+    EquipmentStatus,
+    ReferenceEquipment,
+    SelectedReferenceEquipment,
+)
 from app.backend.domain.entities import (
     CalibrationJob,
     Client,
@@ -30,6 +36,7 @@ from app.backend.persistence.sqlite import (
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
+    SQLiteSelectedReferenceEquipmentRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -242,6 +249,7 @@ def _connection_with_release_data(
     SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
     SQLiteDeviceUnderTestRepository(connection).add(_dut())
+    SQLiteSelectedReferenceEquipmentRepository(connection).add(_selected_reference())
     SQLiteMeasurementWindowRepository(connection).add(_window())
     SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
     SQLiteUserAccountRepository(connection).add(_qa_user(actor_roles))
@@ -306,6 +314,26 @@ def _dut() -> DeviceUnderTest:
         model="ValProbe RT",
         serial_number="MJT1",
         channel_id="MJT1-A",
+    )
+
+
+def _selected_reference() -> SelectedReferenceEquipment:
+    return SelectedReferenceEquipment(
+        job_id="job-001",
+        equipment=ReferenceEquipment(
+            id="ref-001",
+            simval_id="SIM-T-001",
+            equipment_type="IRTD",
+            serial_number="IRT-123",
+            discipline=Discipline.TEMPERATURE,
+            calibration_certificate_reference="DANAK-CAL-12345",
+            calibration_due_date=date(2027, 4, 30),
+            status=EquipmentStatus.ACTIVE,
+            usable_range=EquipmentRange(minimum=-90.0, maximum=140.0, unit="deg C"),
+            traceability_statement="Accredited calibration with SI traceability.",
+        ),
+        selected_by="operator-001",
+        selected_at=datetime(2026, 6, 1, 13, 0, tzinfo=timezone.utc),
     )
 
 

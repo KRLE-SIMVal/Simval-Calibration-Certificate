@@ -33,12 +33,18 @@ from app.backend.domain.entities import (
     UploadedFile,
     UploadedFileKind,
 )
+from app.backend.domain.equipment import (
+    EquipmentRange,
+    EquipmentStatus,
+    ReferenceEquipment,
+    SelectedReferenceEquipment,
+)
 from app.backend.domain.versioning import ConstantSet, UncertaintyBudget, VersionStatus
 from app.backend.domain.workflow import WorkflowState
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
 
-SCHEMA_VERSION = "p4-sqlite-schema-v1"
+SCHEMA_VERSION = "p4-sqlite-schema-v2"
 
 
 class PersistenceError(RuntimeError):
@@ -172,6 +178,28 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
 
         CREATE UNIQUE INDEX IF NOT EXISTS ux_devices_under_test_identity
             ON devices_under_test(job_id, serial_number, coalesce(channel_id, ''));
+
+        CREATE TABLE IF NOT EXISTS selected_reference_equipment (
+            job_id TEXT NOT NULL REFERENCES calibration_jobs(id),
+            equipment_id TEXT NOT NULL,
+            simval_id TEXT NOT NULL,
+            equipment_type TEXT NOT NULL,
+            serial_number TEXT NOT NULL,
+            discipline TEXT NOT NULL,
+            calibration_certificate_reference TEXT NOT NULL,
+            calibration_due_date TEXT NOT NULL,
+            status TEXT NOT NULL,
+            range_minimum REAL NOT NULL,
+            range_maximum REAL NOT NULL,
+            range_unit TEXT NOT NULL,
+            traceability_statement TEXT NOT NULL,
+            selected_by TEXT NOT NULL,
+            selected_at TEXT NOT NULL,
+            PRIMARY KEY (job_id, equipment_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_selected_reference_equipment_job
+            ON selected_reference_equipment(job_id, simval_id, equipment_id);
 
         CREATE TABLE IF NOT EXISTS required_temperature_setpoints (
             id TEXT PRIMARY KEY,
@@ -502,6 +530,18 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             BEFORE DELETE ON required_temperature_setpoints
             BEGIN
                 SELECT RAISE(ABORT, 'required temperature setpoints are immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS selected_reference_equipment_no_update
+            BEFORE UPDATE ON selected_reference_equipment
+            BEGIN
+                SELECT RAISE(ABORT, 'selected reference equipment is immutable');
+            END;
+
+        CREATE TRIGGER IF NOT EXISTS selected_reference_equipment_no_delete
+            BEFORE DELETE ON selected_reference_equipment
+            BEGIN
+                SELECT RAISE(ABORT, 'selected reference equipment is immutable');
             END;
         """
     )
@@ -1265,6 +1305,106 @@ class SQLiteDeviceUnderTestRepository:
             (job_id,),
         ).fetchall()
         return tuple(_dut_from_row(row) for row in rows)
+
+    def _commit_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.commit()
+
+    def _rollback_if_needed(self) -> None:
+        if self._autocommit:
+            self._connection.rollback()
+
+
+class SQLiteSelectedReferenceEquipmentRepository:
+    """Repository for immutable selected reference-equipment snapshots."""
+
+    def __init__(self, connection: sqlite3.Connection, *, autocommit: bool = True) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        self._connection = connection
+        self._autocommit = autocommit
+
+    def add(self, selection: SelectedReferenceEquipment) -> None:
+        equipment = selection.equipment
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO selected_reference_equipment (
+                    job_id,
+                    equipment_id,
+                    simval_id,
+                    equipment_type,
+                    serial_number,
+                    discipline,
+                    calibration_certificate_reference,
+                    calibration_due_date,
+                    status,
+                    range_minimum,
+                    range_maximum,
+                    range_unit,
+                    traceability_statement,
+                    selected_by,
+                    selected_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    selection.job_id,
+                    equipment.id,
+                    equipment.simval_id,
+                    equipment.equipment_type,
+                    equipment.serial_number,
+                    equipment.discipline.value,
+                    equipment.calibration_certificate_reference,
+                    _date_to_text(
+                        equipment.calibration_due_date,
+                        "Reference equipment due date",
+                    ),
+                    equipment.status.value,
+                    equipment.usable_range.minimum,
+                    equipment.usable_range.maximum,
+                    equipment.usable_range.unit,
+                    equipment.traceability_statement,
+                    selection.selected_by,
+                    _datetime_to_text(
+                        selection.selected_at,
+                        "Selected reference equipment timestamp",
+                    ),
+                ),
+            )
+            self._commit_if_needed()
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError(
+                "Could not store selected reference equipment."
+            ) from error
+
+    def list_for_job(self, job_id: str) -> tuple[SelectedReferenceEquipment, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                job_id,
+                equipment_id,
+                simval_id,
+                equipment_type,
+                serial_number,
+                discipline,
+                calibration_certificate_reference,
+                calibration_due_date,
+                status,
+                range_minimum,
+                range_maximum,
+                range_unit,
+                traceability_statement,
+                selected_by,
+                selected_at
+            FROM selected_reference_equipment
+            WHERE job_id = ?
+            ORDER BY simval_id ASC, equipment_id ASC
+            """,
+            (job_id,),
+        ).fetchall()
+        return tuple(_selected_reference_equipment_from_row(row) for row in rows)
 
     def _commit_if_needed(self) -> None:
         if self._autocommit:
@@ -2429,6 +2569,40 @@ def _dut_from_row(row: sqlite3.Row) -> DeviceUnderTest:
         model=row["model"],
         serial_number=row["serial_number"],
         channel_id=row["channel_id"],
+    )
+
+
+def _selected_reference_equipment_from_row(
+    row: sqlite3.Row,
+) -> SelectedReferenceEquipment:
+    return SelectedReferenceEquipment(
+        job_id=row["job_id"],
+        equipment=ReferenceEquipment(
+            id=row["equipment_id"],
+            simval_id=row["simval_id"],
+            equipment_type=row["equipment_type"],
+            serial_number=row["serial_number"],
+            discipline=Discipline(row["discipline"]),
+            calibration_certificate_reference=(
+                row["calibration_certificate_reference"]
+            ),
+            calibration_due_date=_date_from_text(
+                row["calibration_due_date"],
+                "Reference equipment due date",
+            ),
+            status=EquipmentStatus(row["status"]),
+            usable_range=EquipmentRange(
+                minimum=row["range_minimum"],
+                maximum=row["range_maximum"],
+                unit=row["range_unit"],
+            ),
+            traceability_statement=row["traceability_statement"],
+        ),
+        selected_by=row["selected_by"],
+        selected_at=_datetime_from_text(
+            row["selected_at"],
+            "Selected reference equipment timestamp",
+        ),
     )
 
 

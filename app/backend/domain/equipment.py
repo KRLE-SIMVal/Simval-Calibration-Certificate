@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from math import isfinite
 
@@ -24,6 +24,11 @@ def _require_text(value: str, field_name: str) -> None:
 def _require_instance(value: object, expected_type: type, field_name: str) -> None:
     if not isinstance(value, expected_type):
         raise DomainValidationError(f"{field_name} is invalid.")
+
+
+def _require_timezone_aware(value: datetime, field_name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise DomainValidationError(f"{field_name} must be timezone-aware.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,3 +106,18 @@ def reference_equipment_blockers(
     if not equipment.covers(point=point, unit=unit, discipline=discipline):
         blockers.append("equipment_out_of_range")
     return tuple(blockers)
+
+
+@dataclass(frozen=True, slots=True)
+class SelectedReferenceEquipment:
+    job_id: str
+    equipment: ReferenceEquipment
+    selected_by: str
+    selected_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_text(self.job_id, "Calibration job id")
+        if not isinstance(self.equipment, ReferenceEquipment):
+            raise DomainValidationError("Selected reference equipment is invalid.")
+        _require_text(self.selected_by, "Selected reference equipment user")
+        _require_timezone_aware(self.selected_at, "Selected reference equipment timestamp")

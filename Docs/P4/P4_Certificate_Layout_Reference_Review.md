@@ -57,13 +57,17 @@ tests must use generated or sanitized data only.
   P4 renderer creates one result page per DUT group.
 - Raw layout references are not default-CI fixtures. Renderer tests assert the
   approved structure using generated preview rows.
+- Page 3 now consumes locked selected reference-equipment snapshots from the
+  preview model and lists SIMVal ID, type, serial, certificate reference, due
+  date, range, and traceability statement.
 
 ## Remaining Gaps
 
 - Certificate metadata is now persisted through an audited service/API capture
   path and included in immutable preview snapshots. Post-capture metadata
   revision/editing is still not implemented.
-- Reference-equipment selection is not yet available to the renderer.
+- Reference-equipment snapshots are available to the renderer, but the
+  controlled equipment-selection service/API is not yet implemented.
 - Logos, DANAK mark placement, and exact visual grid matching are not yet
   implemented.
 - Page overflow handling for many result rows per DUT still needs a renderer

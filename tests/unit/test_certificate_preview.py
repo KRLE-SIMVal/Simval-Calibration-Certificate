@@ -8,6 +8,7 @@ from app.backend.certificates.preview import (
     CertificatePreview,
     CertificatePreviewDut,
     CertificatePreviewError,
+    CertificatePreviewReferenceEquipment,
     CertificatePreviewRow,
 )
 
@@ -24,12 +25,14 @@ def test_certificate_preview_records_locked_summary_rows_and_versions():
         template_version="template-2026-001",
         metadata=_metadata(),
         duts=(_dut(),),
+        reference_equipment=(_reference_equipment(),),
         rows=(_row(),),
     )
 
     assert preview.summary_ids == ("point-001",)
     assert preview.metadata.client_name == "SIMVal customer"
     assert preview.duts[0].serial_number == "MJT1"
+    assert preview.reference_equipment[0].simval_id == "SIM-T-001"
     assert preview.rows[0].display_error_of_indication == Decimal("-0.004")
     assert preview.rows[0].reported_expanded_uncertainty == Decimal("0.012")
 
@@ -47,6 +50,7 @@ def test_certificate_preview_rejects_empty_rows():
             template_version="template-2026-001",
             metadata=_metadata(),
             duts=(_dut(),),
+            reference_equipment=(_reference_equipment(),),
             rows=(),
         )
 
@@ -64,6 +68,7 @@ def test_certificate_preview_rejects_naive_timestamp():
             template_version="template-2026-001",
             metadata=_metadata(),
             duts=(_dut(),),
+            reference_equipment=(_reference_equipment(),),
             rows=(_row(),),
         )
 
@@ -81,6 +86,25 @@ def test_certificate_preview_rejects_row_without_dut_metadata():
             template_version="template-2026-001",
             metadata=_metadata(),
             duts=(),
+            reference_equipment=(_reference_equipment(),),
+            rows=(_row(),),
+        )
+
+
+def test_certificate_preview_rejects_missing_reference_equipment():
+    with pytest.raises(CertificatePreviewError):
+        CertificatePreview(
+            job_id="job-001",
+            generated_by="user-001",
+            generated_at=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+            software_version="app-0.1.0",
+            calculation_engine_version="calc-engine-0.1.0",
+            constant_set_version="constants-2026-001",
+            budget_version="budget-temp-001",
+            template_version="template-2026-001",
+            metadata=_metadata(),
+            duts=(_dut(),),
+            reference_equipment=(),
             rows=(_row(),),
         )
 
@@ -115,6 +139,21 @@ def _dut() -> CertificatePreviewDut:
         model="ValProbe RT",
         serial_number="MJT1",
         channel_id="MJT1-A",
+    )
+
+
+def _reference_equipment() -> CertificatePreviewReferenceEquipment:
+    return CertificatePreviewReferenceEquipment(
+        equipment_id="ref-001",
+        simval_id="SIM-T-001",
+        equipment_type="IRTD",
+        serial_number="IRT-123",
+        calibration_certificate_reference="DANAK-CAL-12345",
+        calibration_due_date=date(2027, 4, 30),
+        range_minimum=-90.0,
+        range_maximum=140.0,
+        range_unit="deg C",
+        traceability_statement="Accredited calibration with SI traceability.",
     )
 
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
+from math import isfinite
 
 from app.backend.certificates.metadata import CertificateMetadata
 
@@ -71,6 +72,54 @@ class CertificatePreviewDut:
 
 
 @dataclass(frozen=True, slots=True)
+class CertificatePreviewReferenceEquipment:
+    equipment_id: str
+    simval_id: str
+    equipment_type: str
+    serial_number: str
+    calibration_certificate_reference: str
+    calibration_due_date: date
+    range_minimum: float
+    range_maximum: float
+    range_unit: str
+    traceability_statement: str
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "equipment_id",
+            "simval_id",
+            "equipment_type",
+            "serial_number",
+            "calibration_certificate_reference",
+            "range_unit",
+            "traceability_statement",
+        ):
+            _require_text(getattr(self, field_name), field_name)
+        if not isinstance(self.calibration_due_date, date) or isinstance(
+            self.calibration_due_date,
+            datetime,
+        ):
+            raise CertificatePreviewError(
+                "Reference equipment calibration_due_date must be a date."
+            )
+        if not isfinite(self.range_minimum) or not isfinite(self.range_maximum):
+            raise CertificatePreviewError(
+                "Reference equipment range limits must be finite."
+            )
+        if self.range_minimum > self.range_maximum:
+            raise CertificatePreviewError(
+                "Reference equipment range minimum cannot exceed maximum."
+            )
+
+    @property
+    def range_text(self) -> str:
+        return (
+            f"{self.range_minimum:g} to {self.range_maximum:g} "
+            f"{self.range_unit}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CertificatePreview:
     job_id: str
     generated_by: str
@@ -82,6 +131,7 @@ class CertificatePreview:
     template_version: str
     metadata: CertificateMetadata
     duts: tuple[CertificatePreviewDut, ...]
+    reference_equipment: tuple[CertificatePreviewReferenceEquipment, ...]
     rows: tuple[CertificatePreviewRow, ...]
 
     def __post_init__(self) -> None:
@@ -103,6 +153,15 @@ class CertificatePreview:
         for dut in self.duts:
             if not isinstance(dut, CertificatePreviewDut):
                 raise CertificatePreviewError("Certificate DUT metadata is invalid.")
+        if len(self.reference_equipment) == 0:
+            raise CertificatePreviewError(
+                "Certificate preview requires reference equipment."
+            )
+        for equipment in self.reference_equipment:
+            if not isinstance(equipment, CertificatePreviewReferenceEquipment):
+                raise CertificatePreviewError(
+                    "Certificate reference equipment is invalid."
+                )
         if len(self.rows) == 0:
             raise CertificatePreviewError("Certificate preview requires result rows.")
         dut_ids = {dut.dut_id for dut in self.duts}

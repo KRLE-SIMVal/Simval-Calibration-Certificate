@@ -23,6 +23,7 @@ from app.backend.certificates.preview import (
     CertificatePreview,
     CertificatePreviewDut,
     CertificatePreviewError,
+    CertificatePreviewReferenceEquipment,
     CertificatePreviewRow,
 )
 from app.backend.certificates.rendering import (
@@ -33,6 +34,7 @@ from app.backend.certificates.storage import (
     StoredCertificateArtifact,
     store_rendered_artifact,
 )
+from app.backend.domain.equipment import SelectedReferenceEquipment
 from app.backend.domain.entities import DeviceUnderTest
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
@@ -43,6 +45,7 @@ from app.backend.persistence.sqlite import (
     SQLiteCertificateRecordRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
+    SQLiteSelectedReferenceEquipmentRepository,
 )
 from app.backend.services.authentication import resolve_actor_for_action
 from app.backend.services.workflow import transition_calibration_job
@@ -244,6 +247,10 @@ def build_certificate_preview(
             autocommit=False,
         )
         dut_repository = SQLiteDeviceUnderTestRepository(connection, autocommit=False)
+        selected_reference_repository = SQLiteSelectedReferenceEquipmentRepository(
+            connection,
+            autocommit=False,
+        )
         summary_repository = SQLiteMeasurementPointSummaryRepository(
             connection,
             autocommit=False,
@@ -273,6 +280,13 @@ def build_certificate_preview(
                 "Certificate preview requires certificate metadata."
             ) from exc
         duts = dut_repository.list_for_job(job_id)
+        selected_reference_equipment = selected_reference_repository.list_for_job(
+            job_id
+        )
+        if len(selected_reference_equipment) == 0:
+            raise CertificatePreviewServiceError(
+                "Certificate preview requires reference equipment."
+            )
 
         preview = _preview_from_summaries(
             job_id=job_id,
@@ -282,6 +296,7 @@ def build_certificate_preview(
             template_version=template_version,
             metadata=metadata,
             duts=duts,
+            selected_reference_equipment=selected_reference_equipment,
             summaries=summaries,
         )
         audit_event = _preview_audit_event(preview)
@@ -401,6 +416,9 @@ def _preview_for_release_rendering(
     job_repository = SQLiteCalibrationJobRepository(connection)
     metadata_repository = SQLiteCertificateMetadataRepository(connection)
     dut_repository = SQLiteDeviceUnderTestRepository(connection)
+    selected_reference_repository = SQLiteSelectedReferenceEquipmentRepository(
+        connection
+    )
     summary_repository = SQLiteMeasurementPointSummaryRepository(connection)
     audit_repository = SQLiteAuditEventRepository(connection)
 
@@ -421,6 +439,11 @@ def _preview_for_release_rendering(
             "Certificate rendering for release requires certificate metadata."
         ) from exc
     duts = dut_repository.list_for_job(job_id)
+    selected_reference_equipment = selected_reference_repository.list_for_job(job_id)
+    if len(selected_reference_equipment) == 0:
+        raise CertificateReleaseServiceError(
+            "Certificate rendering for release requires reference equipment."
+        )
     summary_ids = tuple(summary.point_id for summary in summaries)
     calculation_engine_version = _single_release_version(
         {summary.calculation_engine_version for summary in summaries},
@@ -456,6 +479,7 @@ def _preview_for_release_rendering(
             template_version=template_version,
             metadata=metadata,
             duts=duts,
+            selected_reference_equipment=selected_reference_equipment,
             summaries=summaries,
         )
     except CertificatePreviewServiceError as exc:
@@ -619,6 +643,7 @@ def _preview_from_summaries(
     template_version: str,
     metadata: CertificateMetadata,
     duts: tuple[DeviceUnderTest, ...],
+    selected_reference_equipment: tuple[SelectedReferenceEquipment, ...],
     summaries: tuple[MeasurementPointSummary, ...],
 ) -> CertificatePreview:
     calculation_engine_version = _single_version(
@@ -645,6 +670,10 @@ def _preview_from_summaries(
             template_version=template_version,
             metadata=metadata,
             duts=tuple(_preview_dut(dut) for dut in duts),
+            reference_equipment=tuple(
+                _preview_reference_equipment(selection)
+                for selection in selected_reference_equipment
+            ),
             rows=tuple(_preview_row(summary) for summary in summaries),
         )
     except CertificatePreviewError as exc:
@@ -672,6 +701,26 @@ def _preview_dut(dut: DeviceUnderTest) -> CertificatePreviewDut:
         model=dut.model,
         serial_number=dut.serial_number,
         channel_id=dut.channel_id,
+    )
+
+
+def _preview_reference_equipment(
+    selection: SelectedReferenceEquipment,
+) -> CertificatePreviewReferenceEquipment:
+    equipment = selection.equipment
+    return CertificatePreviewReferenceEquipment(
+        equipment_id=equipment.id,
+        simval_id=equipment.simval_id,
+        equipment_type=equipment.equipment_type,
+        serial_number=equipment.serial_number,
+        calibration_certificate_reference=(
+            equipment.calibration_certificate_reference
+        ),
+        calibration_due_date=equipment.calibration_due_date,
+        range_minimum=equipment.usable_range.minimum,
+        range_maximum=equipment.usable_range.maximum,
+        range_unit=equipment.usable_range.unit,
+        traceability_statement=equipment.traceability_statement,
     )
 
 
@@ -713,6 +762,9 @@ def _preview_audit_event(preview: CertificatePreview) -> AuditEvent:
         new_value={
             "summary_ids": list(preview.summary_ids),
             "dut_ids": [dut.dut_id for dut in preview.duts],
+            "reference_equipment_ids": [
+                equipment.equipment_id for equipment in preview.reference_equipment
+            ],
             "metadata_recorded_at": preview.metadata.recorded_at.isoformat(),
             "row_count": len(preview.rows),
             "template_version": preview.template_version,

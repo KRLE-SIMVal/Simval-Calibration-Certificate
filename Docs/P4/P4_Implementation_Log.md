@@ -34,13 +34,20 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   controlled rendered artifact storage.
 - `POST /certificate-rendered-releases` exposes the controlled PDF render,
   store, and release path through the session-backed API.
+- Immutable selected reference-equipment snapshots can be persisted for a job
+  with selector/timestamp evidence and database-level update/delete blockers.
+- Certificate preview generation now requires selected reference equipment,
+  records reference-equipment ids in preview audit evidence, and exposes
+  reference-equipment rows in the API preview response.
+- The renderer populates the reference-equipment page from locked preview
+  equipment snapshots.
 
 ## Scope Not Implemented
 
 - No exact SIMVal/DANAK visual certificate template matching yet.
 - No image/logo embedding yet.
 - No controlled metadata revision/edit workflow after initial capture yet.
-- No reference-equipment table values in the renderer yet.
+- No service/API workflow for selecting reference equipment yet.
 - No XLSX uncertainty-budget export yet.
 - No PDF/A, digital signature, or qualified-signature support.
 - No customer-facing UI.
@@ -78,6 +85,10 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   runtime settings suite: 36 passed on Python 3.12.10.
 - Default regression suite after API rendered release slice: 308 passed,
   2 skipped on Python 3.12.10.
+- Focused selected reference-equipment domain, persistence, preview, renderer,
+  release, API, and schema suite: 60 passed on Python 3.12.10.
+- Default regression suite after selected reference-equipment certificate slice:
+  314 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -85,7 +96,7 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 |---|---|
 | PDF output has SIMVal-oriented page structure but does not exactly match the approved certificate template. | Add exact template-contract tests, logo/DANAK mark handling, and visual/text extraction checks before treating output as customer-ready. |
 | Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
-| Reference equipment is not yet available to the renderer. | Connect approved selected reference equipment to the preview model and block release when reference-equipment content is missing. |
+| Selected reference equipment is available to preview/rendering, but no controlled service/API exists yet for making the selection. | Add an audited equipment-selection service/API with suitability blockers before production workflow validation. |
 | Many result rows on one DUT page may overflow. | Add deterministic page-break rules and tests for row limits before production validation. |
 | Rendered release can leave an orphan artifact if file storage succeeds but the later database release transaction fails. | Add a pending/finalized artifact state or transactional artifact registry before production deployment. |
 | No PDF/A or digital-signature support exists. | Decide signature/PDF archival requirements before final production validation. |
