@@ -16,8 +16,11 @@ from app.backend.certificates.metadata import (
 from app.backend.certificates.records import (
     ArtifactType,
     CertificateRecord,
+    CertificateRecordError,
+    CertificateRevision,
     CertificateStatus,
     ExportArtifact,
+    create_revision_record,
 )
 from app.backend.certificates.preview import (
     CertificatePreview,
@@ -45,6 +48,7 @@ from app.backend.persistence.sqlite import (
     SQLiteCalibrationJobRepository,
     SQLiteCertificateMetadataRepository,
     SQLiteCertificateRecordRepository,
+    SQLiteCertificateRevisionRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteSelectedReferenceEquipmentRepository,
@@ -68,6 +72,10 @@ class CertificateMetadataServiceError(ValueError):
 
 class CertificateReferenceEquipmentServiceError(ValueError):
     """Raised when reference equipment cannot be selected safely."""
+
+
+class CertificateRevisionServiceError(ValueError):
+    """Raised when a released certificate cannot be revised safely."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +120,15 @@ class RenderedCertificateRelease:
     rendered_artifact: RenderedCertificateArtifact
     stored_artifact: StoredCertificateArtifact
     release: CertificateRelease
+
+
+@dataclass(frozen=True, slots=True)
+class CertificateRevisionRegistration:
+    revision: CertificateRevision
+    revision_audit_event_id: int
+    revision_audit_event: AuditEvent
+    workflow_audit_event_id: int
+    workflow_audit_event: AuditEvent
 
 
 def capture_certificate_metadata_for_session(
@@ -792,6 +809,96 @@ def release_certificate(
     )
 
 
+def revise_released_certificate_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    certificate_id: str,
+    revision_id: str,
+    reason: str,
+    software_version: str,
+    timestamp: datetime,
+) -> CertificateRevisionRegistration:
+    """Record controlled revision evidence for a released certificate."""
+    _require_revision_text(software_version, "Software version")
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.REVISE_RELEASED_CERTIFICATE,
+        timestamp=timestamp,
+    )
+
+    with connection:
+        job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+        certificate_repository = SQLiteCertificateRecordRepository(
+            connection,
+            autocommit=False,
+        )
+        revision_repository = SQLiteCertificateRevisionRepository(
+            connection,
+            autocommit=False,
+        )
+        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+
+        try:
+            certificate = certificate_repository.get(certificate_id)
+        except RecordNotFoundError as exc:
+            raise CertificateRevisionServiceError(
+                "Certificate revision requires an existing released certificate."
+            ) from exc
+        job = job_repository.get(certificate.job_id)
+        if job.state is not WorkflowState.RELEASED:
+            raise CertificateRevisionServiceError(
+                "Certificate revision requires released workflow state."
+            )
+
+        try:
+            revision = create_revision_record(
+                revision_id=revision_id,
+                original=certificate,
+                reason=reason,
+                revised_by=actor.user_id,
+                revised_at=timestamp,
+            )
+        except CertificateRecordError as exc:
+            raise CertificateRevisionServiceError(str(exc)) from exc
+
+        try:
+            revision_repository.add(revision)
+        except PersistenceError as exc:
+            raise CertificateRevisionServiceError(str(exc)) from exc
+        revision_audit_event = _certificate_revision_audit_event(
+            certificate=certificate,
+            revision=revision,
+            software_version=software_version,
+            timestamp=timestamp,
+        )
+        revision_audit_event_id = audit_repository.append(revision_audit_event)
+        transition = transition_calibration_job(
+            job_id=job.id,
+            current=job.state,
+            target=WorkflowState.REVISED,
+            user_id=actor.user_id,
+            software_version=software_version,
+            timestamp=timestamp,
+            reason=revision.reason,
+        )
+        job_repository.update_state(
+            job_id=job.id,
+            expected_state=job.state,
+            new_state=transition.state,
+        )
+        workflow_audit_event_id = audit_repository.append(transition.audit_event)
+
+    return CertificateRevisionRegistration(
+        revision=revision,
+        revision_audit_event_id=revision_audit_event_id,
+        revision_audit_event=revision_audit_event,
+        workflow_audit_event_id=workflow_audit_event_id,
+        workflow_audit_event=transition.audit_event,
+    )
+
+
 def _preview_from_summaries(
     *,
     job_id: str,
@@ -1131,6 +1238,38 @@ def _certificate_release_audit_event(
     )
 
 
+def _certificate_revision_audit_event(
+    *,
+    certificate: CertificateRecord,
+    revision: CertificateRevision,
+    software_version: str,
+    timestamp: datetime,
+) -> AuditEvent:
+    return AuditEvent(
+        entity_type="calibration_job",
+        entity_id=certificate.job_id,
+        action=AuditAction.CERTIFICATE_REVISED,
+        user_id=revision.revised_by,
+        timestamp=timestamp,
+        previous_value={
+            "certificate_id": certificate.certificate_id,
+            "certificate_number": certificate.certificate_number,
+            "status": certificate.status.value,
+        },
+        new_value={
+            "revision_id": revision.revision_id,
+            "original_certificate_id": revision.original_certificate_id,
+            "original_certificate_number": revision.original_certificate_number,
+            "revised_at": revision.revised_at.isoformat(),
+        },
+        reason=revision.reason,
+        software_version=software_version,
+        calculation_engine_version=certificate.calculation_engine_version,
+        constant_set_version=certificate.constant_set_version,
+        budget_version=certificate.budget_version,
+    )
+
+
 def _single_release_version(versions: set[str], label: str) -> str:
     try:
         return _single_version(versions, label)
@@ -1180,6 +1319,11 @@ def _require_reference_equipment_text(value: str, field_name: str) -> None:
         raise CertificateReferenceEquipmentServiceError(
             f"{field_name} is required."
         )
+
+
+def _require_revision_text(value: str, field_name: str) -> None:
+    if value.strip() == "":
+        raise CertificateRevisionServiceError(f"{field_name} is required.")
 
 
 def _equipment_range_text(equipment: ReferenceEquipment) -> str:

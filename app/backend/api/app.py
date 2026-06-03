@@ -35,12 +35,15 @@ from app.backend.services.certificates import (
     CertificateReferenceEquipmentServiceError,
     CertificateRelease,
     CertificateReleaseServiceError,
+    CertificateRevisionRegistration,
+    CertificateRevisionServiceError,
     CertificatePreviewGeneration,
     CertificatePreviewServiceError,
     build_certificate_preview_for_session,
     capture_certificate_metadata_for_session,
     release_certificate_for_session,
     render_and_release_certificate_pdf_for_session,
+    revise_released_certificate_for_session,
     select_reference_equipment_for_session,
 )
 
@@ -215,6 +218,13 @@ class RenderedCertificateReleaseRequest(BaseModel):
     accreditation_mark_allowed: bool
 
 
+class CertificateRevisionRequest(BaseModel):
+    certificate_id: str
+    revision_id: str
+    reason: str
+    software_version: str
+
+
 class ExportArtifactResponse(BaseModel):
     artifact_id: str
     artifact_type: str
@@ -245,6 +255,20 @@ class CertificateReleaseResponse(BaseModel):
     export_audit_event_id: int
     release_audit_event_id: int
     workflow_audit_event_id: int
+
+
+class CertificateRevisionResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    revision_id: str
+    original_certificate_id: str
+    original_certificate_number: str
+    reason: str
+    revised_by: str
+    revised_at: str
+    revision_audit_event_id: int
+    workflow_audit_event_id: int
+    workflow_state: str
 
 
 def create_app(
@@ -519,6 +543,40 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _release_response(result.release)
 
+    @app.post(
+        "/certificate-revisions",
+        response_model=CertificateRevisionResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def certificate_revision(
+        request: CertificateRevisionRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateRevisionResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = revise_released_certificate_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    certificate_id=request.certificate_id,
+                    revision_id=request.revision_id,
+                    reason=request.reason,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except CertificateRevisionServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _revision_response(result)
+
     return app
 
 
@@ -677,6 +735,26 @@ def _release_response(result: CertificateRelease) -> CertificateReleaseResponse:
         export_audit_event_id=result.export_audit_event_id,
         release_audit_event_id=result.release_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _revision_response(
+    result: CertificateRevisionRegistration,
+) -> CertificateRevisionResponse:
+    revision = result.revision
+    workflow_state = ""
+    if result.workflow_audit_event.new_value is not None:
+        workflow_state = str(result.workflow_audit_event.new_value["state"])
+    return CertificateRevisionResponse(
+        revision_id=revision.revision_id,
+        original_certificate_id=revision.original_certificate_id,
+        original_certificate_number=revision.original_certificate_number,
+        reason=revision.reason,
+        revised_by=revision.revised_by,
+        revised_at=revision.revised_at.isoformat(),
+        revision_audit_event_id=result.revision_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
+        workflow_state=workflow_state,
     )
 
 

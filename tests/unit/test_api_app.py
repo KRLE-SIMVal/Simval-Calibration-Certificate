@@ -34,6 +34,7 @@ from app.backend.persistence.sqlite import (
     SQLiteCalibrationJobRepository,
     SQLiteCertificateMetadataRepository,
     SQLiteCertificateRecordRepository,
+    SQLiteCertificateRevisionRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
@@ -491,6 +492,75 @@ def test_api_certificate_rendered_release_rejects_unauthorized_session_before_fi
     assert response.status_code == 403
     assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
     assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_api_certificate_revision_records_revision_and_workflow():
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    app = create_app(connection=connection, clock=_fixed_now)
+    preview_response = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    assert preview_response.status_code == 200
+    release_response = _api_request(
+        app,
+        "POST",
+        "/certificate-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "artifact_type": "pdf",
+            "filename": "SIMVAL-CAL-0001.pdf",
+            "checksum_sha256": "b" * 64,
+            "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    assert release_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/certificate-revisions",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "certificate_id": "cert-001",
+            "revision_id": "rev-001",
+            "reason": "Corrected customer address after QA approval.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["revision_id"] == "rev-001"
+    assert payload["original_certificate_id"] == "cert-001"
+    assert payload["original_certificate_number"] == "SIMVAL-CAL-0001"
+    assert payload["revision_audit_event_id"] == 5
+    assert payload["workflow_audit_event_id"] == 6
+    assert payload["workflow_state"] == "revised"
+    assert SQLiteCertificateRevisionRepository(connection).get("rev-001").reason == (
+        "Corrected customer address after QA approval."
+    )
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.REVISED
+    )
 
 
 def test_api_certificate_preview_rejects_unauthorized_session_before_audit():

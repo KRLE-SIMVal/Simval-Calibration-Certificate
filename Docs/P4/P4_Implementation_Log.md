@@ -64,11 +64,16 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   API responses.
 - Rendered release rejects preview/release accreditation-scope mismatches and
   suppresses the DANAK/ILAC mark when the approved scope decision disallows it.
+- Controlled released-certificate revision service records immutable revision
+  evidence, audit reason, and `released` to `revised` workflow transition.
+- `POST /certificate-revisions` exposes the controlled revision path through
+  the session-backed API.
 
 ## Scope Not Implemented
 
 - No exact SIMVal/DANAK visual certificate template matching yet.
-- No controlled metadata revision/edit workflow after initial capture yet.
+- No metadata mutation in place after initial capture; released certificates now
+  use controlled revision evidence instead.
 - No full equipment-library CRUD workflow yet.
 - No full uncertainty-budget editor/export workflow beyond locked calculation
   result XLSX rendering yet.
@@ -146,6 +151,12 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   suite after accreditation-scope control: 52 passed on Python 3.12.10.
 - Default regression suite after accreditation-scope control: 331 passed,
   2 skipped on Python 3.12.10.
+- Focused certificate revision service and API suite: 22 passed on Python
+  3.12.10.
+- Focused certificate, API, and certificate persistence suite after revision
+  workflow: 97 passed on Python 3.12.10.
+- Default regression suite after released-certificate revision workflow:
+  336 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -153,7 +164,7 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 |---|---|
 | PDF output has SIMVal-oriented page structure and controlled logos, but does not exactly match the approved certificate template. | Add exact template-contract tests and visual/text extraction checks before treating output as customer-ready. |
 | The supplied accreditation mark now has backend/API scope control, but no customer-facing UI control exists yet. | Add a reviewer-visible UI control and QMS-approved decision rule before production validation. |
-| Certificate metadata is persisted through an audited initial capture path, but has no revision/edit workflow after initial capture. | Add a change-controlled metadata revision path before allowing post-capture changes. |
+| Certificate metadata is persisted through an audited initial capture path and cannot be mutated in place; released certificate correction now requires revision evidence, but replacement-certificate generation is still a future workflow slice. | Add replacement-certificate generation from a revised job before production use of correction workflows. |
 | Reference-equipment selection is audited and point-level suitability is checked at preview/release, but full equipment-library CRUD is not yet implemented. | Add controlled equipment-library management before production workflow validation. |
 | XLSX uncertainty-budget rendering covers locked automatic temperature calculation output, not a full editable budget-editor export. | Add controlled budget-editor export once the budget module is implemented and approved. |
 | Rendered release can leave an orphan artifact if file storage succeeds but the later database release transaction fails. | Add a pending/finalized artifact state or transactional artifact registry before production deployment. |
