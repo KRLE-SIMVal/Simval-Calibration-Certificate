@@ -33,7 +33,7 @@ Status values:
 | F-025 statistics | Mean, sample stdev, standard uncertainty of mean, min/max, n. | STAT-001 to STAT-010 | Planned |
 | F-026 window warnings | Too few readings, instability, missing channels, time mismatch. | WIN-020 to WIN-029 | Planned |
 | F-030 equipment library | Create/edit/status/range/due date. | EQ-001 to EQ-010 | Planned |
-| F-031 selected equipment on certificate | Traceability table and artifact content. | EQ-020 to EQ-023, CERT-137, CERT-138, API-003 | Partial |
+| F-031 selected equipment on certificate | Traceability table and artifact content. | EQ-020 to EQ-026, CERT-137, CERT-138, API-003, API-017 to API-019 | Partial |
 | F-032 equipment warnings/blocks | Overdue, inactive, wrong range, missing certificate reference. | EQ-030 to EQ-039 | Planned |
 | F-033 versioned constants | Version creation, approval, retirement, selection by certificate. | CONST-001 to CONST-020 | Planned |
 | F-034 CMC floor | Calculated U below CMC is raised before reporting; CMC lookup follows approved range/interpolation rules. | CMC-001 to CMC-018 | Planned |

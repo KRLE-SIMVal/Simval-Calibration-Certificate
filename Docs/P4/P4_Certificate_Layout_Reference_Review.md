@@ -66,8 +66,9 @@ tests must use generated or sanitized data only.
 - Certificate metadata is now persisted through an audited service/API capture
   path and included in immutable preview snapshots. Post-capture metadata
   revision/editing is still not implemented.
-- Reference-equipment snapshots are available to the renderer, but the
-  controlled equipment-selection service/API is not yet implemented.
+- Reference-equipment snapshots are available to the renderer and can be
+  selected through an audited service/API, but full equipment-library CRUD and
+  point-level suitability checks are not yet implemented.
 - Logos, DANAK mark placement, and exact visual grid matching are not yet
   implemented.
 - Page overflow handling for many result rows per DUT still needs a renderer

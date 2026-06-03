@@ -148,6 +148,79 @@ def test_api_certificate_metadata_capture_rejects_wrong_workflow_state():
     ) == ()
 
 
+def test_api_reference_equipment_selection_records_selection_and_audits():
+    connection = _connection_with_reference_selection_data()
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json=_reference_equipment_selection_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-001"
+    assert payload["equipment_id"] == "ref-001"
+    assert payload["simval_id"] == "SIM-T-001"
+    assert payload["selection_audit_event_id"] == 1
+    assert payload["workflow_audit_event_id"] == 2
+    assert payload["workflow_state"] == "equipment_selected"
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.EQUIPMENT_SELECTED
+    )
+    assert SQLiteSelectedReferenceEquipmentRepository(connection).list_for_job(
+        "job-001"
+    )[0].selected_by == "user-001"
+
+
+def test_api_reference_equipment_selection_rejects_unauthorized_session():
+    connection = _connection_with_reference_selection_data(
+        user_roles=(Role.READ_ONLY,)
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json=_reference_equipment_selection_payload(),
+    )
+
+    assert response.status_code == 403
+    assert SQLiteSelectedReferenceEquipmentRepository(connection).list_for_job(
+        "job-001"
+    ) == ()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_api_reference_equipment_selection_rejects_wrong_workflow_state():
+    connection = _connection_with_reference_selection_data(
+        job_state=WorkflowState.DRAFT
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json=_reference_equipment_selection_payload(),
+    )
+
+    assert response.status_code == 409
+    assert SQLiteSelectedReferenceEquipmentRepository(connection).list_for_job(
+        "job-001"
+    ) == ()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
 def test_api_certificate_preview_returns_locked_rows_and_audit_id():
     connection = _connection_with_preview_data()
 
@@ -514,6 +587,19 @@ def _connection_with_metadata_capture_data(
     return connection
 
 
+def _connection_with_reference_selection_data(
+    *,
+    job_state: WorkflowState = WorkflowState.METADATA_COMPLETE,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(_job(job_state))
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
+    return connection
+
+
 def _fixed_now() -> datetime:
     return datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc)
 
@@ -572,6 +658,25 @@ def _metadata_payload() -> dict:
         "uncertainty_statement": "Expanded uncertainty uses k=2.",
         "ambient_conditions": "Room temperature 23 +/- 2 deg C.",
         "temperature_scale": "ITS-90",
+        "software_version": "app-0.1.0",
+    }
+
+
+def _reference_equipment_selection_payload() -> dict:
+    return {
+        "job_id": "job-001",
+        "equipment_id": "ref-001",
+        "simval_id": "SIM-T-001",
+        "equipment_type": "IRTD",
+        "serial_number": "IRT-123",
+        "discipline": "temperature",
+        "calibration_certificate_reference": "DANAK-CAL-12345",
+        "calibration_due_date": "2027-04-30",
+        "status": "active",
+        "range_minimum": -90.0,
+        "range_maximum": 140.0,
+        "range_unit": "deg C",
+        "traceability_statement": "Accredited calibration with SI traceability.",
         "software_version": "app-0.1.0",
     }
 

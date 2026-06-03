@@ -224,6 +224,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | EQ-021 | Duplicate selected reference equipment for a job. | Duplicate job/equipment selection is rejected and existing evidence is unchanged. |
 | EQ-022 | Selected reference equipment for unknown job. | Insert is rejected by referential integrity. |
 | EQ-023 | Selected reference equipment is immutable. | Direct update/delete is rejected at database level. |
+| EQ-024 | Select reference equipment through service. | Authorized selection stores immutable evidence, records selection audit evidence, and transitions the job to `equipment_selected`. |
+| EQ-025 | Unauthorized reference equipment selection. | Unauthorized selection is rejected before selection, audit, or workflow evidence is written. |
+| EQ-026 | Reference equipment selection in wrong workflow state. | Selection is rejected unless the job is in `metadata_complete`. |
 | EQ-030 | Overdue equipment selected. | Approval/export blocked or warning per rule. |
 | EQ-031 | Inactive equipment selected. | Approval/export blocked. |
 | EQ-032 | Equipment range incompatible with point. | Approval/export blocked. |
@@ -327,6 +330,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-014 | API rendered certificate release. | `POST /certificate-rendered-releases` renders a PDF, stores controlled artifact bytes, releases the certificate, and returns artifact/audit evidence. |
 | API-015 | API rendered certificate release without configured storage. | Request returns a controlled conflict response and writes no certificate record. |
 | API-016 | API rendered certificate release with insufficient role. | Request is rejected with `403` before rendered bytes or release evidence are written. |
+| API-017 | API reference equipment selection. | `POST /reference-equipment-selections` stores selected reference equipment, records audit evidence, and returns selection/workflow audit ids. |
+| API-018 | API reference equipment selection with insufficient role. | Request is rejected with `403` before selection, audit, or workflow evidence is written. |
+| API-019 | API reference equipment selection in wrong workflow state. | Request returns a controlled conflict response and writes no selection evidence. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

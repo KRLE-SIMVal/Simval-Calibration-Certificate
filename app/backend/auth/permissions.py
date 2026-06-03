@@ -16,6 +16,7 @@ class Role(StrEnum):
 class Action(StrEnum):
     CREATE_CALIBRATION_JOB = "create_calibration_job"
     EDIT_DRAFT_JOB_METADATA = "edit_draft_job_metadata"
+    SELECT_REFERENCE_EQUIPMENT = "select_reference_equipment"
     UPLOAD_IMPORT_FILE = "upload_import_file"
     ENTER_MANUAL_READINGS = "enter_manual_readings"
     SELECT_MEASUREMENT_WINDOWS = "select_measurement_windows"
@@ -41,6 +42,7 @@ PERMISSIONS: dict[Role, frozenset[Action]] = {
         {
             Action.CREATE_CALIBRATION_JOB,
             Action.EDIT_DRAFT_JOB_METADATA,
+            Action.SELECT_REFERENCE_EQUIPMENT,
             Action.UPLOAD_IMPORT_FILE,
             Action.ENTER_MANUAL_READINGS,
             Action.SELECT_MEASUREMENT_WINDOWS,
@@ -54,6 +56,7 @@ PERMISSIONS: dict[Role, frozenset[Action]] = {
         {
             Action.CREATE_CALIBRATION_JOB,
             Action.EDIT_DRAFT_JOB_METADATA,
+            Action.SELECT_REFERENCE_EQUIPMENT,
             Action.UPLOAD_IMPORT_FILE,
             Action.ENTER_MANUAL_READINGS,
             Action.SELECT_MEASUREMENT_WINDOWS,

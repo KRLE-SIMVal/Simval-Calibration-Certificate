@@ -34,11 +34,12 @@ from app.backend.certificates.storage import (
     StoredCertificateArtifact,
     store_rendered_artifact,
 )
-from app.backend.domain.equipment import SelectedReferenceEquipment
-from app.backend.domain.entities import DeviceUnderTest
+from app.backend.domain.equipment import ReferenceEquipment, SelectedReferenceEquipment
+from app.backend.domain.entities import DeviceUnderTest, DomainValidationError
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     RecordNotFoundError,
+    PersistenceError,
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
     SQLiteCertificateMetadataRepository,
@@ -64,11 +65,24 @@ class CertificateMetadataServiceError(ValueError):
     """Raised when certificate metadata cannot be captured safely."""
 
 
+class CertificateReferenceEquipmentServiceError(ValueError):
+    """Raised when reference equipment cannot be selected safely."""
+
+
 @dataclass(frozen=True, slots=True)
 class CertificateMetadataCapture:
     metadata: CertificateMetadata
     metadata_audit_event_id: int
     metadata_audit_event: AuditEvent
+    workflow_audit_event_id: int
+    workflow_audit_event: AuditEvent
+
+
+@dataclass(frozen=True, slots=True)
+class CertificateReferenceEquipmentSelection:
+    selection: SelectedReferenceEquipment
+    selection_audit_event_id: int
+    selection_audit_event: AuditEvent
     workflow_audit_event_id: int
     workflow_audit_event: AuditEvent
 
@@ -193,6 +207,81 @@ def capture_certificate_metadata_for_session(
         metadata=metadata,
         metadata_audit_event_id=metadata_audit_event_id,
         metadata_audit_event=metadata_audit_event,
+        workflow_audit_event_id=workflow_audit_event_id,
+        workflow_audit_event=transition.audit_event,
+    )
+
+
+def select_reference_equipment_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    equipment: ReferenceEquipment,
+    software_version: str,
+    timestamp: datetime,
+) -> CertificateReferenceEquipmentSelection:
+    """Select immutable reference-equipment evidence and move the job forward."""
+    _require_reference_equipment_text(software_version, "Software version")
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.SELECT_REFERENCE_EQUIPMENT,
+        timestamp=timestamp,
+    )
+    try:
+        selection = SelectedReferenceEquipment(
+            job_id=job_id,
+            equipment=equipment,
+            selected_by=actor.user_id,
+            selected_at=timestamp,
+        )
+    except DomainValidationError as exc:
+        raise CertificateReferenceEquipmentServiceError(str(exc)) from exc
+
+    with connection:
+        job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+        selection_repository = SQLiteSelectedReferenceEquipmentRepository(
+            connection,
+            autocommit=False,
+        )
+        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+
+        job = job_repository.get(job_id)
+        if job.state is not WorkflowState.METADATA_COMPLETE:
+            raise CertificateReferenceEquipmentServiceError(
+                "Reference equipment selection requires metadata_complete workflow state."
+            )
+
+        try:
+            selection_repository.add(selection)
+        except PersistenceError as exc:
+            raise CertificateReferenceEquipmentServiceError(str(exc)) from exc
+        selection_audit_event = _reference_equipment_selection_audit_event(
+            selection=selection,
+            software_version=software_version,
+            timestamp=timestamp,
+        )
+        selection_audit_event_id = audit_repository.append(selection_audit_event)
+        transition = transition_calibration_job(
+            job_id=job_id,
+            current=job.state,
+            target=WorkflowState.EQUIPMENT_SELECTED,
+            user_id=actor.user_id,
+            software_version=software_version,
+            timestamp=timestamp,
+        )
+        job_repository.update_state(
+            job_id=job_id,
+            expected_state=job.state,
+            new_state=transition.state,
+        )
+        workflow_audit_event_id = audit_repository.append(transition.audit_event)
+
+    return CertificateReferenceEquipmentSelection(
+        selection=selection,
+        selection_audit_event_id=selection_audit_event_id,
+        selection_audit_event=selection_audit_event,
         workflow_audit_event_id=workflow_audit_event_id,
         workflow_audit_event=transition.audit_event,
     )
@@ -724,6 +813,37 @@ def _preview_reference_equipment(
     )
 
 
+def _reference_equipment_selection_audit_event(
+    *,
+    selection: SelectedReferenceEquipment,
+    software_version: str,
+    timestamp: datetime,
+) -> AuditEvent:
+    equipment = selection.equipment
+    return AuditEvent(
+        entity_type="calibration_job",
+        entity_id=selection.job_id,
+        action=AuditAction.REFERENCE_EQUIPMENT_SELECTED,
+        user_id=selection.selected_by,
+        timestamp=timestamp,
+        new_value={
+            "equipment_id": equipment.id,
+            "simval_id": equipment.simval_id,
+            "equipment_type": equipment.equipment_type,
+            "serial_number": equipment.serial_number,
+            "calibration_certificate_reference": (
+                equipment.calibration_certificate_reference
+            ),
+            "calibration_due_date": (
+                equipment.calibration_due_date.isoformat()
+            ),
+            "range": _equipment_range_text(equipment),
+            "selected_at": selection.selected_at.isoformat(),
+        },
+        software_version=software_version,
+    )
+
+
 def _certificate_metadata_audit_event(
     *,
     metadata: CertificateMetadata,
@@ -925,6 +1045,20 @@ def _require_release_text(value: str, field_name: str) -> None:
 def _require_metadata_text(value: str, field_name: str) -> None:
     if value.strip() == "":
         raise CertificateMetadataServiceError(f"{field_name} is required.")
+
+
+def _require_reference_equipment_text(value: str, field_name: str) -> None:
+    if value.strip() == "":
+        raise CertificateReferenceEquipmentServiceError(
+            f"{field_name} is required."
+        )
+
+
+def _equipment_range_text(equipment: ReferenceEquipment) -> str:
+    return (
+        f"{equipment.usable_range.minimum:g} to "
+        f"{equipment.usable_range.maximum:g} {equipment.usable_range.unit}"
+    )
 
 
 def _require_release_timezone_aware(value: datetime, field_name: str) -> None:

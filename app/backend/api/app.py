@@ -16,6 +16,12 @@ from app.backend.api.database import sqlite_connection_scope
 from app.backend.api.settings import ApiSettings
 from app.backend.certificates.storage import CertificateArtifactStorageError
 from app.backend.certificates.records import ArtifactType
+from app.backend.domain.entities import Discipline, DomainValidationError
+from app.backend.domain.equipment import (
+    EquipmentRange,
+    EquipmentStatus,
+    ReferenceEquipment,
+)
 from app.backend.services.authentication import (
     AuthenticationFailureError,
     AuthenticationServiceError,
@@ -25,6 +31,8 @@ from app.backend.services.authentication import (
 from app.backend.services.certificates import (
     CertificateMetadataCapture,
     CertificateMetadataServiceError,
+    CertificateReferenceEquipmentSelection,
+    CertificateReferenceEquipmentServiceError,
     CertificateRelease,
     CertificateReleaseServiceError,
     CertificatePreviewGeneration,
@@ -33,6 +41,7 @@ from app.backend.services.certificates import (
     capture_certificate_metadata_for_session,
     release_certificate_for_session,
     render_and_release_certificate_pdf_for_session,
+    select_reference_equipment_for_session,
 )
 
 
@@ -94,6 +103,46 @@ class CertificateMetadataResponse(BaseModel):
     recorded_by: str
     recorded_at: str
     metadata_audit_event_id: int
+    workflow_audit_event_id: int
+    workflow_state: str
+
+
+class ReferenceEquipmentSelectionRequest(BaseModel):
+    job_id: str
+    equipment_id: str
+    simval_id: str
+    equipment_type: str
+    serial_number: str
+    discipline: Discipline
+    calibration_certificate_reference: str
+    calibration_due_date: date
+    status: EquipmentStatus
+    range_minimum: float
+    range_maximum: float
+    range_unit: str
+    traceability_statement: str
+    software_version: str
+
+
+class ReferenceEquipmentSelectionResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    equipment_id: str
+    simval_id: str
+    equipment_type: str
+    serial_number: str
+    discipline: str
+    calibration_certificate_reference: str
+    calibration_due_date: str
+    status: str
+    range_minimum: float
+    range_maximum: float
+    range_unit: str
+    traceability_statement: str
+    selected_by: str
+    selected_at: str
+    selection_audit_event_id: int
     workflow_audit_event_id: int
     workflow_state: str
 
@@ -286,6 +335,60 @@ def create_app(
         except CertificateMetadataServiceError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _metadata_response(result)
+
+    @app.post(
+        "/reference-equipment-selections",
+        response_model=ReferenceEquipmentSelectionResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def reference_equipment_selection(
+        request: ReferenceEquipmentSelectionRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ReferenceEquipmentSelectionResponse:
+        try:
+            equipment = ReferenceEquipment(
+                id=request.equipment_id,
+                simval_id=request.simval_id,
+                equipment_type=request.equipment_type,
+                serial_number=request.serial_number,
+                discipline=request.discipline,
+                calibration_certificate_reference=(
+                    request.calibration_certificate_reference
+                ),
+                calibration_due_date=request.calibration_due_date,
+                status=request.status,
+                usable_range=EquipmentRange(
+                    minimum=request.range_minimum,
+                    maximum=request.range_maximum,
+                    unit=request.range_unit,
+                ),
+                traceability_statement=request.traceability_statement,
+            )
+            with connection_scope() as scoped_connection:
+                result = select_reference_equipment_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    equipment=equipment,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (
+            CertificateReferenceEquipmentServiceError,
+            DomainValidationError,
+        ) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _reference_equipment_selection_response(result)
 
     @app.post(
         "/certificate-previews",
@@ -496,6 +599,38 @@ def _metadata_response(result: CertificateMetadataCapture) -> CertificateMetadat
         recorded_by=metadata.recorded_by,
         recorded_at=metadata.recorded_at.isoformat(),
         metadata_audit_event_id=result.metadata_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
+        workflow_state=workflow_state,
+    )
+
+
+def _reference_equipment_selection_response(
+    result: CertificateReferenceEquipmentSelection,
+) -> ReferenceEquipmentSelectionResponse:
+    selection = result.selection
+    equipment = selection.equipment
+    workflow_state = ""
+    if result.workflow_audit_event.new_value is not None:
+        workflow_state = str(result.workflow_audit_event.new_value["state"])
+    return ReferenceEquipmentSelectionResponse(
+        job_id=selection.job_id,
+        equipment_id=equipment.id,
+        simval_id=equipment.simval_id,
+        equipment_type=equipment.equipment_type,
+        serial_number=equipment.serial_number,
+        discipline=equipment.discipline.value,
+        calibration_certificate_reference=(
+            equipment.calibration_certificate_reference
+        ),
+        calibration_due_date=equipment.calibration_due_date.isoformat(),
+        status=equipment.status.value,
+        range_minimum=equipment.usable_range.minimum,
+        range_maximum=equipment.usable_range.maximum,
+        range_unit=equipment.usable_range.unit,
+        traceability_statement=equipment.traceability_statement,
+        selected_by=selection.selected_by,
+        selected_at=selection.selected_at.isoformat(),
+        selection_audit_event_id=result.selection_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
         workflow_state=workflow_state,
     )

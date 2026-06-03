@@ -20,6 +20,7 @@ class AuditAction(StrEnum):
     CALCULATION_RUN = "calculation_run"
     CONSTANT_SET_CHANGED = "constant_set_changed"
     BUDGET_CHANGED = "budget_changed"
+    REFERENCE_EQUIPMENT_SELECTED = "reference_equipment_selected"
     TECHNICAL_REVIEW_APPROVED = "technical_review_approved"
     QA_APPROVED = "qa_approved"
     CERTIFICATE_PREVIEW_GENERATED = "certificate_preview_generated"
