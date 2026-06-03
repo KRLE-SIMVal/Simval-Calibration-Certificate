@@ -14,6 +14,9 @@ from app.backend.services.certificates import (
     render_and_release_certificate_pdf_for_session,
 )
 from tests.unit.test_certificate_release_service import _connection_with_release_data
+from tests.unit.test_sqlite_certificate_persistence import (
+    _certificate as _persisted_certificate,
+)
 
 
 def test_render_and_release_certificate_pdf_for_session_uses_generated_artifact(tmp_path):
@@ -114,6 +117,38 @@ def test_render_and_release_certificate_pdf_blocks_missing_preview_before_file_w
 
     assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
     assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_render_and_release_certificate_pdf_discards_pending_file_on_release_failure(
+    tmp_path,
+):
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+    SQLiteCertificateRecordRepository(connection).add(_persisted_certificate())
+
+    with pytest.raises(CertificateReleaseServiceError):
+        render_and_release_certificate_pdf_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_directory=tmp_path,
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+    assert not (tmp_path / ".SIMVAL-CAL-0001.pdf.pending").exists()
 
 
 def test_render_and_release_certificate_pdf_blocks_unauthorized_actor_before_file_write(

@@ -72,6 +72,9 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   records, artifact checksum/storage URI evidence, and linked revision evidence.
 - `GET /certificate-history/{job_id}` exposes certificate history retrieval
   through the API for authorized sessions.
+- Rendered PDF release now writes a pending artifact file first, finalizes the
+  final artifact only after release persistence succeeds, and discards pending
+  bytes if release persistence fails.
 
 ## Scope Not Implemented
 
@@ -167,6 +170,12 @@ P4 begins certificate rendering and export artifact generation after the P3 back
   retrieval: 100 passed on Python 3.12.10.
 - Default regression suite after certificate history retrieval: 339 passed,
   2 skipped on Python 3.12.10.
+- Focused certificate artifact storage and rendered release suite after staged
+  artifact finalization: 11 passed on Python 3.12.10.
+- Focused certificate, API, and certificate persistence suite after staged
+  artifact finalization: 103 passed on Python 3.12.10.
+- Default regression suite after staged artifact finalization: 342 passed,
+  2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -177,5 +186,5 @@ P4 begins certificate rendering and export artifact generation after the P3 back
 | Certificate metadata is persisted through an audited initial capture path and cannot be mutated in place; released certificate correction now requires revision evidence, but replacement-certificate generation is still a future workflow slice. | Add replacement-certificate generation from a revised job before production use of correction workflows. |
 | Reference-equipment selection is audited and point-level suitability is checked at preview/release, but full equipment-library CRUD is not yet implemented. | Add controlled equipment-library management before production workflow validation. |
 | XLSX uncertainty-budget rendering covers locked automatic temperature calculation output, not a full editable budget-editor export. | Add controlled budget-editor export once the budget module is implemented and approved. |
-| Rendered release can leave an orphan artifact if file storage succeeds but the later database release transaction fails. | Add a pending/finalized artifact state or transactional artifact registry before production deployment. |
+| Rendered release now prevents final orphan artifacts when release persistence fails by using pending/final artifact finalization. Pending-file cleanup after process crashes is still an operational concern. | Add a startup/admin cleanup task for stale `.pending` files before production deployment. |
 | No PDF/A or digital-signature support exists. | Decide signature/PDF archival requirements before final production validation. |

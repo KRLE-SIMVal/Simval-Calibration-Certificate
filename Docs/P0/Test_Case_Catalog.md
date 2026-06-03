@@ -305,6 +305,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-142 | Certificate preview and release lock accreditation mark scope. | Release is rejected if the accreditation mark decision differs from the matching preview, and rendered PDFs suppress the DANAK/ILAC mark when scope disallows it. |
 | CERT-143 | Released certificate revision workflow. | Authorized QA revision records immutable revision evidence, audit reason, and transitions the job from `released` to `revised`; unauthorized or reasonless attempts are rejected. |
 | CERT-144 | Certificate history retrieval. | History returns released certificate records, artifact checksum/storage URI evidence, and linked revision evidence for authorized sessions. |
+| CERT-145 | Rendered release staged artifact finalization. | PDF bytes are written to a pending file first, finalized only after DB release succeeds, and discarded if release persistence fails. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |

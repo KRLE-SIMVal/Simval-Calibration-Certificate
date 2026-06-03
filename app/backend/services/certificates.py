@@ -35,7 +35,9 @@ from app.backend.certificates.rendering import (
 )
 from app.backend.certificates.storage import (
     StoredCertificateArtifact,
-    store_rendered_artifact,
+    discard_staged_artifact,
+    finalize_staged_artifact,
+    stage_rendered_artifact,
 )
 from app.backend.domain.equipment import ReferenceEquipment, SelectedReferenceEquipment
 from app.backend.domain.equipment import reference_equipment_blockers
@@ -476,26 +478,31 @@ def render_and_release_certificate_pdf_for_session(
         certificate_number=certificate_number,
         preview=preview,
     )
-    stored_artifact = store_rendered_artifact(
+    pending_artifact = stage_rendered_artifact(
         base_path=artifact_directory,
         artifact=rendered_artifact,
     )
-    release = release_certificate(
-        connection=connection,
-        job_id=job_id,
-        certificate_id=certificate_id,
-        certificate_number=certificate_number,
-        artifact_id=artifact_id,
-        artifact_type=rendered_artifact.artifact_type,
-        filename=stored_artifact.filename,
-        checksum_sha256=stored_artifact.checksum_sha256,
-        storage_uri=stored_artifact.storage_uri,
-        released_by=actor.user_id,
-        template_version=template_version,
-        software_version=software_version,
-        accreditation_mark_allowed=accreditation_mark_allowed,
-        timestamp=timestamp,
-    )
+    try:
+        release = release_certificate(
+            connection=connection,
+            job_id=job_id,
+            certificate_id=certificate_id,
+            certificate_number=certificate_number,
+            artifact_id=artifact_id,
+            artifact_type=rendered_artifact.artifact_type,
+            filename=pending_artifact.filename,
+            checksum_sha256=pending_artifact.checksum_sha256,
+            storage_uri=pending_artifact.storage_uri,
+            released_by=actor.user_id,
+            template_version=template_version,
+            software_version=software_version,
+            accreditation_mark_allowed=accreditation_mark_allowed,
+            timestamp=timestamp,
+        )
+    except Exception:
+        discard_staged_artifact(pending_artifact)
+        raise
+    stored_artifact = finalize_staged_artifact(pending_artifact)
     return RenderedCertificateRelease(
         rendered_artifact=rendered_artifact,
         stored_artifact=stored_artifact,
@@ -780,7 +787,10 @@ def release_certificate(
             released_by=released_by,
             released_at=timestamp,
         )
-        certificate_repository.add(certificate)
+        try:
+            certificate_repository.add(certificate)
+        except PersistenceError as exc:
+            raise CertificateReleaseServiceError(str(exc)) from exc
 
         export_audit_event = _export_artifact_audit_event(
             certificate=certificate,
