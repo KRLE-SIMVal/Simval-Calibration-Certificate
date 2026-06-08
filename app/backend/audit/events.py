@@ -30,6 +30,7 @@ class AuditAction(StrEnum):
     CERTIFICATE_REVISED = "certificate_revised"
     CERTIFICATE_VOIDED = "certificate_voided"
     CERTIFICATE_NUMBER_SEQUENCE_CHANGED = "certificate_number_sequence_changed"
+    CERTIFICATE_NUMBER_SEQUENCE_RETIRED = "certificate_number_sequence_retired"
     CERTIFICATE_NUMBER_ALLOCATED = "certificate_number_allocated"
     EXPORT_ARTIFACT_GENERATED = "export_artifact_generated"
     USER_ACCOUNT_CREATED = "user_account_created"

@@ -22,18 +22,24 @@ next number from an approved internal sequence.
 - Added `POST /certificate-rendered-releases/allocated` to allocate the next
   internal sequence number, render the PDF, persist release evidence, and return
   certificate-number audit evidence in one controlled workflow.
+- Added active/retired sequence status and admin-only
+  `POST /certificate-number-sequences/{prefix}/retirement`.
+- Added schema compatibility handling so existing internal sequence rows receive
+  `status = active` on startup.
 - Added browser workflow contract entries and request samples for the new
-  certificate-number endpoints and the allocated rendered-release endpoint.
+  certificate-number endpoints, sequence retirement, and the allocated
+  rendered-release endpoint.
 - Added service and API regression tests for sequence creation, allocation,
   incrementing, release-time allocation, audit evidence, rollback before file
-  write, and non-admin rejection before sequence changes.
+  write, sequence retirement, retired-sequence allocation blocking, and
+  non-admin rejection before sequence changes.
 
 ## Scope Not Implemented
 
 - D4 numbering integration remains deferred. The explicit release endpoint stays
   available as the future adapter path for externally supplied numbers.
-- Sequence retirement, prefix change control, and multi-prefix policy are not
-  implemented yet.
+- Prefix change control, sequence reactivation policy, and multi-prefix policy
+  are not implemented yet.
 
 ## Compliance Notes
 
@@ -46,6 +52,7 @@ next number from an approved internal sequence.
   evidence, and the workflow transition share the same database transaction.
 - If rendering or template-contract validation fails before release persistence,
   the allocated number rolls back and no pending/final PDF artifact is retained.
+- Retired sequences cannot allocate further certificate numbers.
 - Duplicate certificate numbers remain blocked by existing certificate-record
   persistence constraints.
 
@@ -56,11 +63,16 @@ next number from an approved internal sequence.
   57 passed on Python 3.12.10.
 - Default regression suite after release-time allocation:
   427 passed, 2 skipped on Python 3.12.10.
+- Focused schema, certificate-number lifecycle, rendered-release, and API suite
+  after sequence retirement:
+  65 passed on Python 3.12.10.
+- Default regression suite after sequence retirement:
+  432 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
 | D4 integration is deferred and internal numbering is the current operational master. | Keep the explicit release endpoint as the D4 adapter boundary and validate any future D4 import/reservation behavior before production switch-over. |
-| Sequence retirement, prefix change control, and multi-prefix policy are not implemented yet. | Add controlled sequence status/change-control fields before SIMVal needs multiple numbering streams or prefix retirement. |
+| Prefix change control, sequence reactivation policy, and multi-prefix policy are not implemented yet. | Add a governed sequence policy before SIMVal needs multiple numbering streams, prefix changes, or reactivation of retired prefixes. |
 | PDF finalization still occurs after release persistence, matching the existing artifact-storage design. | Keep stale pending-file cleanup in the production readiness backlog and monitor readiness evidence for artifact storage health. |

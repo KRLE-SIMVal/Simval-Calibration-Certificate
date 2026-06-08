@@ -413,6 +413,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-047 | API multi-DUT certificate release regression. | The public API workflow supports multiple DUT/channel results in one released rendered PDF certificate. |
 | API-048 | API certificate number sequence endpoint. | `POST /certificate-number-sequences` creates an internal sequence with audit evidence for authorized admins. |
 | API-049 | API certificate number allocation endpoint. | `POST /certificate-number-allocations` allocates the next number, increments the sequence, records audit evidence, and rejects non-admin sessions before increment. |
+| API-050 | API certificate number sequence retirement endpoint. | `POST /certificate-number-sequences/{prefix}/retirement` retires an active sequence with reasoned audit evidence and blocks later allocation. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
@@ -451,6 +452,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PERSIST-036 | Store duplicate required temperature setpoint sequence or value. | Duplicate plan entries are rejected. |
 | PERSIST-037 | Store and reload certificate metadata. | Certificate metadata fields and recorded-by/timestamp evidence round-trip unchanged. |
 | PERSIST-038 | Mutate certificate metadata directly. | Database rejects update/delete because certificate metadata snapshots are immutable. |
+| PERSIST-039 | Retire certificate-number sequence. | Retired sequences retain next value/status and reject further allocation. |
+| PERSIST-040 | Upgrade existing certificate-number sequence table. | Schema initialization adds active sequence status to existing sequence rows without changing next value. |
 | MIG-001 | Apply controlled SQLite migrations. | Migrations apply in supplied order and record version, description, checksum, and timestamp. |
 | MIG-002 | Re-run applied migration with same checksum. | Migration runner is idempotent and does not duplicate history. |
 | MIG-003 | Re-run applied migration with changed SQL. | Checksum mismatch blocks execution. |

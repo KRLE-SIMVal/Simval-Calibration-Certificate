@@ -44,7 +44,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
 
-SCHEMA_VERSION = "p4-sqlite-schema-v2"
+SCHEMA_VERSION = "p13-sqlite-schema-v1"
 
 
 class PersistenceError(RuntimeError):
@@ -337,7 +337,9 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS certificate_number_sequences (
             prefix TEXT PRIMARY KEY,
-            next_value INTEGER NOT NULL CHECK (next_value > 0)
+            next_value INTEGER NOT NULL CHECK (next_value > 0),
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'retired'))
         );
 
         CREATE TABLE IF NOT EXISTS certificate_calculation_summaries (
@@ -545,6 +547,7 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
             END;
         """
     )
+    _ensure_certificate_number_sequence_status_column(connection)
     connection.execute(
         """
         INSERT OR IGNORE INTO schema_migrations (
@@ -569,6 +572,27 @@ def list_schema_versions(connection: sqlite3.Connection) -> tuple[str, ...]:
         """
     ).fetchall()
     return tuple(row["version"] for row in rows)
+
+
+def _ensure_certificate_number_sequence_status_column(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.row_factory = sqlite3.Row
+    columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(certificate_number_sequences)"
+        ).fetchall()
+    }
+    if "status" in columns:
+        return
+    connection.execute(
+        """
+        ALTER TABLE certificate_number_sequences
+        ADD COLUMN status TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN ('active', 'retired'))
+        """
+    )
 
 
 class SQLiteUserAccountRepository:
@@ -1974,11 +1998,12 @@ class SQLiteCertificateNumberAllocator:
                 """
                 INSERT INTO certificate_number_sequences (
                     prefix,
-                    next_value
+                    next_value,
+                    status
                 )
-                VALUES (?, ?)
+                VALUES (?, ?, ?)
                 """,
-                (prefix, next_value),
+                (prefix, next_value, "active"),
             )
             self._commit_if_needed()
         except sqlite3.DatabaseError as error:
@@ -1994,7 +2019,9 @@ class SQLiteCertificateNumberAllocator:
         try:
             row = self._connection.execute(
                 """
-                SELECT next_value
+                SELECT
+                    next_value,
+                    status
                 FROM certificate_number_sequences
                 WHERE prefix = ?
                 """,
@@ -2003,6 +2030,11 @@ class SQLiteCertificateNumberAllocator:
             if row is None:
                 raise RecordNotFoundError(
                     f"Certificate number sequence {prefix!r} was not found."
+                )
+            status = str(row["status"])
+            if status != "active":
+                raise PersistenceError(
+                    f"Certificate number sequence {prefix!r} is not active."
                 )
             next_value = int(row["next_value"])
             self._connection.execute(
@@ -2039,6 +2071,60 @@ class SQLiteCertificateNumberAllocator:
                 f"Certificate number sequence {prefix!r} was not found."
             )
         return int(row["next_value"])
+
+    def status(self, prefix: str) -> str:
+        _require_text(prefix, "Certificate number prefix")
+        row = self._connection.execute(
+            """
+            SELECT status
+            FROM certificate_number_sequences
+            WHERE prefix = ?
+            """,
+            (prefix,),
+        ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(
+                f"Certificate number sequence {prefix!r} was not found."
+            )
+        return str(row["status"])
+
+    def retire_sequence(self, prefix: str) -> None:
+        _require_text(prefix, "Certificate number prefix")
+        try:
+            cursor = self._connection.execute(
+                """
+                UPDATE certificate_number_sequences
+                SET status = 'retired'
+                WHERE prefix = ?
+                  AND status = 'active'
+                """,
+                (prefix,),
+            )
+            if cursor.rowcount != 1:
+                row = self._connection.execute(
+                    """
+                    SELECT status
+                    FROM certificate_number_sequences
+                    WHERE prefix = ?
+                    """,
+                    (prefix,),
+                ).fetchone()
+                if row is None:
+                    raise RecordNotFoundError(
+                        f"Certificate number sequence {prefix!r} was not found."
+                    )
+                raise PersistenceError(
+                    f"Certificate number sequence {prefix!r} is not active."
+                )
+            self._commit_if_needed()
+        except PersistenceError:
+            self._rollback_if_needed()
+            raise
+        except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
+            raise PersistenceError(
+                "Could not retire certificate number sequence."
+            ) from error
 
     def _commit_if_needed(self) -> None:
         if self._autocommit:

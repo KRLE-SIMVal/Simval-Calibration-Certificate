@@ -13,8 +13,8 @@ def test_bootstrap_sqlite_schema_creates_current_schema_and_records_baseline():
 
     result = bootstrap_sqlite_schema(connection)
 
-    assert list_schema_versions(connection) == ("p4-sqlite-schema-v2",)
-    assert result.schema_versions == ("p4-sqlite-schema-v2",)
+    assert list_schema_versions(connection) == ("p13-sqlite-schema-v1",)
+    assert result.schema_versions == ("p13-sqlite-schema-v1",)
     assert result.controlled_migrations[0].version == (
         SQLITE_BASELINE_SCHEMA_MIGRATION.version
     )

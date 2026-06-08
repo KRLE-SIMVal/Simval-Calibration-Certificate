@@ -159,6 +159,7 @@ def test_api_serves_browser_workflow_shell():
     assert "/certificate-metadata" in response.text
     assert "/certificate-rendered-releases" in response.text
     assert "/certificate-rendered-releases/allocated" in response.text
+    assert "/certificate-number-sequences/SIMVAL-CAL/retirement" in response.text
     assert "/design-assets/simval-logo" in response.text
 
 
@@ -199,6 +200,7 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/user-sessions/session-001/revocation" in action_paths
     assert "/certificate-number-sequences" in action_paths
     assert "/certificate-number-allocations" in action_paths
+    assert "/certificate-number-sequences/SIMVAL-CAL/retirement" in action_paths
     assert "/constant-sets/approved" in action_paths
     assert "/uncertainty-budgets/approved" in action_paths
     assert "/calibration-jobs/job-001/files" in action_paths
@@ -550,6 +552,7 @@ def test_api_admin_creates_and_allocates_certificate_number_sequence():
     assert sequence_response.json() == {
         "prefix": "SIMVAL-CAL",
         "next_value": 7,
+        "status": "active",
         "created_by": "user-001",
         "created_at": "2026-06-01T15:30:00+00:00",
         "audit_event_id": 1,
@@ -578,6 +581,65 @@ def test_api_admin_creates_and_allocates_certificate_number_sequence():
             "SIMVAL-CAL-0007",
         )
     ] == ["certificate_number_allocated"]
+
+
+def test_api_admin_retires_certificate_number_sequence_and_blocks_allocation():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    SQLiteCertificateNumberAllocator(connection).create_sequence(
+        prefix="SIMVAL-CAL",
+        next_value=7,
+    )
+    app = create_app(connection=connection, clock=_fixed_now)
+
+    retirement_response = _api_request(
+        app,
+        "POST",
+        "/certificate-number-sequences/SIMVAL-CAL/retirement",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "reason": "Prefix replaced by approved annual sequence.",
+            "software_version": "app-0.1.0",
+        },
+    )
+    allocation_response = _api_request(
+        app,
+        "POST",
+        "/certificate-number-allocations",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "prefix": "SIMVAL-CAL",
+            "padding": 4,
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert retirement_response.status_code == 200
+    assert retirement_response.json() == {
+        "prefix": "SIMVAL-CAL",
+        "next_value": 7,
+        "previous_status": "active",
+        "status": "retired",
+        "retired_by": "user-001",
+        "retired_at": "2026-06-01T15:30:00+00:00",
+        "reason": "Prefix replaced by approved annual sequence.",
+        "audit_event_id": 1,
+    }
+    assert allocation_response.status_code == 409
+    assert "not active" in allocation_response.json()["detail"]
+    assert SQLiteCertificateNumberAllocator(connection).next_value("SIMVAL-CAL") == 7
+    assert SQLiteCertificateNumberAllocator(connection).status("SIMVAL-CAL") == (
+        "retired"
+    )
+    event = SQLiteAuditEventRepository(connection).list_for_entity(
+        "certificate_number_sequence",
+        "SIMVAL-CAL",
+    )[0]
+    assert event.action.value == "certificate_number_sequence_retired"
+    assert event.reason == "Prefix replaced by approved annual sequence."
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "certificate_number",
+        "SIMVAL-CAL-0007",
+    ) == ()
 
 
 def test_api_certificate_number_allocation_rejects_non_admin_before_increment():

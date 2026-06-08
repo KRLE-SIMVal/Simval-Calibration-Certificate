@@ -7,6 +7,7 @@ from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
 from app.backend.persistence.sqlite import (
+    PersistenceError,
     SQLiteAuditEventRepository,
     SQLiteCertificateNumberAllocator,
     SQLiteUserAccountRepository,
@@ -17,6 +18,7 @@ from app.backend.services.authentication import AuthenticationServiceError
 from app.backend.services.certificate_numbers import (
     allocate_certificate_number_for_session,
     create_certificate_number_sequence_for_session,
+    retire_certificate_number_sequence_for_session,
 )
 
 
@@ -34,14 +36,19 @@ def test_create_certificate_number_sequence_for_session_records_audit_evidence()
 
     assert result.prefix == "SIMVAL-CAL"
     assert result.next_value == 1
+    assert result.status == "active"
     assert result.audit_event_id == 1
     assert result.audit_event.action is AuditAction.CERTIFICATE_NUMBER_SEQUENCE_CHANGED
     assert result.audit_event.user_id == "admin-001"
     assert result.audit_event.new_value == {
         "prefix": "SIMVAL-CAL",
         "next_value": 1,
+        "status": "active",
     }
     assert SQLiteCertificateNumberAllocator(connection).next_value("SIMVAL-CAL") == 1
+    assert SQLiteCertificateNumberAllocator(connection).status("SIMVAL-CAL") == (
+        "active"
+    )
 
 
 def test_allocate_certificate_number_for_session_increments_and_audits():
@@ -69,6 +76,48 @@ def test_allocate_certificate_number_for_session_increments_and_audits():
         "next_value_after": 8,
     }
     assert SQLiteCertificateNumberAllocator(connection).next_value("SIMVAL-CAL") == 8
+
+
+def test_retire_certificate_number_sequence_for_session_records_audit_evidence():
+    connection = _connection_with_user()
+    SQLiteCertificateNumberAllocator(connection).create_sequence(
+        prefix="SIMVAL-CAL",
+        next_value=7,
+    )
+
+    result = retire_certificate_number_sequence_for_session(
+        connection=connection,
+        session_id="session-001",
+        prefix="SIMVAL-CAL",
+        reason="Prefix replaced by new annual sequence.",
+        software_version="app-0.1.0",
+        timestamp=_fixed_now(),
+    )
+
+    assert result.prefix == "SIMVAL-CAL"
+    assert result.next_value == 7
+    assert result.previous_status == "active"
+    assert result.status == "retired"
+    assert result.audit_event_id == 1
+    assert result.audit_event.action is (
+        AuditAction.CERTIFICATE_NUMBER_SEQUENCE_RETIRED
+    )
+    assert result.audit_event.reason == "Prefix replaced by new annual sequence."
+    assert result.audit_event.previous_value == {
+        "prefix": "SIMVAL-CAL",
+        "next_value": 7,
+        "status": "active",
+    }
+    assert result.audit_event.new_value == {
+        "prefix": "SIMVAL-CAL",
+        "next_value": 7,
+        "status": "retired",
+    }
+    allocator = SQLiteCertificateNumberAllocator(connection)
+    assert allocator.status("SIMVAL-CAL") == "retired"
+    assert allocator.next_value("SIMVAL-CAL") == 7
+    with pytest.raises(PersistenceError, match="not active"):
+        allocator.allocate_next(prefix="SIMVAL-CAL", padding=4)
 
 
 def test_allocate_certificate_number_rejects_non_admin_before_increment_or_audit():

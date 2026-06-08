@@ -24,6 +24,7 @@ class CertificateNumberServiceError(ValueError):
 class CertificateNumberSequenceResult:
     prefix: str
     next_value: int
+    status: str
     audit_event_id: int
     audit_event: AuditEvent
 
@@ -33,6 +34,16 @@ class CertificateNumberAllocationResult:
     prefix: str
     certificate_number: str
     next_value_after: int
+    audit_event_id: int
+    audit_event: AuditEvent
+
+
+@dataclass(frozen=True, slots=True)
+class CertificateNumberSequenceRetirementResult:
+    prefix: str
+    next_value: int
+    previous_status: str
+    status: str
     audit_event_id: int
     audit_event: AuditEvent
 
@@ -69,7 +80,11 @@ def create_certificate_number_sequence_for_session(
             action=AuditAction.CERTIFICATE_NUMBER_SEQUENCE_CHANGED,
             user_id=actor.user_id,
             timestamp=timestamp,
-            new_value={"prefix": prefix, "next_value": next_value},
+            new_value={
+                "prefix": prefix,
+                "next_value": next_value,
+                "status": "active",
+            },
             software_version=software_version,
         )
         audit_event_id = audit_repository.append(audit_event)
@@ -77,6 +92,67 @@ def create_certificate_number_sequence_for_session(
     return CertificateNumberSequenceResult(
         prefix=prefix,
         next_value=next_value,
+        status="active",
+        audit_event_id=audit_event_id,
+        audit_event=audit_event,
+    )
+
+
+def retire_certificate_number_sequence_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    prefix: str,
+    reason: str,
+    software_version: str,
+    timestamp: datetime,
+) -> CertificateNumberSequenceRetirementResult:
+    """Retire a certificate-number sequence for an authorized admin session."""
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.MANAGE_CERTIFICATE_NUMBERS,
+        timestamp=timestamp,
+    )
+    _validate_sequence_inputs(
+        prefix=prefix,
+        software_version=software_version,
+        timestamp=timestamp,
+    )
+    _require_text(reason, "Certificate number retirement reason")
+
+    with connection:
+        allocator = SQLiteCertificateNumberAllocator(connection, autocommit=False)
+        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+        next_value = allocator.next_value(prefix)
+        previous_status = allocator.status(prefix)
+        allocator.retire_sequence(prefix)
+        audit_event = AuditEvent(
+            entity_type="certificate_number_sequence",
+            entity_id=prefix,
+            action=AuditAction.CERTIFICATE_NUMBER_SEQUENCE_RETIRED,
+            user_id=actor.user_id,
+            timestamp=timestamp,
+            previous_value={
+                "prefix": prefix,
+                "next_value": next_value,
+                "status": previous_status,
+            },
+            new_value={
+                "prefix": prefix,
+                "next_value": next_value,
+                "status": "retired",
+            },
+            reason=reason,
+            software_version=software_version,
+        )
+        audit_event_id = audit_repository.append(audit_event)
+
+    return CertificateNumberSequenceRetirementResult(
+        prefix=prefix,
+        next_value=next_value,
+        previous_status=previous_status,
+        status="retired",
         audit_event_id=audit_event_id,
         audit_event=audit_event,
     )

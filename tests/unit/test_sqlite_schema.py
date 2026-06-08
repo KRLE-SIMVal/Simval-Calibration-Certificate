@@ -21,3 +21,38 @@ def test_initialize_schema_records_version_marker_once():
     ).fetchone()
     applied_at = datetime.fromisoformat(row["applied_at"])
     assert applied_at.tzinfo is not None
+
+
+def test_initialize_schema_adds_sequence_status_to_existing_database():
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE certificate_number_sequences (
+            prefix TEXT PRIMARY KEY,
+            next_value INTEGER NOT NULL CHECK (next_value > 0)
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO certificate_number_sequences (prefix, next_value)
+        VALUES (?, ?)
+        """,
+        ("SIMVAL-CAL", 7),
+    )
+
+    initialize_schema(connection)
+
+    columns = connection.execute(
+        "PRAGMA table_info(certificate_number_sequences)"
+    ).fetchall()
+    assert "status" in {column["name"] for column in columns}
+    row = connection.execute(
+        """
+        SELECT next_value, status
+        FROM certificate_number_sequences
+        WHERE prefix = ?
+        """,
+        ("SIMVAL-CAL",),
+    ).fetchone()
+    assert dict(row) == {"next_value": 7, "status": "active"}
