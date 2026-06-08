@@ -257,14 +257,23 @@ def browser_workflow_html() -> str:
           <label>Calibration file ID
             <input id="calibrationUploadedFileId" autocomplete="off">
           </label>
+          <label>Verification file ID
+            <input id="verificationUploadedFileId" autocomplete="off">
+          </label>
           <label>Setpoints
             <input id="temperatureSetpoints" autocomplete="off" value="-80">
+          </label>
+          <label class="wide">IRTD rows
+            <textarea id="irtdRows" rows="4">Time,IRTD (deg C),MJT1-A
+2026-04-08T15:45:00+00:00,-80.031,-80.036
+2026-04-08T15:46:00+00:00,-80.030,-80.034</textarea>
           </label>
         </div>
         <div class="panel-actions">
           <button id="uploadSourceFile">Upload File</button>
           <button class="secondary" id="reviewImports">Review Imports</button>
           <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
+          <button class="secondary" id="recordIrtdRows">Record IRTD</button>
         </div>
       </section>
     </div>
@@ -296,6 +305,17 @@ def browser_workflow_html() -> str:
       "/calibration-jobs/job-001/temperature-data-entry": {
         calibration_uploaded_file_id: "file-001",
         setpoints: [-80],
+        unit: "deg C",
+        software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/verification-irtd-rows": {
+        calibration_uploaded_file_id: "file-001",
+        verification_uploaded_file_id: "file-002",
+        rows: [
+          ["Time", "IRTD (deg C)", "MJT1-A"],
+          ["2026-04-08T15:45:00+00:00", "-80.031", "-80.036"],
+          ["2026-04-08T15:46:00+00:00", "-80.030", "-80.034"]
+        ],
         unit: "deg C",
         software_version: "app-0.1.0"
       },
@@ -489,6 +509,9 @@ def browser_workflow_html() -> str:
         if (response.ok && parsed.uploaded_file_id && parsed.file_kind === "calibration_xlsx") {
           document.getElementById("calibrationUploadedFileId").value = parsed.uploaded_file_id;
         }
+        if (response.ok && parsed.uploaded_file_id && parsed.file_kind === "verification_pdf") {
+          document.getElementById("verificationUploadedFileId").value = parsed.uploaded_file_id;
+        }
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -534,6 +557,39 @@ def browser_workflow_html() -> str:
       }
     }
 
+    function parseTableRows(rawText) {
+      return rawText.split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => {
+          const delimiter = line.includes("\t") ? "\t" : ",";
+          return line.split(delimiter).map(cell => cell.trim());
+        });
+    }
+
+    async function recordIrtdRows() {
+      const jobId = document.getElementById("jobId").value.trim();
+      const payload = {
+        calibration_uploaded_file_id: document.getElementById("calibrationUploadedFileId").value.trim(),
+        verification_uploaded_file_id: document.getElementById("verificationUploadedFileId").value.trim(),
+        rows: parseTableRows(document.getElementById("irtdRows").value),
+        unit: "deg C",
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/verification-irtd-rows`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -541,6 +597,7 @@ def browser_workflow_html() -> str:
     document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
     document.getElementById("reviewImports").addEventListener("click", reviewImports);
     document.getElementById("prepareTemperatureData").addEventListener("click", prepareTemperatureData);
+    document.getElementById("recordIrtdRows").addEventListener("click", recordIrtdRows);
     loadContract();
   </script>
 </body>
@@ -601,6 +658,12 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/calibration-jobs/job-001/temperature-data-entry",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
+                WorkflowAction(
+                    label="Record manual IRTD rows",
+                    method="POST",
+                    path="/calibration-jobs/job-001/verification-irtd-rows",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
             ),
             evidence=(
                 "upload_audit_event_id",
@@ -608,6 +671,8 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                 "parser_status",
                 "reading_count",
                 "data_entry_audit_event_id",
+                "manual_irtd_audit_event_id",
+                "alignment_audit_event_id",
             ),
             deferred=(
                 "Verification PDF text extraction remains deferred; raw PDF evidence is stored.",

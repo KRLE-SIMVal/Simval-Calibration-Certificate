@@ -16,6 +16,7 @@ class AuditAction(StrEnum):
     PARSER_RESULT_RECORDED = "parser_result_recorded"
     IMPORT_ALIGNMENT_RECORDED = "import_alignment_recorded"
     DATA_ENTRY_RECORDED = "data_entry_recorded"
+    MANUAL_IRTD_TABLE_RECORDED = "manual_irtd_table_recorded"
     MANUAL_READING_CHANGED = "manual_reading_changed"
     MEASUREMENT_WINDOW_CHANGED = "measurement_window_changed"
     CALCULATION_RUN = "calculation_run"

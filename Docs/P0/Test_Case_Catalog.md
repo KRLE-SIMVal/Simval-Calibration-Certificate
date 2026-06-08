@@ -37,6 +37,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-061 | Prepare imported temperature data. | Authorized user converts parsed calibration channels into DUT records and required setpoints, records data-entry audit evidence, and transitions from `equipment_selected` to `data_entered`. |
 | WF-062 | Prepare imported temperature data too early. | Data-entry preparation is rejected before `equipment_selected` and writes no DUT or setpoint records. |
 | WF-063 | Prepare imported temperature data with duplicate generated DUT IDs. | Data-entry preparation is rejected with no DUT, setpoint, or workflow state writes. |
+| WF-064 | Record manual verification IRTD rows before data entry. | Manual IRTD transcription is rejected before `data_entered` and writes no linked readings. |
 
 ## Roles And Permissions
 
@@ -227,6 +228,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-075 | Unauthorized import review. | Import review is rejected for users without import workflow permission. |
 | IMP-076 | Imported channel to DUT preparation. | Parsed ValProbe channels create controlled DUT records with channel traceability and do not duplicate existing DUT records. |
 | IMP-077 | Imported channel IDs with colliding controlled identifiers. | Ambiguous channel-derived DUT identifiers are rejected before controlled job records are created. |
+| IMP-078 | Manual verification IRTD transcription. | Manually transcribed IRTD table rows are parsed against the raw verification PDF evidence, linked to logger readings, and audited. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
@@ -369,6 +371,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-028 | Browser upload controls. | `GET /app` exposes visible job creation and source-file upload controls. |
 | API-029 | API import review endpoint. | `GET /calibration-jobs/{job_id}/imports` returns uploaded source-file and parser evidence for review. |
 | API-030 | API temperature data-entry endpoint. | `POST /calibration-jobs/{job_id}/temperature-data-entry` creates DUT and required-setpoint records from parsed import evidence and moves the job to `data_entered`. |
+| API-031 | API manual IRTD transcription endpoint. | `POST /calibration-jobs/{job_id}/verification-irtd-rows` records manually transcribed IRTD rows and linked logger/reference evidence. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

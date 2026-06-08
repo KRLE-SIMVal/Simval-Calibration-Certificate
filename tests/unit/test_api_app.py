@@ -185,6 +185,7 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/calibration-jobs/job-001/files" in action_paths
     assert "/calibration-jobs/job-001/imports" in action_paths
     assert "/calibration-jobs/job-001/temperature-data-entry" in action_paths
+    assert "/calibration-jobs/job-001/verification-irtd-rows" in action_paths
     assert "/certificate-metadata" in action_paths
     assert "/reference-equipment-selections" in action_paths
     assert "/certificate-previews" in action_paths

@@ -16,6 +16,7 @@ from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
     SQLiteDeviceUnderTestRepository,
+    SQLiteLinkedTemperatureReadingRepository,
     SQLiteParsedReadingRepository,
     SQLiteRequiredTemperatureSetpointRepository,
     SQLiteUploadedFileRepository,
@@ -429,6 +430,147 @@ def test_api_prepare_temperature_data_entry_rejects_duplicate_generated_dut_ids(
     assert SQLiteRequiredTemperatureSetpointRepository(connection).list_for_job(
         "job-001"
     ) == ()
+
+
+def test_api_record_manual_irtd_rows_persists_reference_links_and_audit(tmp_path):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[
+                    ("2026-04-08T15:45:00+00:00", "-80.036"),
+                    ("2026-04-08T15:46:00+00:00", "-80.034"),
+                ]
+            )
+        },
+    )
+    generated_ids = iter(("001", "002"))
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: next(generated_ids),
+    )
+    calibration_upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    assert calibration_upload.status_code == 200
+    verification_upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=verification.pdf&"
+            "file_kind=verification_pdf&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=b"%PDF-1.4 controlled verification fixture",
+    )
+    assert verification_upload.status_code == 200
+    connection.execute(
+        "UPDATE calibration_jobs SET state = ? WHERE id = ?",
+        (WorkflowState.EQUIPMENT_SELECTED.value, "job-001"),
+    )
+    connection.commit()
+    data_entry = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-data-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "setpoints": [-80.0],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert data_entry.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/verification-irtd-rows",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "verification_uploaded_file_id": "file-002",
+            "rows": [
+                ["Time", "IRTD (deg C)", "MJT1-A"],
+                ["2026-04-08T15:45:00+00:00", "-80.031", "-80.036"],
+                ["2026-04-08T15:46:00+00:00", "-80.030", "-80.034"],
+            ],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-001"
+    assert payload["calibration_uploaded_file_id"] == "file-001"
+    assert payload["verification_uploaded_file_id"] == "file-002"
+    assert payload["irtd_reading_count"] == 2
+    assert payload["linked_reading_count"] == 2
+    assert payload["warnings"] == []
+    assert len(SQLiteParsedReadingRepository(connection).list_for_uploaded_file("file-002")) == 2
+    linked = SQLiteLinkedTemperatureReadingRepository(connection).list_for_job("job-001")
+    assert len(linked) == 2
+    assert linked[0].reference.value == -80.031
+    assert linked[0].indication.value == -80.036
+    verification_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "uploaded_file",
+        "file-002",
+    )
+    assert [event.action for event in verification_events] == [
+        AuditAction.FILE_UPLOADED,
+        AuditAction.MANUAL_IRTD_TABLE_RECORDED,
+    ]
+    job_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    )
+    assert job_events[-1].action is AuditAction.IMPORT_ALIGNMENT_RECORDED
+    assert job_events[-1].new_value["source"] == "manual_irtd_table"
+
+
+def test_api_record_manual_irtd_rows_rejects_before_data_entered():
+    connection = _connection_with_user_and_job()
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/calibration-jobs/job-001/verification-irtd-rows",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "verification_uploaded_file_id": "file-002",
+            "rows": [["Time", "IRTD (deg C)"], ["2026-04-08T15:45:00+00:00", "-80.031"]],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "data_entered" in response.json()["detail"]
+    assert SQLiteLinkedTemperatureReadingRepository(connection).list_for_job("job-001") == ()
 
 
 def test_api_upload_rejects_missing_artifact_storage_before_file_write():

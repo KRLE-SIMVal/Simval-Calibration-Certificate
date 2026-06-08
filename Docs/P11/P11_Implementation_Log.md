@@ -30,6 +30,12 @@ certificate generation from the UI.
   required setpoint plan from parsed calibration workbook evidence.
 - Temperature data entry is blocked unless the job is in `equipment_selected`,
   preserving the approved workflow order.
+- Added manual verification IRTD transcription service and API endpoint:
+  `POST /calibration-jobs/{job_id}/verification-irtd-rows`.
+- Added browser `Record IRTD` action for controlled pasted IRTD table rows
+  tied to the uploaded verification PDF evidence.
+- Manual IRTD transcription stores parsed reference readings, linked
+  logger/reference readings, and explicit audit evidence.
 
 ## Scope Not Implemented
 
@@ -51,6 +57,8 @@ certificate generation from the UI.
   records parser status instead of silently accepting data.
 - Authorization uses the existing `UPLOAD_IMPORT_FILE` and
   `CREATE_CALIBRATION_JOB` permission checks.
+- Manual IRTD transcription uses the existing `ENTER_MANUAL_READINGS`
+  permission and does not claim automated PDF extraction.
 
 ## Verification
 
@@ -60,12 +68,14 @@ certificate generation from the UI.
   32 passed on Python 3.12.10.
 - Temperature data-entry focused suite:
   35 passed on Python 3.12.10.
+- Manual IRTD transcription focused suite:
+  37 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
-| Verification PDF extraction is not implemented. | Keep raw verification PDF upload available now, then add approved PDF extraction with controlled fixtures and parser tests before relying on automatic IRTD extraction from uploaded PDFs. |
+| Verification PDF extraction is not implemented. | Use controlled manual IRTD transcription tied to raw PDF evidence now, then add approved PDF extraction with controlled fixtures and parser tests before relying on automatic IRTD extraction from uploaded PDFs. |
 | Browser workflow still lacks measurement-window selection. | Continue P11 with channel summaries, window selection, and calculation execution as separate tested slices. |
 | Upload endpoint uses raw request bytes rather than multipart form upload. | Keep this dependency-free path for now; move to multipart only if the production UI needs metadata and files submitted in one form. |
 | DUT identity is currently derived from logger channel IDs. | Keep this as a traceable default for ValProbe imports, then add an editable mapping screen before production release if customer-facing DUT serial numbers differ from logger channel IDs. |

@@ -76,6 +76,11 @@ from app.backend.services.source_file_uploads import (
     SourceFileUploadServiceError,
     upload_source_file_for_session,
 )
+from app.backend.services.verification_transcription import (
+    ManualIrtdAlignment,
+    VerificationTranscriptionServiceError,
+    record_manual_irtd_rows_for_session,
+)
 from app.backend.ui.workflow import browser_workflow_contract, browser_workflow_html
 
 
@@ -175,6 +180,27 @@ class TemperatureDataEntryResponse(BaseModel):
     setpoint_ids: tuple[str, ...]
     data_entry_audit_event_id: int
     workflow_audit_event_id: int
+
+
+class ManualIrtdRowsRequest(BaseModel):
+    calibration_uploaded_file_id: str
+    verification_uploaded_file_id: str
+    rows: tuple[tuple[str, ...], ...]
+    unit: str
+    software_version: str
+
+
+class ManualIrtdRowsResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    calibration_uploaded_file_id: str
+    verification_uploaded_file_id: str
+    irtd_reading_count: int
+    linked_reading_count: int
+    warnings: tuple[str, ...]
+    manual_irtd_audit_event_id: int
+    alignment_audit_event_id: int
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -629,6 +655,43 @@ def create_app(
         except DataEntryServiceError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _temperature_data_entry_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/verification-irtd-rows",
+        response_model=ManualIrtdRowsResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def manual_irtd_rows(
+        job_id: str,
+        request: ManualIrtdRowsRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ManualIrtdRowsResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = record_manual_irtd_rows_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    calibration_uploaded_file_id=request.calibration_uploaded_file_id,
+                    verification_uploaded_file_id=request.verification_uploaded_file_id,
+                    rows=request.rows,
+                    unit=request.unit,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except VerificationTranscriptionServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _manual_irtd_rows_response(result)
 
     @app.get(
         "/me",
@@ -1085,6 +1148,19 @@ def _temperature_data_entry_response(
         setpoint_ids=result.setpoint_ids,
         data_entry_audit_event_id=result.data_entry_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _manual_irtd_rows_response(result: ManualIrtdAlignment) -> ManualIrtdRowsResponse:
+    return ManualIrtdRowsResponse(
+        job_id=result.job_id,
+        calibration_uploaded_file_id=result.calibration_uploaded_file_id,
+        verification_uploaded_file_id=result.verification_uploaded_file_id,
+        irtd_reading_count=result.irtd_reading_count,
+        linked_reading_count=result.linked_reading_count,
+        warnings=result.warnings,
+        manual_irtd_audit_event_id=result.manual_irtd_audit_event_id,
+        alignment_audit_event_id=result.alignment_audit_event_id,
     )
 
 
