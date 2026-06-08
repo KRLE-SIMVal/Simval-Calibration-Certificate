@@ -10,6 +10,7 @@ from pathlib import Path
 import sqlite3
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.backend.api.database import sqlite_connection_scope
@@ -48,6 +49,7 @@ from app.backend.services.certificates import (
     revise_released_certificate_for_session,
     select_reference_equipment_for_session,
 )
+from app.backend.ui.workflow import browser_workflow_contract, browser_workflow_html
 
 
 class ApiError(BaseModel):
@@ -323,6 +325,25 @@ def create_app(
     )
     app = FastAPI(title="SIMVal Calibration Certificate API")
     clock_fn = clock or _utc_now
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def browser_app() -> HTMLResponse:
+        return HTMLResponse(browser_workflow_html())
+
+    @app.get("/app", response_class=HTMLResponse, include_in_schema=False)
+    def browser_app_alias() -> HTMLResponse:
+        return HTMLResponse(browser_workflow_html())
+
+    @app.get("/app/workflow")
+    def workflow_contract() -> dict:
+        return browser_workflow_contract()
+
+    @app.get("/design-assets/simval-logo", include_in_schema=False)
+    def simval_logo() -> FileResponse:
+        logo_path = _design_asset_path("Logo - SIMVal.png")
+        if not logo_path.is_file():
+            raise HTTPException(status_code=404, detail="SIMVal logo asset not found.")
+        return FileResponse(logo_path, media_type="image/png")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -884,3 +905,7 @@ def _fixed_connection_scope(
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _design_asset_path(filename: str) -> Path:
+    return Path(__file__).resolve().parents[3] / "Docs" / "Design Document" / filename

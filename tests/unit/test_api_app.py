@@ -61,6 +61,71 @@ def test_api_health_returns_ok():
     assert response.json() == {"status": "ok"}
 
 
+def test_api_serves_browser_workflow_shell():
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+        ),
+        "GET",
+        "/app",
+    )
+
+    assert response.status_code == 200
+    assert "SIMVal Calibration Certificate" in response.text
+    assert "/certificate-metadata" in response.text
+    assert "/certificate-rendered-releases" in response.text
+    assert "/design-assets/simval-logo" in response.text
+
+
+def test_api_workflow_contract_lists_regulated_frontend_steps():
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+        ),
+        "GET",
+        "/app/workflow",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "p6_browser_workflow"
+    assert "populated manually" in payload["equipment_library_policy"]
+    assert [step["step_id"] for step in payload["steps"]] == [
+        "session",
+        "metadata",
+        "reference_equipment",
+        "preview",
+        "release",
+        "history_revision",
+    ]
+    action_paths = [
+        action["path"]
+        for step in payload["steps"]
+        for action in step["actions"]
+    ]
+    assert "/certificate-metadata" in action_paths
+    assert "/reference-equipment-selections" in action_paths
+    assert "/certificate-previews" in action_paths
+    assert "/certificate-rendered-releases" in action_paths
+    assert "/certificate-history/job-001" in action_paths
+
+
+def test_api_serves_controlled_simval_logo_asset():
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+        ),
+        "GET",
+        "/design-assets/simval-logo",
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
 def test_api_me_returns_authenticated_actor():
     response = _api_request(
         create_app(

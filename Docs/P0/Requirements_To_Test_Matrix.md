@@ -13,9 +13,9 @@ Status values:
 
 | Requirement | Planned test coverage | Initial test IDs | Status |
 |---|---|---|---|
-| F-001 secure browser access | Authenticated access, unauthenticated rejection, session expiry. | SEC-001, SEC-002, SEC-003 | Planned |
-| F-002 home screen workflows | Dashboard route availability by role. | UX-001, RBAC-001 | Planned |
-| F-003 step wizard without data loss | Back/next persistence, validation warnings, draft recovery. | WF-001, WF-002, WF-003 | Planned |
+| F-001 secure browser access | Authenticated access, unauthenticated rejection, session expiry. | SEC-001, SEC-002, SEC-003, API-022 | Partial |
+| F-002 home screen workflows | Dashboard route availability by role. | UX-001, RBAC-001, API-022, API-023 | Partial |
+| F-003 step wizard without data loss | Back/next persistence, validation warnings, draft recovery. | WF-001, WF-002, WF-003, API-023 | Partial |
 | F-004 roles | Permission matrix enforcement. | RBAC-001 to RBAC-020 | Planned |
 | F-005 user/timestamp/version recording | Audit event content on regulated actions. | AUD-001 to AUD-010 | Planned |
 | F-010 discipline selection | Temperature, pressure, differential pressure branches. | WF-010, WF-011, WF-012 | Planned |
