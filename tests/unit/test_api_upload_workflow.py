@@ -150,6 +150,80 @@ def test_api_upload_verification_pdf_stores_raw_file_without_parser(tmp_path):
     assert (tmp_path / "artifacts" / "uploads" / "job-001" / "file-002-verification.pdf").exists()
 
 
+def test_api_import_review_returns_uploaded_file_and_parser_evidence(tmp_path):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[("2026-04-08T15:45:00+00:00", "-80.036")]
+            )
+        },
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+    upload_response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    assert upload_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "GET",
+        "/calibration-jobs/job-001/imports",
+        headers={"X-Session-Id": "session-001"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-001"
+    assert payload["reviewed_by"] == "user-001"
+    assert len(payload["files"]) == 1
+    file_review = payload["files"][0]
+    assert file_review["uploaded_file_id"] == "file-001"
+    assert file_review["original_filename"] == "sanitized-valprobe.xlsx"
+    assert file_review["file_kind"] == "calibration_xlsx"
+    assert file_review["parser_status"] == "parsed"
+    assert file_review["reading_count"] == 1
+    assert file_review["warning_count"] == 0
+    assert file_review["uploaded_by"] == "user-001"
+    assert file_review["size_bytes"] == len(workbook.read_bytes())
+
+
+def test_api_import_review_rejects_read_only_user(tmp_path):
+    connection = _connection_with_user_and_job()
+    SQLiteUserAccountRepository(connection).update_roles(
+        user_id="user-001",
+        roles=(Role.READ_ONLY,),
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "GET",
+        "/calibration-jobs/job-001/imports",
+        headers={"X-Session-Id": "session-001"},
+    )
+
+    assert response.status_code == 403
+
+
 def test_api_upload_rejects_missing_artifact_storage_before_file_write():
     connection = _connection_with_user_and_job()
 

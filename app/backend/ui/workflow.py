@@ -257,6 +257,7 @@ def browser_workflow_html() -> str:
         </div>
         <div class="panel-actions">
           <button id="uploadSourceFile">Upload File</button>
+          <button class="secondary" id="reviewImports">Review Imports</button>
         </div>
       </section>
     </div>
@@ -284,6 +285,7 @@ def browser_workflow_html() -> str:
         software_version: "app-0.1.0"
       },
       "/calibration-jobs/job-001/files": "",
+      "/calibration-jobs/job-001/imports": "",
       "/certificate-metadata": {
         job_id: "job-001",
         certificate_date: "2026-06-03",
@@ -477,11 +479,27 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function reviewImports() {
+      const jobId = document.getElementById("jobId").value.trim();
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/imports`, {
+          method: "GET",
+          headers: sessionHeaders()
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
     document.getElementById("createJob").addEventListener("click", createJob);
     document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
+    document.getElementById("reviewImports").addEventListener("click", reviewImports);
     loadContract();
   </script>
 </body>
@@ -528,6 +546,12 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     label="Upload source file",
                     method="POST",
                     path="/calibration-jobs/job-001/files",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Review imports",
+                    method="GET",
+                    path="/calibration-jobs/job-001/imports",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
             ),

@@ -220,6 +220,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-071 | Browser/API upload parses known ValProbe workbook. | Calibration XLSX upload returns parser status, reading count, warning count, and parser audit evidence. |
 | IMP-072 | Browser/API upload stores verification PDF bytes. | Verification PDF upload stores raw evidence and reports extraction as deferred without creating parsed readings. |
 | IMP-073 | Unauthorized upload attempt. | Upload is rejected before artifact bytes, uploaded-file records, or audit evidence are written. |
+| IMP-074 | Import review endpoint. | Import review returns uploaded-file checksum/storage evidence, parser status, reading count, warning count, uploader, and size for an authorized session. |
+| IMP-075 | Unauthorized import review. | Import review is rejected for users without import workflow permission. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
@@ -360,6 +362,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-026 | API calibration job creation endpoint. | `POST /calibration-jobs` creates a draft job for an authorized session and records job audit evidence. |
 | API-027 | API source-file upload endpoint. | `POST /calibration-jobs/{job_id}/files` stores raw file evidence and returns upload/parser evidence. |
 | API-028 | Browser upload controls. | `GET /app` exposes visible job creation and source-file upload controls. |
+| API-029 | API import review endpoint. | `GET /calibration-jobs/{job_id}/imports` returns uploaded source-file and parser evidence for review. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

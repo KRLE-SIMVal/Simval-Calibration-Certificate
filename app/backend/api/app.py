@@ -61,6 +61,11 @@ from app.backend.services.jobs import (
     CalibrationJobServiceError,
     create_calibration_job_for_session,
 )
+from app.backend.services.import_review import (
+    ImportReview,
+    ImportReviewServiceError,
+    build_import_review_for_session,
+)
 from app.backend.services.source_file_uploads import (
     SourceFileUploadResult,
     SourceFileUploadServiceError,
@@ -123,6 +128,30 @@ class SourceFileUploadResponse(BaseModel):
     reading_count: int
     warning_count: int
     warnings: tuple[str, ...]
+
+
+class UploadedFileReviewResponse(BaseModel):
+    uploaded_file_id: str
+    original_filename: str
+    file_kind: str
+    checksum_sha256: str
+    storage_uri: str
+    parser_version: str | None
+    uploaded_at: str
+    uploaded_by: str
+    size_bytes: int | None
+    parser_status: str
+    reading_count: int
+    warning_count: int
+
+
+class ImportReviewResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    reviewed_by: str
+    reviewed_at: str
+    files: tuple[UploadedFileReviewResponse, ...]
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -510,6 +539,37 @@ def create_app(
         except (SourceFileUploadServiceError, DomainValidationError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _source_file_upload_response(result)
+
+    @app.get(
+        "/calibration-jobs/{job_id}/imports",
+        response_model=ImportReviewResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def calibration_job_import_review(
+        job_id: str,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ImportReviewResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = build_import_review_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except ImportReviewServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _import_review_response(result)
 
     @app.get(
         "/me",
@@ -928,6 +988,31 @@ def _source_file_upload_response(
         reading_count=result.reading_count,
         warning_count=result.warning_count,
         warnings=result.warnings,
+    )
+
+
+def _import_review_response(result: ImportReview) -> ImportReviewResponse:
+    return ImportReviewResponse(
+        job_id=result.job_id,
+        reviewed_by=result.reviewed_by,
+        reviewed_at=result.reviewed_at.isoformat(),
+        files=tuple(
+            UploadedFileReviewResponse(
+                uploaded_file_id=file_review.uploaded_file.id,
+                original_filename=file_review.uploaded_file.original_filename,
+                file_kind=file_review.uploaded_file.file_kind.value,
+                checksum_sha256=file_review.uploaded_file.checksum_sha256,
+                storage_uri=file_review.uploaded_file.storage_uri,
+                parser_version=file_review.uploaded_file.parser_version,
+                uploaded_at=file_review.uploaded_file.uploaded_at.isoformat(),
+                uploaded_by=file_review.uploaded_by,
+                size_bytes=file_review.size_bytes,
+                parser_status=file_review.parser_status,
+                reading_count=file_review.reading_count,
+                warning_count=file_review.warning_count,
+            )
+            for file_review in result.files
+        ),
     )
 
 
