@@ -7,6 +7,7 @@ from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteCertificateRecordRepository,
 )
+from app.backend.certificates.template_contract import CertificateTemplateContractError
 from app.backend.services.authentication import AuthenticationServiceError
 from app.backend.services.certificates import (
     CertificateReleaseServiceError,
@@ -116,6 +117,47 @@ def test_render_and_release_certificate_pdf_blocks_missing_preview_before_file_w
         )
 
     assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+
+
+def test_render_and_release_certificate_pdf_blocks_template_contract_failure_before_file_write(
+    tmp_path,
+    monkeypatch,
+):
+    connection = _connection_with_release_data()
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    def fail_template_contract(**_kwargs):
+        raise CertificateTemplateContractError("template contract failed")
+
+    monkeypatch.setattr(
+        "app.backend.services.certificates.validate_certificate_template_contract",
+        fail_template_contract,
+    )
+
+    with pytest.raises(CertificateReleaseServiceError, match="template contract"):
+        render_and_release_certificate_pdf_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_directory=tmp_path,
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+    assert not (tmp_path / ".SIMVAL-CAL-0001.pdf.pending").exists()
     assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
 
 

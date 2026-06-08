@@ -39,6 +39,10 @@ from app.backend.certificates.storage import (
     finalize_staged_artifact,
     stage_rendered_artifact,
 )
+from app.backend.certificates.template_contract import (
+    CertificateTemplateContractError,
+    validate_certificate_template_contract,
+)
 from app.backend.domain.equipment import ReferenceEquipment, SelectedReferenceEquipment
 from app.backend.domain.equipment import reference_equipment_blockers
 from app.backend.domain.entities import DeviceUnderTest, DomainValidationError
@@ -478,6 +482,14 @@ def render_and_release_certificate_pdf_for_session(
         certificate_number=certificate_number,
         preview=preview,
     )
+    try:
+        validate_certificate_template_contract(
+            artifact=rendered_artifact,
+            preview=preview,
+            certificate_number=certificate_number,
+        )
+    except CertificateTemplateContractError as exc:
+        raise CertificateReleaseServiceError(str(exc)) from exc
     pending_artifact = stage_rendered_artifact(
         base_path=artifact_directory,
         artifact=rendered_artifact,

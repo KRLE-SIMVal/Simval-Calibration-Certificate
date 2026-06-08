@@ -64,9 +64,9 @@ Status values:
 
 | Requirement | Planned test coverage | Initial test IDs | Status |
 |---|---|---|---|
-| O-001 certificate template and logos | Required SIMVal/DANAK content, SIMVal larger than DANAK mark, accredited-scope warning. | CERT-100 to CERT-109 | Partial |
+| O-001 certificate template and logos | Required SIMVal/DANAK content, SIMVal larger than DANAK mark, accredited-scope warning, and template-contract validation before rendered release. | CERT-100 to CERT-109, CERT-146 | Partial |
 | O-002 file naming | Certificate number, date, configurable naming convention. | CERT-110 to CERT-119 | Planned |
-| O-003 finalized PDFs | Released artifact immutability and revision-only regeneration. | CERT-120 to CERT-129, API-014 to API-016 | Partial |
+| O-003 finalized PDFs | Released artifact immutability, template-contract gate, and revision-only regeneration. | CERT-120 to CERT-129, CERT-146, API-014 to API-016 | Partial |
 | O-004 artifact history | All artifacts retrievable with checksum. | CERT-130 to CERT-139, API-014 | Partial |
 | O-005 version references | Software, calculation, constants, budget, template versions. | CERT-140 to CERT-149 | Planned |
 | Audit trail | Metadata, windows, results, constants, budgets, status, artifacts. | AUD-001 to AUD-099 | Planned |

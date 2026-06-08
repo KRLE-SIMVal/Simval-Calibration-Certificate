@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from dataclasses import replace
 from decimal import Decimal
+import hashlib
 from pathlib import Path
 import re
 
@@ -16,7 +17,12 @@ from app.backend.certificates.preview import CertificatePreviewDut
 from app.backend.certificates.rendering import (
     CertificateLogoAssets,
     CertificateRenderingError,
+    RenderedCertificateArtifact,
     render_certificate_pdf,
+)
+from app.backend.certificates.template_contract import (
+    CertificateTemplateContractError,
+    validate_certificate_template_contract,
 )
 
 
@@ -227,6 +233,71 @@ def test_render_certificate_pdf_rejects_blank_certificate_number():
             certificate_id="cert-001",
             certificate_number=" ",
             preview=_preview(),
+        )
+
+
+def test_certificate_template_contract_accepts_rendered_certificate():
+    preview = _preview()
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=preview,
+    )
+
+    result = validate_certificate_template_contract(
+        artifact=artifact,
+        preview=preview,
+        certificate_number="SIMVAL-CAL-0001",
+    )
+
+    assert "page_count" in result.checks
+    assert "logo_scope" in result.checks
+    assert "version_evidence" in result.checks
+
+
+def test_certificate_template_contract_accepts_non_accredited_scope():
+    preview = replace(_preview(), accreditation_mark_allowed=False)
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=preview,
+    )
+
+    result = validate_certificate_template_contract(
+        artifact=artifact,
+        preview=preview,
+        certificate_number="SIMVAL-CAL-0001",
+    )
+
+    assert "logo_scope" in result.checks
+
+
+def test_certificate_template_contract_rejects_missing_required_marker():
+    preview = _preview()
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=preview,
+    )
+    modified_bytes = artifact.content_bytes.replace(
+        b"Referenceudstyr / Reference equipment:",
+        b"Reference equipment removed:",
+    )
+    invalid_artifact = RenderedCertificateArtifact(
+        artifact_type=artifact.artifact_type,
+        filename=artifact.filename,
+        content_bytes=modified_bytes,
+        checksum_sha256=hashlib.sha256(modified_bytes).hexdigest(),
+    )
+
+    with pytest.raises(
+        CertificateTemplateContractError,
+        match="Referenceudstyr / Reference equipment",
+    ):
+        validate_certificate_template_contract(
+            artifact=invalid_artifact,
+            preview=preview,
+            certificate_number="SIMVAL-CAL-0001",
         )
 
 
