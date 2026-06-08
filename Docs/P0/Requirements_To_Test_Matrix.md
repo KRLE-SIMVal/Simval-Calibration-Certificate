@@ -46,9 +46,9 @@ Status values:
 | Common error rule | `indication - reference` for all disciplines. | CALC-001, TEMP-001, PRESS-001 | Planned |
 | Temperature automatic mode | Reference/DUT means, repeatability, uncertainty combination. | TEMP-010 to TEMP-029 | Planned |
 | Temperature manual mode | Manual indication, reference-side uncertainty, CMC. | TEMP-030 to TEMP-039 | Planned |
-| Pressure manual mode | Up/down average where applicable, gauge branch. | PRESS-010 to PRESS-019 | Planned |
-| Pressure automatic mode | Separate reference and DUT ranges. | PRESS-020 to PRESS-029 | Planned |
-| Absolute pressure | Barometer contribution included. | PRESS-030 to PRESS-039 | Planned |
+| Pressure manual mode | Up/down average where applicable, gauge branch. | PRESS-010 to PRESS-019 | Partial |
+| Pressure automatic mode | Separate reference and DUT ranges. | PRESS-020 to PRESS-029 | Partial |
+| Absolute pressure | Barometer contribution included. | PRESS-030 to PRESS-039 | Partial |
 | Differential pressure | Units and range compatibility. | PRESS-040 to PRESS-049 | Planned |
 | Rounding and display | AB11 two-significant-digit U and result precision. | RND-001 to RND-020 | Planned |
 | CMC range lookup | Constant, linear segment, formula, matrix lookup, table worst-case, and blocked ambiguity cases. | CMC-001 to CMC-018 | Planned |

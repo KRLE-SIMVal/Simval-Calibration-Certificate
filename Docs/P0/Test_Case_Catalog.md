@@ -123,12 +123,16 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | PRESS-001 | Common pressure error rule. | `indication - reference_pressure`. |
 | PRESS-010 | Manual gauge pressure up/down average. | Indication average used where method requires. |
 | PRESS-011 | Gauge pressure omits barometer by default. | No barometer contribution. |
+| PRESS-012 | Gauge pressure supplied with barometer uncertainty. | Calculation is rejected because barometer applies only to absolute pressure. |
 | PRESS-020 | Automatic pressure reference mean. | Reference pressure mean computed. |
 | PRESS-021 | Automatic pressure DUT mean. | DUT pressure mean computed. |
+| PRESS-022 | Automatic pressure repeatability. | Reference and DUT repeatability contributions are included from paired readings. |
 | PRESS-030 | Absolute pressure includes barometer. | Barometer contribution present. |
 | PRESS-031 | Missing barometer for absolute mode. | Calculation or approval blocked. |
 | PRESS-040 | Differential pressure unit mismatch. | Calculation blocked. |
 | PRESS-041 | Differential pressure range mismatch. | Approval/export blocked. |
+| PRESS-050 | Pressure CMC floor. | Reported expanded uncertainty is raised to the applicable CMC floor. |
+| PRESS-051 | Pressure additional standard uncertainty. | Additional method terms are included in RSS with sensitivity coefficient. |
 
 ## Uncertainty Budget
 
