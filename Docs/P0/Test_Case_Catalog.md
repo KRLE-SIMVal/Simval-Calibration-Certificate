@@ -403,6 +403,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | MAINT-002 | SQLite backup evidence. | Maintenance backup creates a consistent SQLite copy and writes JSON evidence with timestamp, SHA-256 checksum, byte count, and integrity check. |
 | MAINT-003 | SQLite restore verification. | Restore drill creates a new database from a verified backup, refuses overwrite, and writes backup/restored integrity evidence. |
 | MAINT-004 | Invalid backup inputs. | Missing source database, naive timestamps, duplicate backup names, invalid SQLite files, and existing restore targets are rejected. |
+| SOP-001 | Handover SOP required controls. | Handover documentation retains human approval, tests-first changes, no silent calculation changes, quarterly regression, backup/restore, deviation, and GDPR controls. |
+| SOP-002 | Production readiness checklist blockers. | Go/no-go checklist retains health, readiness, backup, restore, production authentication, and human approval blockers. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
