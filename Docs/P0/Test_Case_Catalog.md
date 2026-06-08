@@ -394,5 +394,5 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
-| REG-003 | Regression failure creates issue/deviation. | Failure path records tracked item. |
+| REG-003 | Scheduled regression failure creates issue/deviation evidence. | Failed scheduled regression writes JSON/Markdown deviation evidence and opens a tracked issue from the generated evidence. |
 | REG-004 | Quarterly evidence path is quarter-scoped. | Scheduled CI runs write validation evidence under `Docs/Validation/evidence/<year>/Q<n>/`; push/manual runs use `latest`. |

@@ -1,5 +1,9 @@
 name: CI
 
+permissions:
+  contents: read
+  issues: write
+
 on:
   push:
   pull_request:
@@ -72,6 +76,48 @@ jobs:
             --evidence "junit=$evidence_dir/pytest.xml" \
             --evidence "artifact=validation-evidence-${{ github.run_id }}" \
             --output "$evidence_dir/validation-report.json"
+
+      - name: Generate scheduled regression deviation
+        if: ${{ failure() && github.event_name == 'schedule' }}
+        run: |
+          evidence_dir="${SIMVAL_EVIDENCE_DIR:-Docs/Validation/evidence/latest}"
+          run_started_at="${SIMVAL_RUN_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+          mkdir -p "$evidence_dir"
+          python scripts/validation/generate_regression_deviation.py \
+            --status "${{ job.status }}" \
+            --objective "Automated regression run" \
+            --test-suite "pytest" \
+            --trigger-event "${{ github.event_name }}" \
+            --repository "${{ github.repository }}" \
+            --ref "${{ github.ref }}" \
+            --sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-number "${{ github.run_number }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --run-started-at "$run_started_at" \
+            --evidence "junit=$evidence_dir/pytest.xml" \
+            --evidence "validation_report=$evidence_dir/validation-report.json" \
+            --evidence "artifact=validation-evidence-${{ github.run_id }}" \
+            --json-output "$evidence_dir/quarterly-regression-deviation.json" \
+            --markdown-output "$evidence_dir/quarterly-regression-deviation.md"
+
+      - name: Open scheduled regression deviation issue
+        if: ${{ failure() && github.event_name == 'schedule' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const evidenceDir =
+              process.env.SIMVAL_EVIDENCE_DIR || "Docs/Validation/evidence/latest";
+            const body = fs.readFileSync(
+              `${evidenceDir}/quarterly-regression-deviation.md`,
+              "utf8",
+            );
+            const title = `Quarterly regression deviation: run ${context.runId}`;
+            await github.rest.issues.create({ owner, repo, title, body });
 
       - name: Upload test evidence
         if: always()

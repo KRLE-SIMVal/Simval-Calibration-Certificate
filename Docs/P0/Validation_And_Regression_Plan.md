@@ -93,6 +93,18 @@ Any quarterly regression failure must:
 - Require review before closing.
 - Add or update regression tests if a defect is confirmed.
 
+Current CI failure handling:
+
+- Failed scheduled regression runs generate
+  `quarterly-regression-deviation.json` and
+  `quarterly-regression-deviation.md` in the evidence directory.
+- The generated deviation records run id, run URL, quarter, commit, evidence
+  paths, impact statement, and required QA actions.
+- The workflow opens a GitHub issue from the generated Markdown for scheduled
+  regression failures.
+- Human QA disposition is still required before routine-use impact can be
+  closed.
+
 ## Change Control
 
 Every behavior change must include:
