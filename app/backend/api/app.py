@@ -10,7 +10,7 @@ from pathlib import Path
 import sqlite3
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.backend.api.database import sqlite_connection_scope
@@ -23,6 +23,7 @@ from app.backend.domain.equipment import (
     EquipmentStatus,
     ReferenceEquipment,
 )
+from app.backend.operations.readiness import check_runtime_readiness
 from app.backend.services.authentication import (
     AuthenticationFailureError,
     AuthenticationServiceError,
@@ -348,6 +349,17 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/readiness")
+    def readiness() -> JSONResponse:
+        result = check_runtime_readiness(
+            connection_scope=connection_scope,
+            artifact_directory=artifact_directory,
+        )
+        return JSONResponse(
+            status_code=200 if result.ready else 503,
+            content=result.to_payload(),
+        )
 
     @app.get(
         "/me",

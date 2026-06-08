@@ -61,6 +61,77 @@ def test_api_health_returns_ok():
     assert response.json() == {"status": "ok"}
 
 
+def test_api_readiness_returns_ready_for_database_and_artifact_storage(tmp_path):
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+            artifact_directory=tmp_path,
+        ),
+        "GET",
+        "/readiness",
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "components": [
+            {
+                "name": "database",
+                "status": "ok",
+                "detail": "SQLite connection check passed.",
+            },
+            {
+                "name": "artifact_storage",
+                "status": "ok",
+                "detail": "Artifact storage write/delete probe passed.",
+            },
+        ],
+    }
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_api_readiness_returns_503_when_artifact_storage_is_not_configured():
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+        ),
+        "GET",
+        "/readiness",
+    )
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert response.json()["components"][1] == {
+        "name": "artifact_storage",
+        "status": "not_configured",
+        "detail": "Artifact storage path is not configured.",
+    }
+
+
+def test_api_readiness_returns_503_when_artifact_storage_directory_is_missing(
+    tmp_path,
+):
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+            artifact_directory=tmp_path / "missing",
+        ),
+        "GET",
+        "/readiness",
+    )
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert response.json()["components"][1] == {
+        "name": "artifact_storage",
+        "status": "error",
+        "detail": "Artifact storage path is not an existing directory.",
+    }
+
+
 def test_api_serves_browser_workflow_shell():
     response = _api_request(
         create_app(

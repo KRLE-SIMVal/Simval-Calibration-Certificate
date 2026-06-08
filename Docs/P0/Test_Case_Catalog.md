@@ -349,6 +349,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-022 | API browser workflow shell. | `GET /app` serves a browser workflow surface that calls regulated certificate endpoints and uses controlled logo assets. |
 | API-023 | API browser workflow contract. | `GET /app/workflow` returns ordered workflow steps, endpoint paths, role requirements, evidence fields, and manual equipment-library policy. |
 | API-024 | ASGI application entrypoint. | Runtime environment paths create a FastAPI app that responds to health checks. |
+| API-025 | API runtime readiness endpoint. | `GET /readiness` checks SQLite and artifact-storage dependencies and returns 503 without exposing filesystem paths when dependencies are not ready. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
@@ -399,6 +400,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | VAL-003 | Validation package generation. | Package records IQ/OQ/PQ evidence files with SHA-256 checksums, known limitations, release version, source commit, and required reviewers. |
 | VAL-004 | Reviewer disposition template generation. | Validation package output includes a human reviewer disposition template with pending decision and required review checks. |
 | MAINT-001 | Pending artifact cleanup CLI. | Maintenance CLI removes stale pending artifacts and writes JSON evidence with cutoff, removed count, and removed files. |
+| MAINT-002 | SQLite backup evidence. | Maintenance backup creates a consistent SQLite copy and writes JSON evidence with timestamp, SHA-256 checksum, byte count, and integrity check. |
+| MAINT-003 | SQLite restore verification. | Restore drill creates a new database from a verified backup, refuses overwrite, and writes backup/restored integrity evidence. |
+| MAINT-004 | Invalid backup inputs. | Missing source database, naive timestamps, duplicate backup names, invalid SQLite files, and existing restore targets are rejected. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
