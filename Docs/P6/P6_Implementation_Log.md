@@ -19,6 +19,8 @@ It is intentionally a thin shell over existing audited backend endpoints.
   `/design-assets/simval-logo`.
 - Manual equipment-library population is explicit in the workflow contract and
   is not bypassed by hidden CRUD behavior.
+- Added an ASGI runtime entrypoint at `app.backend.api.main:app` using
+  controlled environment settings.
 
 ## Scope Not Implemented
 
@@ -41,6 +43,10 @@ It is intentionally a thin shell over existing audited backend endpoints.
 - Focused API browser workflow suite: 22 passed on Python 3.12.10.
 - Default regression suite after P6 browser workflow shell:
   351 passed, 2 skipped on Python 3.12.10.
+- Focused API browser workflow and ASGI entrypoint suite:
+  23 passed on Python 3.12.10.
+- Default regression suite after ASGI runtime entrypoint:
+  359 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 

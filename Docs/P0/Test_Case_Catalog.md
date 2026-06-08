@@ -347,6 +347,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-021 | API certificate history. | `GET /certificate-history/{job_id}` returns artifact and revision evidence for authorized sessions. |
 | API-022 | API browser workflow shell. | `GET /app` serves a browser workflow surface that calls regulated certificate endpoints and uses controlled logo assets. |
 | API-023 | API browser workflow contract. | `GET /app/workflow` returns ordered workflow steps, endpoint paths, role requirements, evidence fields, and manual equipment-library policy. |
+| API-024 | ASGI application entrypoint. | Runtime environment paths create a FastAPI app that responds to health checks. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

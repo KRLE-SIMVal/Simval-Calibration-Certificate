@@ -19,6 +19,7 @@ api = [
   "pydantic>=2.0",
   "sqlalchemy>=2.0",
   "alembic>=1.13",
+  "uvicorn>=0.30",
 ]
 
 [tool.pytest.ini_options]
