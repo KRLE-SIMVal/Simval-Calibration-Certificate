@@ -11,20 +11,17 @@ from app.backend.api.app import create_app
 from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
-from app.backend.domain.entities import Discipline
-from app.backend.domain.versioning import ConstantSet, UncertaintyBudget, VersionStatus
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
-    SQLiteConstantSetRepository,
+    SQLiteCertificateRecordRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteLinkedTemperatureReadingRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
     SQLiteParsedReadingRepository,
     SQLiteRequiredTemperatureSetpointRepository,
-    SQLiteUncertaintyBudgetRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -491,11 +488,26 @@ def test_api_record_manual_irtd_rows_persists_reference_links_and_audit(tmp_path
         content=b"%PDF-1.4 controlled verification fixture",
     )
     assert verification_upload.status_code == 200
-    connection.execute(
-        "UPDATE calibration_jobs SET state = ? WHERE id = ?",
-        (WorkflowState.EQUIPMENT_SELECTED.value, "job-001"),
+    metadata = _api_request(
+        app,
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json=_metadata_payload(),
     )
-    connection.commit()
+    assert metadata.status_code == 200
+    assert metadata.json()["workflow_state"] == "metadata_complete"
+
+    reference_selection = _api_request(
+        app,
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json=_reference_equipment_payload(),
+    )
+    assert reference_selection.status_code == 200
+    assert reference_selection.json()["workflow_state"] == "equipment_selected"
+
     data_entry = _api_request(
         app,
         "POST",
@@ -632,11 +644,26 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         content=b"%PDF-1.4 controlled verification fixture",
     )
     assert verification_upload.status_code == 200
-    connection.execute(
-        "UPDATE calibration_jobs SET state = ? WHERE id = ?",
-        (WorkflowState.EQUIPMENT_SELECTED.value, "job-001"),
+    metadata = _api_request(
+        app,
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json=_metadata_payload(),
     )
-    connection.commit()
+    assert metadata.status_code == 200
+    assert metadata.json()["workflow_state"] == "metadata_complete"
+
+    reference_selection = _api_request(
+        app,
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json=_reference_equipment_payload(),
+    )
+    assert reference_selection.status_code == 200
+    assert reference_selection.json()["workflow_state"] == "equipment_selected"
+
     data_entry = _api_request(
         app,
         "POST",
@@ -713,8 +740,26 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.WINDOWS_SELECTED
     )
-    SQLiteConstantSetRepository(connection).add(_constant_set())
-    SQLiteUncertaintyBudgetRepository(connection).add(_budget())
+
+    constant_set = _api_request(
+        app,
+        "POST",
+        "/constant-sets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json=_constant_set_payload(),
+    )
+    budget = _api_request(
+        app,
+        "POST",
+        "/uncertainty-budgets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json=_budget_payload(),
+    )
+
+    assert constant_set.status_code == 200
+    assert constant_set.json()["approved_by"] == "user-001"
+    assert budget.status_code == 200
+    assert budget.json()["approved_by"] == "user-001"
 
     calculation = _api_request(
         app,
@@ -788,6 +833,56 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
     assert qa_approval.json()["state"] == "approved"
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.APPROVED
+    )
+
+    preview = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+
+    assert preview.status_code == 200
+    preview_payload = preview.json()
+    assert preview_payload["summary_ids"] == ["job-001-window-001-summary"]
+    assert preview_payload["reference_equipment"][0]["equipment_id"] == "ref-001"
+
+    release = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number": "SIMVAL-CAL-0001",
+            "artifact_id": "artifact-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+
+    assert release.status_code == 200
+    release_payload = release.json()
+    artifact_path = tmp_path / "artifacts" / "SIMVAL-CAL-0001.pdf"
+    assert artifact_path.exists()
+    assert release_payload["status"] == "released"
+    assert release_payload["artifacts"][0]["filename"] == "SIMVAL-CAL-0001.pdf"
+    assert release_payload["artifacts"][0]["checksum_sha256"] == hashlib.sha256(
+        artifact_path.read_bytes()
+    ).hexdigest()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.RELEASED
+    )
+    assert SQLiteCertificateRecordRepository(connection).get("cert-001").released_by == (
+        "user-001"
     )
 
 
@@ -904,28 +999,65 @@ def _job_payload() -> dict:
     }
 
 
-def _constant_set() -> ConstantSet:
-    return ConstantSet(
-        version="constants-2026-001",
-        discipline=Discipline.TEMPERATURE,
-        status=VersionStatus.APPROVED,
-        effective_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        approved_by="qa-001",
-        approved_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
-    )
+def _metadata_payload() -> dict:
+    return {
+        "job_id": "job-001",
+        "certificate_date": "2026-06-03",
+        "calibration_date": "2026-06-01",
+        "receipt_date": "2026-05-31",
+        "task_number": "TASK-2026-001",
+        "purchase_order": "PO-12345",
+        "client_name": "SIMVal customer",
+        "client_address": "Validated Road 1, 2800 Lyngby",
+        "procedure": "SIMVal SOP-TEMP-001",
+        "place": "SIMVal Temperature Laboratory, Lyngby",
+        "approved_by_label": "QA User",
+        "remarks": "ValProbe RT logger data reviewed.",
+        "traceability_statement": "Measurements are metrologically traceable.",
+        "uncertainty_statement": "Expanded uncertainty uses k=2.",
+        "ambient_conditions": "Room temperature 23 +/- 2 deg C.",
+        "temperature_scale": "ITS-90",
+        "software_version": "app-0.1.0",
+    }
 
 
-def _budget() -> UncertaintyBudget:
-    return UncertaintyBudget(
-        version="budget-temp-001",
-        budget_type="temperature_logger",
-        method="ValProbe RT automatic temperature",
-        discipline=Discipline.TEMPERATURE,
-        status=VersionStatus.APPROVED,
-        linked_constant_set_version="constants-2026-001",
-        approved_by="qa-001",
-        approved_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
-    )
+def _reference_equipment_payload() -> dict:
+    return {
+        "job_id": "job-001",
+        "equipment_id": "ref-001",
+        "simval_id": "SIM-T-001",
+        "equipment_type": "IRTD",
+        "serial_number": "IRT-123",
+        "discipline": "temperature",
+        "calibration_certificate_reference": "DANAK-CAL-12345",
+        "calibration_due_date": "2027-04-30",
+        "status": "active",
+        "range_minimum": -90.0,
+        "range_maximum": 140.0,
+        "range_unit": "deg C",
+        "traceability_statement": "Accredited calibration with SI traceability.",
+        "software_version": "app-0.1.0",
+    }
+
+
+def _constant_set_payload() -> dict:
+    return {
+        "version": "constants-2026-001",
+        "discipline": "temperature",
+        "effective_from": "2026-01-01T00:00:00+00:00",
+        "software_version": "app-0.1.0",
+    }
+
+
+def _budget_payload() -> dict:
+    return {
+        "version": "budget-temp-001",
+        "budget_type": "temperature_logger",
+        "method": "ValProbe RT automatic temperature",
+        "discipline": "temperature",
+        "linked_constant_set_version": "constants-2026-001",
+        "software_version": "app-0.1.0",
+    }
 
 
 def _user(roles: tuple[Role, ...]) -> UserAccount:

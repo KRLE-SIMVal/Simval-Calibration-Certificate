@@ -59,6 +59,10 @@ certificate generation from the UI.
   `POST /uncertainty-budgets/approved`.
 - Added browser shortcuts for approving the default constant-set and uncertainty
   budget version records needed by the calculation gate.
+- Strengthened the API regression workflow so the temperature certificate path
+  proceeds through public endpoints from metadata capture and reference
+  selection through rendered PDF release, without direct test-side workflow state
+  mutation or direct governed-version repository seeding.
 
 ## Scope Not Implemented
 
@@ -111,6 +115,8 @@ certificate generation from the UI.
   25 passed on Python 3.12.10.
 - Governed-version API focused suite:
   26 passed on Python 3.12.10.
+- End-to-end API workflow focused suite:
+  39 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 

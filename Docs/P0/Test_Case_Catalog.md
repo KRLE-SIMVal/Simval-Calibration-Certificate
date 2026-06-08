@@ -44,6 +44,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-068 | Submit technical review through API. | Authorized user transitions a calculated job to `technical_review` with workflow audit evidence. |
 | WF-069 | Approve technical review through API. | Authorized technical reviewer transitions a job from `technical_review` to `qa_review` with workflow audit evidence. |
 | WF-070 | Approve QA release through API. | Authorized QA approver transitions a job from `qa_review` to `approved` with workflow audit evidence. |
+| WF-071 | End-to-end temperature certificate workflow through API. | A controlled job proceeds through metadata capture, reference selection, file upload, data entry, manual IRTD transcription, window selection, approved governed versions, calculation, technical review, QA approval, preview, and rendered PDF release without direct state mutation. |
 
 ## Roles And Permissions
 
@@ -387,6 +388,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-038 | Browser certificate workflow shortcuts. | `GET /app` exposes direct controls for metadata capture, reference equipment selection, preview generation, and rendered PDF release. |
 | API-039 | API approved constant-set endpoint. | `POST /constant-sets/approved` records an approved constant-set version with actor approval and audit evidence. |
 | API-040 | API approved uncertainty-budget endpoint. | `POST /uncertainty-budgets/approved` records an approved uncertainty-budget version linked to an approved constant set with actor approval and audit evidence. |
+| API-041 | API end-to-end certificate release regression. | The API workflow uses only public endpoints after job creation and produces released certificate evidence plus a controlled PDF artifact. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
