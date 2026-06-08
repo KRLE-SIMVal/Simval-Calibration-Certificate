@@ -100,6 +100,13 @@ from app.backend.services.verification_transcription import (
     VerificationTranscriptionServiceError,
     record_manual_irtd_rows_for_session,
 )
+from app.backend.services.version_management import (
+    ConstantSetApproval,
+    UncertaintyBudgetApproval,
+    VersionManagementServiceError,
+    record_approved_constant_set_for_session,
+    record_approved_uncertainty_budget_for_session,
+)
 from app.calculation_engine.temperature.results import (
     AdditionalStandardUncertainty,
     TemperatureCalculationError,
@@ -329,6 +336,48 @@ class ReviewWorkflowResponse(BaseModel):
     job_id: str
     state: str
     workflow_audit_event_id: int
+
+
+class ApprovedConstantSetRequest(BaseModel):
+    version: str
+    discipline: Discipline
+    effective_from: datetime
+    software_version: str
+
+
+class ApprovedConstantSetResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    version: str
+    discipline: str
+    status: str
+    effective_from: str
+    approved_by: str
+    approved_at: str
+    audit_event_id: int
+
+
+class ApprovedUncertaintyBudgetRequest(BaseModel):
+    version: str
+    budget_type: str
+    method: str
+    discipline: Discipline
+    linked_constant_set_version: str
+    software_version: str
+
+
+class ApprovedUncertaintyBudgetResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    version: str
+    budget_type: str
+    method: str
+    discipline: str
+    status: str
+    linked_constant_set_version: str
+    approved_by: str
+    approved_at: str
+    audit_event_id: int
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -630,6 +679,76 @@ def create_app(
             status_code=200 if result.ready else 503,
             content=result.to_payload(),
         )
+
+    @app.post(
+        "/constant-sets/approved",
+        response_model=ApprovedConstantSetResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def approved_constant_set(
+        request: ApprovedConstantSetRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ApprovedConstantSetResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = record_approved_constant_set_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    version=request.version,
+                    discipline=request.discipline,
+                    effective_from=request.effective_from,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (VersionManagementServiceError, DomainValidationError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _approved_constant_set_response(result)
+
+    @app.post(
+        "/uncertainty-budgets/approved",
+        response_model=ApprovedUncertaintyBudgetResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def approved_uncertainty_budget(
+        request: ApprovedUncertaintyBudgetRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ApprovedUncertaintyBudgetResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = record_approved_uncertainty_budget_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    version=request.version,
+                    budget_type=request.budget_type,
+                    method=request.method,
+                    discipline=request.discipline,
+                    linked_constant_set_version=request.linked_constant_set_version,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (VersionManagementServiceError, DomainValidationError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _approved_uncertainty_budget_response(result)
 
     @app.post(
         "/calibration-jobs",
@@ -1595,6 +1714,42 @@ def _review_workflow_response(
         job_id=result.job.id,
         state=result.job.state.value,
         workflow_audit_event_id=result.audit_event_id,
+    )
+
+
+def _approved_constant_set_response(
+    result: ConstantSetApproval,
+) -> ApprovedConstantSetResponse:
+    constant_set = result.constant_set
+    assert constant_set.approved_by is not None
+    assert constant_set.approved_at is not None
+    return ApprovedConstantSetResponse(
+        version=constant_set.version,
+        discipline=constant_set.discipline.value,
+        status=constant_set.status.value,
+        effective_from=constant_set.effective_from.isoformat(),
+        approved_by=constant_set.approved_by,
+        approved_at=constant_set.approved_at.isoformat(),
+        audit_event_id=result.audit_event_id,
+    )
+
+
+def _approved_uncertainty_budget_response(
+    result: UncertaintyBudgetApproval,
+) -> ApprovedUncertaintyBudgetResponse:
+    budget = result.budget
+    assert budget.approved_by is not None
+    assert budget.approved_at is not None
+    return ApprovedUncertaintyBudgetResponse(
+        version=budget.version,
+        budget_type=budget.budget_type,
+        method=budget.method,
+        discipline=budget.discipline.value,
+        status=budget.status.value,
+        linked_constant_set_version=budget.linked_constant_set_version,
+        approved_by=budget.approved_by,
+        approved_at=budget.approved_at.isoformat(),
+        audit_event_id=result.audit_event_id,
     )
 
 

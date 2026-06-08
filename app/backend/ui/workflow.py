@@ -237,6 +237,8 @@ def browser_workflow_html() -> str:
           <button id="createJob">Create Job</button>
           <button class="secondary" id="captureMetadata">Capture Metadata</button>
           <button class="secondary" id="selectReferenceEquipment">Select Equipment</button>
+          <button class="secondary" id="approveConstantSet">Approve Constants</button>
+          <button class="secondary" id="approveUncertaintyBudget">Approve Budget</button>
         </div>
       </section>
       <section class="panel">
@@ -344,6 +346,20 @@ def browser_workflow_html() -> str:
         discipline: "temperature",
         measurement_mode: "automatic",
         method: "ValProbe RT linked XLSX/PDF workflow",
+        software_version: "app-0.1.0"
+      },
+      "/constant-sets/approved": {
+        version: "constants-2026-001",
+        discipline: "temperature",
+        effective_from: "2026-01-01T00:00:00+00:00",
+        software_version: "app-0.1.0"
+      },
+      "/uncertainty-budgets/approved": {
+        version: "budget-temp-001",
+        budget_type: "temperature_logger",
+        method: "ValProbe RT automatic temperature",
+        discipline: "temperature",
+        linked_constant_set_version: "constants-2026-001",
         software_version: "app-0.1.0"
       },
       "/calibration-jobs/job-001/files": "",
@@ -805,6 +821,8 @@ def browser_workflow_html() -> str:
     document.getElementById("createJob").addEventListener("click", createJob);
     document.getElementById("captureMetadata").addEventListener("click", () => postSample("/certificate-metadata"));
     document.getElementById("selectReferenceEquipment").addEventListener("click", () => postSample("/reference-equipment-selections"));
+    document.getElementById("approveConstantSet").addEventListener("click", () => postSample("/constant-sets/approved"));
+    document.getElementById("approveUncertaintyBudget").addEventListener("click", () => postSample("/uncertainty-budgets/approved"));
     document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
     document.getElementById("reviewImports").addEventListener("click", reviewImports);
     document.getElementById("prepareTemperatureData").addEventListener("click", prepareTemperatureData);
@@ -851,8 +869,26 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/calibration-jobs",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
+                WorkflowAction(
+                    label="Approve constant set",
+                    method="POST",
+                    path="/constant-sets/approved",
+                    required_roles=("qa_approver", "admin"),
+                ),
+                WorkflowAction(
+                    label="Approve uncertainty budget",
+                    method="POST",
+                    path="/uncertainty-budgets/approved",
+                    required_roles=("qa_approver", "admin"),
+                ),
             ),
-            evidence=("job_audit_event_id", "created_by", "created_at"),
+            evidence=(
+                "job_audit_event_id",
+                "constant_set_audit_event_id",
+                "budget_audit_event_id",
+                "created_by",
+                "created_at",
+            ),
         ),
         WorkflowStep(
             step_id="import_data",

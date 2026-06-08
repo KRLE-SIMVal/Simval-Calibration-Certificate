@@ -35,10 +35,12 @@ from app.backend.persistence.sqlite import (
     SQLiteCertificateMetadataRepository,
     SQLiteCertificateRecordRepository,
     SQLiteCertificateRevisionRepository,
+    SQLiteConstantSetRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
     SQLiteSelectedReferenceEquipmentRepository,
+    SQLiteUncertaintyBudgetRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -148,6 +150,8 @@ def test_api_serves_browser_workflow_shell():
     assert 'id="uploadSourceFile"' in response.text
     assert 'id="captureMetadata"' in response.text
     assert 'id="selectReferenceEquipment"' in response.text
+    assert 'id="approveConstantSet"' in response.text
+    assert 'id="approveUncertaintyBudget"' in response.text
     assert 'id="buildCertificatePreview"' in response.text
     assert 'id="renderCertificateRelease"' in response.text
     assert "/calibration-jobs" in response.text
@@ -186,6 +190,8 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
         for action in step["actions"]
     ]
     assert "/calibration-jobs" in action_paths
+    assert "/constant-sets/approved" in action_paths
+    assert "/uncertainty-budgets/approved" in action_paths
     assert "/calibration-jobs/job-001/files" in action_paths
     assert "/calibration-jobs/job-001/imports" in action_paths
     assert "/calibration-jobs/job-001/temperature-data-entry" in action_paths
@@ -234,6 +240,53 @@ def test_api_me_returns_authenticated_actor():
         "display_name": "Operator User",
         "roles": ["operator"],
     }
+
+
+def test_api_approved_calculation_versions_record_audit_evidence():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    app = create_app(connection=connection, clock=_fixed_now)
+
+    constant_response = _api_request(
+        app,
+        "POST",
+        "/constant-sets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "version": "constants-2026-api",
+            "discipline": "temperature",
+            "effective_from": "2026-01-01T00:00:00+00:00",
+            "software_version": "app-0.1.0",
+        },
+    )
+    budget_response = _api_request(
+        app,
+        "POST",
+        "/uncertainty-budgets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "version": "budget-temp-api",
+            "budget_type": "temperature_logger",
+            "method": "ValProbe RT automatic temperature",
+            "discipline": "temperature",
+            "linked_constant_set_version": "constants-2026-api",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert constant_response.status_code == 200
+    assert budget_response.status_code == 200
+    assert constant_response.json()["approved_by"] == "user-001"
+    assert budget_response.json()["approved_by"] == "user-001"
+    assert SQLiteConstantSetRepository(connection).get("constants-2026-api").approved
+    assert SQLiteUncertaintyBudgetRepository(connection).get("budget-temp-api").approved
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "constant_set",
+        "constants-2026-api",
+    )[0].action.value == "constant_set_changed"
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "uncertainty_budget",
+        "budget-temp-api",
+    )[0].action.value == "budget_changed"
 
 
 def test_api_certificate_metadata_capture_records_metadata_and_audits():

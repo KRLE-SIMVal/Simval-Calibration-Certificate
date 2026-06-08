@@ -54,6 +54,11 @@ certificate generation from the UI.
 - Added direct browser shortcut buttons for certificate metadata capture,
   reference equipment selection, certificate preview generation, and rendered
   PDF certificate release.
+- Added approved governed-version API endpoints:
+  `POST /constant-sets/approved` and
+  `POST /uncertainty-budgets/approved`.
+- Added browser shortcuts for approving the default constant-set and uncertainty
+  budget version records needed by the calculation gate.
 
 ## Scope Not Implemented
 
@@ -83,6 +88,8 @@ certificate generation from the UI.
   floors, or displayed result formatting.
 - Review transitions use existing regulated permission actions and append
   workflow audit evidence for each state change.
+- Approved governed-version endpoints use the authenticated actor as approval
+  evidence and append constant/budget audit events.
 
 ## Verification
 
@@ -102,6 +109,8 @@ certificate generation from the UI.
   38 passed on Python 3.12.10.
 - Browser certificate shortcut focused suite:
   25 passed on Python 3.12.10.
+- Governed-version API focused suite:
+  26 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
