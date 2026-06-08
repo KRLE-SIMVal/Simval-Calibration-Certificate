@@ -60,6 +60,11 @@ from app.backend.persistence.sqlite import (
     SQLiteSelectedReferenceEquipmentRepository,
 )
 from app.backend.services.authentication import resolve_actor_for_action
+from app.backend.services.certificate_numbers import (
+    CertificateNumberAllocationResult,
+    CertificateNumberServiceError,
+    allocate_certificate_number_in_transaction,
+)
 from app.backend.services.workflow import transition_calibration_job
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
@@ -126,6 +131,14 @@ class RenderedCertificateRelease:
     rendered_artifact: RenderedCertificateArtifact
     stored_artifact: StoredCertificateArtifact
     release: CertificateRelease
+
+
+@dataclass(frozen=True, slots=True)
+class AllocatedRenderedCertificateRelease:
+    rendered_artifact: RenderedCertificateArtifact
+    stored_artifact: StoredCertificateArtifact
+    release: CertificateRelease
+    certificate_number_allocation: CertificateNumberAllocationResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -522,6 +535,101 @@ def render_and_release_certificate_pdf_for_session(
     )
 
 
+def render_and_release_certificate_pdf_with_allocated_number_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    job_id: str,
+    certificate_id: str,
+    certificate_number_prefix: str,
+    certificate_number_padding: int,
+    artifact_id: str,
+    artifact_directory: Path,
+    template_version: str,
+    software_version: str,
+    timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
+) -> AllocatedRenderedCertificateRelease:
+    """Allocate a controlled certificate number, render, and release a PDF."""
+    actor = resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.RELEASE_CERTIFICATE,
+        timestamp=timestamp,
+    )
+    preview = _preview_for_release_rendering(
+        connection=connection,
+        job_id=job_id,
+        template_version=template_version,
+        software_version=software_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
+    )
+    pending_artifact = None
+    try:
+        with connection:
+            try:
+                allocation = allocate_certificate_number_in_transaction(
+                    connection=connection,
+                    user_id=actor.user_id,
+                    prefix=certificate_number_prefix,
+                    padding=certificate_number_padding,
+                    software_version=software_version,
+                    timestamp=timestamp,
+                    context={
+                        "job_id": job_id,
+                        "certificate_id": certificate_id,
+                        "operation": "rendered_certificate_release",
+                    },
+                )
+            except (CertificateNumberServiceError, PersistenceError) as exc:
+                raise CertificateReleaseServiceError(str(exc)) from exc
+
+            rendered_artifact = render_certificate_pdf(
+                certificate_id=certificate_id,
+                certificate_number=allocation.certificate_number,
+                preview=preview,
+            )
+            try:
+                validate_certificate_template_contract(
+                    artifact=rendered_artifact,
+                    preview=preview,
+                    certificate_number=allocation.certificate_number,
+                )
+            except CertificateTemplateContractError as exc:
+                raise CertificateReleaseServiceError(str(exc)) from exc
+            pending_artifact = stage_rendered_artifact(
+                base_path=artifact_directory,
+                artifact=rendered_artifact,
+            )
+            release = _release_certificate_in_transaction(
+                connection=connection,
+                job_id=job_id,
+                certificate_id=certificate_id,
+                certificate_number=allocation.certificate_number,
+                artifact_id=artifact_id,
+                artifact_type=rendered_artifact.artifact_type,
+                filename=pending_artifact.filename,
+                checksum_sha256=pending_artifact.checksum_sha256,
+                storage_uri=pending_artifact.storage_uri,
+                released_by=actor.user_id,
+                template_version=template_version,
+                software_version=software_version,
+                accreditation_mark_allowed=accreditation_mark_allowed,
+                timestamp=timestamp,
+            )
+    except Exception:
+        if pending_artifact is not None:
+            discard_staged_artifact(pending_artifact)
+        raise
+    stored_artifact = finalize_staged_artifact(pending_artifact)
+    return AllocatedRenderedCertificateRelease(
+        rendered_artifact=rendered_artifact,
+        stored_artifact=stored_artifact,
+        release=release,
+        certificate_number_allocation=allocation,
+    )
+
+
 def release_certificate_for_session(
     *,
     connection: sqlite3.Connection,
@@ -692,144 +800,193 @@ def release_certificate(
         raise CertificateReleaseServiceError("Artifact type is invalid.")
 
     with connection:
-        job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
-        metadata_repository = SQLiteCertificateMetadataRepository(
-            connection,
-            autocommit=False,
-        )
-        selected_reference_repository = SQLiteSelectedReferenceEquipmentRepository(
-            connection,
-            autocommit=False,
-        )
-        summary_repository = SQLiteMeasurementPointSummaryRepository(
-            connection,
-            autocommit=False,
-        )
-        certificate_repository = SQLiteCertificateRecordRepository(
-            connection,
-            autocommit=False,
-        )
-        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
-
-        job = job_repository.get(job_id)
-        if job.state is not WorkflowState.APPROVED:
-            raise CertificateReleaseServiceError(
-                "Certificate release requires approved workflow state."
-            )
-
-        summaries = summary_repository.list_for_job(job_id)
-        if len(summaries) == 0:
-            raise CertificateReleaseServiceError(
-                "Certificate release requires calculation summaries."
-            )
-        try:
-            metadata = metadata_repository.get(job_id)
-        except RecordNotFoundError as exc:
-            raise CertificateReleaseServiceError(
-                "Certificate release requires certificate metadata."
-            ) from exc
-        selected_reference_equipment = selected_reference_repository.list_for_job(
-            job_id
-        )
-        if len(selected_reference_equipment) == 0:
-            raise CertificateReleaseServiceError(
-                "Certificate release requires reference equipment."
-            )
-        suitability_blockers = _reference_equipment_suitability_blockers(
-            job=job,
-            metadata=metadata,
-            selected_reference_equipment=selected_reference_equipment,
-            summaries=summaries,
-        )
-        if len(suitability_blockers) > 0:
-            raise CertificateReleaseServiceError(
-                _reference_equipment_suitability_message(suitability_blockers)
-            )
-        summary_ids = tuple(summary.point_id for summary in summaries)
-        calculation_engine_version = _single_release_version(
-            {summary.calculation_engine_version for summary in summaries},
-            "calculation engine",
-        )
-        constant_set_version = _single_release_version(
-            {summary.constant_set_version for summary in summaries},
-            "constant set",
-        )
-        budget_version = _single_release_version(
-            {summary.budget_version for summary in summaries},
-            "budget",
-        )
-        if not _matching_preview_exists(
-            audit_repository.list_for_entity("calibration_job", job_id),
-            summary_ids=summary_ids,
-            template_version=template_version,
-            software_version=software_version,
-            calculation_engine_version=calculation_engine_version,
-            constant_set_version=constant_set_version,
-            budget_version=budget_version,
-            accreditation_mark_allowed=accreditation_mark_allowed,
-        ):
-            raise CertificateReleaseServiceError(
-                "Certificate release requires matching preview audit evidence."
-            )
-
-        artifact = ExportArtifact(
-            artifact_id=artifact_id,
+        return _release_certificate_in_transaction(
+            connection=connection,
+            job_id=job_id,
             certificate_id=certificate_id,
+            certificate_number=certificate_number,
+            artifact_id=artifact_id,
             artifact_type=artifact_type,
             filename=filename,
             checksum_sha256=checksum_sha256,
             storage_uri=storage_uri,
-            generated_by=released_by,
-            generated_at=timestamp,
-        )
-        certificate = CertificateRecord(
-            certificate_id=certificate_id,
-            job_id=job_id,
-            certificate_number=certificate_number,
-            status=CertificateStatus.RELEASED,
-            calculation_summary_ids=summary_ids,
-            export_artifacts=(artifact,),
-            software_version=software_version,
-            calculation_engine_version=calculation_engine_version,
-            constant_set_version=constant_set_version,
-            budget_version=budget_version,
-            template_version=template_version,
-            approved_by=released_by,
-            approved_at=timestamp,
             released_by=released_by,
-            released_at=timestamp,
-        )
-        try:
-            certificate_repository.add(certificate)
-        except PersistenceError as exc:
-            raise CertificateReleaseServiceError(str(exc)) from exc
-
-        export_audit_event = _export_artifact_audit_event(
-            certificate=certificate,
-            artifact=artifact,
-            timestamp=timestamp,
-        )
-        export_audit_event_id = audit_repository.append(export_audit_event)
-        release_audit_event = _certificate_release_audit_event(
-            certificate=certificate,
+            template_version=template_version,
+            software_version=software_version,
             accreditation_mark_allowed=accreditation_mark_allowed,
             timestamp=timestamp,
         )
-        release_audit_event_id = audit_repository.append(release_audit_event)
-        transition = transition_calibration_job(
-            job_id=job_id,
-            current=job.state,
-            target=WorkflowState.RELEASED,
-            user_id=released_by,
-            software_version=software_version,
-            timestamp=timestamp,
+
+
+def _release_certificate_in_transaction(
+    *,
+    connection: sqlite3.Connection,
+    job_id: str,
+    certificate_id: str,
+    certificate_number: str,
+    artifact_id: str,
+    artifact_type: ArtifactType,
+    filename: str,
+    checksum_sha256: str,
+    storage_uri: str,
+    released_by: str,
+    template_version: str,
+    software_version: str,
+    timestamp: datetime,
+    accreditation_mark_allowed: bool = True,
+) -> CertificateRelease:
+    _validate_release_inputs(
+        job_id=job_id,
+        certificate_id=certificate_id,
+        certificate_number=certificate_number,
+        artifact_id=artifact_id,
+        filename=filename,
+        checksum_sha256=checksum_sha256,
+        storage_uri=storage_uri,
+        released_by=released_by,
+        template_version=template_version,
+        software_version=software_version,
+        timestamp=timestamp,
+    )
+    if not isinstance(artifact_type, ArtifactType):
+        raise CertificateReleaseServiceError("Artifact type is invalid.")
+
+    job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
+    metadata_repository = SQLiteCertificateMetadataRepository(
+        connection,
+        autocommit=False,
+    )
+    selected_reference_repository = SQLiteSelectedReferenceEquipmentRepository(
+        connection,
+        autocommit=False,
+    )
+    summary_repository = SQLiteMeasurementPointSummaryRepository(
+        connection,
+        autocommit=False,
+    )
+    certificate_repository = SQLiteCertificateRecordRepository(
+        connection,
+        autocommit=False,
+    )
+    audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+
+    job = job_repository.get(job_id)
+    if job.state is not WorkflowState.APPROVED:
+        raise CertificateReleaseServiceError(
+            "Certificate release requires approved workflow state."
         )
-        job_repository.update_state(
-            job_id=job_id,
-            expected_state=job.state,
-            new_state=transition.state,
+
+    summaries = summary_repository.list_for_job(job_id)
+    if len(summaries) == 0:
+        raise CertificateReleaseServiceError(
+            "Certificate release requires calculation summaries."
         )
-        workflow_audit_event_id = audit_repository.append(transition.audit_event)
+    try:
+        metadata = metadata_repository.get(job_id)
+    except RecordNotFoundError as exc:
+        raise CertificateReleaseServiceError(
+            "Certificate release requires certificate metadata."
+        ) from exc
+    selected_reference_equipment = selected_reference_repository.list_for_job(job_id)
+    if len(selected_reference_equipment) == 0:
+        raise CertificateReleaseServiceError(
+            "Certificate release requires reference equipment."
+        )
+    suitability_blockers = _reference_equipment_suitability_blockers(
+        job=job,
+        metadata=metadata,
+        selected_reference_equipment=selected_reference_equipment,
+        summaries=summaries,
+    )
+    if len(suitability_blockers) > 0:
+        raise CertificateReleaseServiceError(
+            _reference_equipment_suitability_message(suitability_blockers)
+        )
+    summary_ids = tuple(summary.point_id for summary in summaries)
+    calculation_engine_version = _single_release_version(
+        {summary.calculation_engine_version for summary in summaries},
+        "calculation engine",
+    )
+    constant_set_version = _single_release_version(
+        {summary.constant_set_version for summary in summaries},
+        "constant set",
+    )
+    budget_version = _single_release_version(
+        {summary.budget_version for summary in summaries},
+        "budget",
+    )
+    if not _matching_preview_exists(
+        audit_repository.list_for_entity("calibration_job", job_id),
+        summary_ids=summary_ids,
+        template_version=template_version,
+        software_version=software_version,
+        calculation_engine_version=calculation_engine_version,
+        constant_set_version=constant_set_version,
+        budget_version=budget_version,
+        accreditation_mark_allowed=accreditation_mark_allowed,
+    ):
+        raise CertificateReleaseServiceError(
+            "Certificate release requires matching preview audit evidence."
+        )
+
+    artifact = ExportArtifact(
+        artifact_id=artifact_id,
+        certificate_id=certificate_id,
+        artifact_type=artifact_type,
+        filename=filename,
+        checksum_sha256=checksum_sha256,
+        storage_uri=storage_uri,
+        generated_by=released_by,
+        generated_at=timestamp,
+    )
+    certificate = CertificateRecord(
+        certificate_id=certificate_id,
+        job_id=job_id,
+        certificate_number=certificate_number,
+        status=CertificateStatus.RELEASED,
+        calculation_summary_ids=summary_ids,
+        export_artifacts=(artifact,),
+        software_version=software_version,
+        calculation_engine_version=calculation_engine_version,
+        constant_set_version=constant_set_version,
+        budget_version=budget_version,
+        template_version=template_version,
+        approved_by=released_by,
+        approved_at=timestamp,
+        released_by=released_by,
+        released_at=timestamp,
+    )
+    try:
+        certificate_repository.add(certificate)
+    except PersistenceError as exc:
+        raise CertificateReleaseServiceError(str(exc)) from exc
+
+    export_audit_event = _export_artifact_audit_event(
+        certificate=certificate,
+        artifact=artifact,
+        timestamp=timestamp,
+    )
+    export_audit_event_id = audit_repository.append(export_audit_event)
+    release_audit_event = _certificate_release_audit_event(
+        certificate=certificate,
+        accreditation_mark_allowed=accreditation_mark_allowed,
+        timestamp=timestamp,
+    )
+    release_audit_event_id = audit_repository.append(release_audit_event)
+    transition = transition_calibration_job(
+        job_id=job_id,
+        current=job.state,
+        target=WorkflowState.RELEASED,
+        user_id=released_by,
+        software_version=software_version,
+        timestamp=timestamp,
+    )
+    job_repository.update_state(
+        job_id=job_id,
+        expected_state=job.state,
+        new_state=transition.state,
+    )
+    workflow_audit_event_id = audit_repository.append(transition.audit_event)
 
     return CertificateRelease(
         certificate=certificate,

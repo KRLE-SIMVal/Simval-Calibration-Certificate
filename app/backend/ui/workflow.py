@@ -479,6 +479,16 @@ def browser_workflow_html() -> str:
         software_version: "app-0.1.0",
         accreditation_mark_allowed: true
       },
+      "/certificate-rendered-releases/allocated": {
+        job_id: "job-001",
+        certificate_id: "cert-001",
+        certificate_number_prefix: "SIMVAL-CAL",
+        certificate_number_padding: 4,
+        artifact_id: "artifact-001",
+        template_version: "template-2026-001",
+        software_version: "app-0.1.0",
+        accreditation_mark_allowed: true
+      },
       "/certificate-revisions": {
         certificate_id: "cert-001",
         revision_id: "rev-001",
@@ -1094,8 +1104,19 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/certificate-rendered-releases",
                     required_roles=("qa_approver", "admin"),
                 ),
+                WorkflowAction(
+                    label="Allocate number and release",
+                    method="POST",
+                    path="/certificate-rendered-releases/allocated",
+                    required_roles=("qa_approver", "admin"),
+                ),
             ),
-            evidence=("artifact_checksum", "release_audit_event_id", "workflow_audit_event_id"),
+            evidence=(
+                "artifact_checksum",
+                "certificate_number_audit_event_id",
+                "release_audit_event_id",
+                "workflow_audit_event_id",
+            ),
         ),
         WorkflowStep(
             step_id="history_revision",

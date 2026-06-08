@@ -158,6 +158,7 @@ def test_api_serves_browser_workflow_shell():
     assert "/calibration-jobs" in response.text
     assert "/certificate-metadata" in response.text
     assert "/certificate-rendered-releases" in response.text
+    assert "/certificate-rendered-releases/allocated" in response.text
     assert "/design-assets/simval-logo" in response.text
 
 
@@ -214,6 +215,7 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/reference-equipment-selections" in action_paths
     assert "/certificate-previews" in action_paths
     assert "/certificate-rendered-releases" in action_paths
+    assert "/certificate-rendered-releases/allocated" in action_paths
     assert "/certificate-history/job-001" in action_paths
 
 
@@ -976,6 +978,121 @@ def test_api_certificate_rendered_release_generates_pdf_and_release_evidence(tmp
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.RELEASED
     )
+
+
+def test_api_certificate_rendered_release_can_allocate_certificate_number(tmp_path):
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    SQLiteCertificateNumberAllocator(connection).create_sequence(
+        prefix="SIMVAL-CAL",
+        next_value=7,
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
+    preview_response = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    assert preview_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases/allocated",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number_prefix": "SIMVAL-CAL",
+            "certificate_number_padding": 4,
+            "artifact_id": "artifact-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    artifact_path = tmp_path / "SIMVAL-CAL-0007.pdf"
+    assert artifact_path.exists()
+    assert payload["certificate_number"] == "SIMVAL-CAL-0007"
+    assert payload["certificate_number_prefix"] == "SIMVAL-CAL"
+    assert payload["certificate_number_next_value_after"] == 8
+    assert payload["certificate_number_audit_event_id"] == 2
+    assert payload["artifacts"][0]["filename"] == "SIMVAL-CAL-0007.pdf"
+    assert payload["artifacts"][0]["checksum_sha256"] == hashlib.sha256(
+        artifact_path.read_bytes()
+    ).hexdigest()
+    assert payload["export_audit_event_id"] == 3
+    assert payload["release_audit_event_id"] == 4
+    assert payload["workflow_audit_event_id"] == 5
+    assert SQLiteCertificateNumberAllocator(connection).next_value("SIMVAL-CAL") == 8
+    assert SQLiteCertificateRecordRepository(connection).get(
+        "cert-001"
+    ).certificate_number == "SIMVAL-CAL-0007"
+
+
+def test_api_allocated_rendered_release_rejects_missing_sequence_before_file_write(
+    tmp_path,
+):
+    connection = _connection_with_preview_data(
+        job_state=WorkflowState.APPROVED,
+        user_roles=(Role.QA_APPROVER,),
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
+    preview_response = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    assert preview_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases/allocated",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-001",
+            "certificate_number_prefix": "SIMVAL-CAL",
+            "certificate_number_padding": 4,
+            "artifact_id": "artifact-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+
+    assert response.status_code == 409
+    assert "SIMVAL-CAL" in response.json()["detail"]
+    assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
 
 
 def test_api_certificate_rendered_release_rejects_missing_storage_configuration():

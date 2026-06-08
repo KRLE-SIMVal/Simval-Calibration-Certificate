@@ -41,6 +41,7 @@ from app.backend.services.authentication import (
     resolve_actor_for_session,
 )
 from app.backend.services.certificates import (
+    AllocatedRenderedCertificateRelease,
     CertificateHistory,
     CertificateMetadataCapture,
     CertificateMetadataServiceError,
@@ -56,6 +57,7 @@ from app.backend.services.certificates import (
     capture_certificate_metadata_for_session,
     get_certificate_history_for_session,
     release_certificate_for_session,
+    render_and_release_certificate_pdf_with_allocated_number_for_session,
     render_and_release_certificate_pdf_for_session,
     revise_released_certificate_for_session,
     select_reference_equipment_for_session,
@@ -648,6 +650,17 @@ class RenderedCertificateReleaseRequest(BaseModel):
     accreditation_mark_allowed: bool
 
 
+class AllocatedRenderedCertificateReleaseRequest(BaseModel):
+    job_id: str
+    certificate_id: str
+    certificate_number_prefix: str
+    certificate_number_padding: int
+    artifact_id: str
+    template_version: str
+    software_version: str
+    accreditation_mark_allowed: bool
+
+
 class CertificateRevisionRequest(BaseModel):
     certificate_id: str
     revision_id: str
@@ -685,6 +698,12 @@ class CertificateReleaseResponse(BaseModel):
     export_audit_event_id: int
     release_audit_event_id: int
     workflow_audit_event_id: int
+
+
+class AllocatedCertificateReleaseResponse(CertificateReleaseResponse):
+    certificate_number_prefix: str
+    certificate_number_next_value_after: int
+    certificate_number_audit_event_id: int
 
 
 class CertificateRevisionResponse(BaseModel):
@@ -1781,6 +1800,58 @@ def create_app(
         return _release_response(result.release)
 
     @app.post(
+        "/certificate-rendered-releases/allocated",
+        response_model=AllocatedCertificateReleaseResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def allocated_certificate_rendered_release(
+        request: AllocatedRenderedCertificateReleaseRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> AllocatedCertificateReleaseResponse:
+        if artifact_directory is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact storage path is not configured.",
+            )
+        try:
+            with connection_scope() as scoped_connection:
+                result = (
+                    render_and_release_certificate_pdf_with_allocated_number_for_session(
+                        connection=scoped_connection,
+                        session_id=x_session_id,
+                        job_id=request.job_id,
+                        certificate_id=request.certificate_id,
+                        certificate_number_prefix=(
+                            request.certificate_number_prefix
+                        ),
+                        certificate_number_padding=(
+                            request.certificate_number_padding
+                        ),
+                        artifact_id=request.artifact_id,
+                        artifact_directory=artifact_directory,
+                        template_version=request.template_version,
+                        software_version=request.software_version,
+                        accreditation_mark_allowed=(
+                            request.accreditation_mark_allowed
+                        ),
+                        timestamp=clock_fn(),
+                    )
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CertificateReleaseServiceError, CertificateArtifactStorageError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _allocated_release_response(result)
+
+    @app.post(
         "/certificate-revisions",
         response_model=CertificateRevisionResponse,
         responses={
@@ -2265,6 +2336,19 @@ def _release_response(result: CertificateRelease) -> CertificateReleaseResponse:
         export_audit_event_id=result.export_audit_event_id,
         release_audit_event_id=result.release_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _allocated_release_response(
+    result: AllocatedRenderedCertificateRelease,
+) -> AllocatedCertificateReleaseResponse:
+    base = _release_response(result.release)
+    allocation = result.certificate_number_allocation
+    return AllocatedCertificateReleaseResponse(
+        **base.model_dump(),
+        certificate_number_prefix=allocation.prefix,
+        certificate_number_next_value_after=allocation.next_value_after,
+        certificate_number_audit_event_id=allocation.audit_event_id,
     )
 
 

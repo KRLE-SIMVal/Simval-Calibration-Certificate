@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 import sqlite3
@@ -104,24 +105,55 @@ def allocate_certificate_number_for_session(
     )
 
     with connection:
-        allocator = SQLiteCertificateNumberAllocator(connection, autocommit=False)
-        audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
-        certificate_number = allocator.allocate_next(prefix=prefix, padding=padding)
-        next_value_after = allocator.next_value(prefix)
-        audit_event = AuditEvent(
-            entity_type="certificate_number",
-            entity_id=certificate_number,
-            action=AuditAction.CERTIFICATE_NUMBER_ALLOCATED,
+        return allocate_certificate_number_in_transaction(
+            connection=connection,
             user_id=actor.user_id,
-            timestamp=timestamp,
-            new_value={
-                "prefix": prefix,
-                "certificate_number": certificate_number,
-                "next_value_after": next_value_after,
-            },
+            prefix=prefix,
+            padding=padding,
             software_version=software_version,
+            timestamp=timestamp,
         )
-        audit_event_id = audit_repository.append(audit_event)
+
+
+def allocate_certificate_number_in_transaction(
+    *,
+    connection: sqlite3.Connection,
+    user_id: str,
+    prefix: str,
+    padding: int,
+    software_version: str,
+    timestamp: datetime,
+    context: Mapping[str, str] | None = None,
+) -> CertificateNumberAllocationResult:
+    """Allocate a number inside the caller's transaction and audit the use."""
+    _validate_sequence_inputs(
+        prefix=prefix,
+        software_version=software_version,
+        timestamp=timestamp,
+    )
+    _require_text(user_id, "Certificate number user")
+
+    allocator = SQLiteCertificateNumberAllocator(connection, autocommit=False)
+    audit_repository = SQLiteAuditEventRepository(connection, autocommit=False)
+    certificate_number = allocator.allocate_next(prefix=prefix, padding=padding)
+    next_value_after = allocator.next_value(prefix)
+    new_value: dict[str, object] = {
+        "prefix": prefix,
+        "certificate_number": certificate_number,
+        "next_value_after": next_value_after,
+    }
+    if context is not None:
+        new_value["context"] = dict(context)
+    audit_event = AuditEvent(
+        entity_type="certificate_number",
+        entity_id=certificate_number,
+        action=AuditAction.CERTIFICATE_NUMBER_ALLOCATED,
+        user_id=user_id,
+        timestamp=timestamp,
+        new_value=new_value,
+        software_version=software_version,
+    )
+    audit_event_id = audit_repository.append(audit_event)
 
     return CertificateNumberAllocationResult(
         prefix=prefix,
