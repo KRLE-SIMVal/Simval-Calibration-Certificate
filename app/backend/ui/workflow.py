@@ -268,12 +268,29 @@ def browser_workflow_html() -> str:
 2026-04-08T15:45:00+00:00,-80.031,-80.036
 2026-04-08T15:46:00+00:00,-80.030,-80.034</textarea>
           </label>
+          <label>Window ID
+            <input id="windowId" autocomplete="off" value="window-001">
+          </label>
+          <label>DUT ID
+            <input id="windowDutId" autocomplete="off" value="dut-MJT1-A">
+          </label>
+          <label>Channel
+            <input id="windowChannelId" autocomplete="off" value="MJT1-A">
+          </label>
+          <label>Window start
+            <input id="windowStart" autocomplete="off" value="2026-04-08T15:45:00+00:00">
+          </label>
+          <label>Window end
+            <input id="windowEnd" autocomplete="off" value="2026-04-08T15:46:00+00:00">
+          </label>
         </div>
         <div class="panel-actions">
           <button id="uploadSourceFile">Upload File</button>
           <button class="secondary" id="reviewImports">Review Imports</button>
           <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
           <button class="secondary" id="recordIrtdRows">Record IRTD</button>
+          <button class="secondary" id="selectTemperatureWindow">Select Window</button>
+          <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
         </div>
       </section>
     </div>
@@ -317,6 +334,19 @@ def browser_workflow_html() -> str:
           ["2026-04-08T15:46:00+00:00", "-80.030", "-80.034"]
         ],
         unit: "deg C",
+        software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/temperature-windows": {
+        window_id: "window-001",
+        dut_id: "dut-MJT1-A",
+        dut_channel_id: "MJT1-A",
+        setpoint: -80,
+        unit: "deg C",
+        start_timestamp: "2026-04-08T15:45:00+00:00",
+        end_timestamp: "2026-04-08T15:46:00+00:00",
+        software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/temperature-windows/complete": {
         software_version: "app-0.1.0"
       },
       "/certificate-metadata": {
@@ -590,6 +620,55 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function selectTemperatureWindow() {
+      const jobId = document.getElementById("jobId").value.trim();
+      const setpointValues = document.getElementById("temperatureSetpoints").value
+        .split(",")
+        .map(value => Number(value.trim()))
+        .filter(value => Number.isFinite(value));
+      const payload = {
+        window_id: document.getElementById("windowId").value.trim(),
+        dut_id: document.getElementById("windowDutId").value.trim(),
+        dut_channel_id: document.getElementById("windowChannelId").value.trim(),
+        setpoint: setpointValues[0],
+        unit: "deg C",
+        start_timestamp: document.getElementById("windowStart").value.trim(),
+        end_timestamp: document.getElementById("windowEnd").value.trim(),
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/temperature-windows`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
+    async function completeTemperatureWindows() {
+      const jobId = document.getElementById("jobId").value.trim();
+      const payload = {
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/temperature-windows/complete`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -598,6 +677,8 @@ def browser_workflow_html() -> str:
     document.getElementById("reviewImports").addEventListener("click", reviewImports);
     document.getElementById("prepareTemperatureData").addEventListener("click", prepareTemperatureData);
     document.getElementById("recordIrtdRows").addEventListener("click", recordIrtdRows);
+    document.getElementById("selectTemperatureWindow").addEventListener("click", selectTemperatureWindow);
+    document.getElementById("completeTemperatureWindows").addEventListener("click", completeTemperatureWindows);
     loadContract();
   </script>
 </body>
@@ -664,6 +745,18 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/calibration-jobs/job-001/verification-irtd-rows",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
+                WorkflowAction(
+                    label="Select temperature window",
+                    method="POST",
+                    path="/calibration-jobs/job-001/temperature-windows",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Complete temperature windows",
+                    method="POST",
+                    path="/calibration-jobs/job-001/temperature-windows/complete",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
             ),
             evidence=(
                 "upload_audit_event_id",
@@ -673,6 +766,8 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                 "data_entry_audit_event_id",
                 "manual_irtd_audit_event_id",
                 "alignment_audit_event_id",
+                "selection_audit_event_id",
+                "workflow_audit_event_id",
             ),
             deferred=(
                 "Verification PDF text extraction remains deferred; raw PDF evidence is stored.",

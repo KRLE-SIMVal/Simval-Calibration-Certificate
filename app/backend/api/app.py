@@ -66,6 +66,13 @@ from app.backend.services.jobs import (
     CalibrationJobServiceError,
     create_calibration_job_for_session,
 )
+from app.backend.services.measurement_windows import (
+    MeasurementWindowSelectionError,
+    TemperatureMeasurementWindowSelection,
+    TemperatureWindowCompletion,
+    complete_temperature_window_selection_for_session,
+    select_temperature_window_from_linked_readings_for_session,
+)
 from app.backend.services.import_review import (
     ImportReview,
     ImportReviewServiceError,
@@ -201,6 +208,45 @@ class ManualIrtdRowsResponse(BaseModel):
     warnings: tuple[str, ...]
     manual_irtd_audit_event_id: int
     alignment_audit_event_id: int
+
+
+class TemperatureWindowSelectionRequest(BaseModel):
+    window_id: str
+    dut_id: str
+    dut_channel_id: str
+    setpoint: float
+    unit: str
+    start_timestamp: datetime
+    end_timestamp: datetime
+    software_version: str
+
+
+class TemperatureWindowSelectionResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    window_id: str
+    dut_id: str
+    dut_channel_id: str
+    setpoint: float
+    unit: str
+    start_timestamp: datetime
+    end_timestamp: datetime
+    reading_count: int
+    linked_reading_count: int
+    selection_audit_event_id: int
+
+
+class TemperatureWindowCompletionRequest(BaseModel):
+    software_version: str
+
+
+class TemperatureWindowCompletionResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
+    workflow_audit_event_id: int
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -693,6 +739,79 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _manual_irtd_rows_response(result)
 
+    @app.post(
+        "/calibration-jobs/{job_id}/temperature-windows",
+        response_model=TemperatureWindowSelectionResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def temperature_window_selection(
+        job_id: str,
+        request: TemperatureWindowSelectionRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> TemperatureWindowSelectionResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = select_temperature_window_from_linked_readings_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    window_id=request.window_id,
+                    job_id=job_id,
+                    dut_id=request.dut_id,
+                    dut_channel_id=request.dut_channel_id,
+                    setpoint=request.setpoint,
+                    unit=request.unit,
+                    start_timestamp=request.start_timestamp,
+                    end_timestamp=request.end_timestamp,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (MeasurementWindowSelectionError, DomainValidationError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _temperature_window_selection_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/temperature-windows/complete",
+        response_model=TemperatureWindowCompletionResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def temperature_window_completion(
+        job_id: str,
+        request: TemperatureWindowCompletionRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> TemperatureWindowCompletionResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = complete_temperature_window_selection_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except MeasurementWindowSelectionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _temperature_window_completion_response(result)
+
     @app.get(
         "/me",
         response_model=ActorResponse,
@@ -1161,6 +1280,35 @@ def _manual_irtd_rows_response(result: ManualIrtdAlignment) -> ManualIrtdRowsRes
         warnings=result.warnings,
         manual_irtd_audit_event_id=result.manual_irtd_audit_event_id,
         alignment_audit_event_id=result.alignment_audit_event_id,
+    )
+
+
+def _temperature_window_selection_response(
+    result: TemperatureMeasurementWindowSelection,
+) -> TemperatureWindowSelectionResponse:
+    window = result.window
+    return TemperatureWindowSelectionResponse(
+        job_id=window.job_id,
+        window_id=window.id,
+        dut_id=window.dut_id,
+        dut_channel_id=window.channel_id,
+        setpoint=window.setpoint,
+        unit=window.unit,
+        start_timestamp=window.start_timestamp,
+        end_timestamp=window.end_timestamp,
+        reading_count=window.reading_count,
+        linked_reading_count=len(result.linked_readings),
+        selection_audit_event_id=result.audit_event_id,
+    )
+
+
+def _temperature_window_completion_response(
+    result: TemperatureWindowCompletion,
+) -> TemperatureWindowCompletionResponse:
+    return TemperatureWindowCompletionResponse(
+        job_id=result.job.id,
+        state=result.job.state.value,
+        workflow_audit_event_id=result.audit_event_id,
     )
 
 

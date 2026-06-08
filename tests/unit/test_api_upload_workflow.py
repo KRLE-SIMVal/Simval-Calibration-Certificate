@@ -17,6 +17,7 @@ from app.backend.persistence.sqlite import (
     SQLiteCalibrationJobRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteLinkedTemperatureReadingRepository,
+    SQLiteMeasurementWindowRepository,
     SQLiteParsedReadingRepository,
     SQLiteRequiredTemperatureSetpointRepository,
     SQLiteUploadedFileRepository,
@@ -571,6 +572,142 @@ def test_api_record_manual_irtd_rows_rejects_before_data_entered():
     assert response.status_code == 409
     assert "data_entered" in response.json()["detail"]
     assert SQLiteLinkedTemperatureReadingRepository(connection).list_for_job("job-001") == ()
+
+
+def test_api_select_and_complete_temperature_window_from_linked_readings(tmp_path):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[
+                    ("2026-04-08T15:45:00+00:00", "-80.036"),
+                    ("2026-04-08T15:46:00+00:00", "-80.034"),
+                ]
+            )
+        },
+    )
+    generated_ids = iter(("001", "002"))
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: next(generated_ids),
+    )
+    calibration_upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    assert calibration_upload.status_code == 200
+    verification_upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=verification.pdf&"
+            "file_kind=verification_pdf&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=b"%PDF-1.4 controlled verification fixture",
+    )
+    assert verification_upload.status_code == 200
+    connection.execute(
+        "UPDATE calibration_jobs SET state = ? WHERE id = ?",
+        (WorkflowState.EQUIPMENT_SELECTED.value, "job-001"),
+    )
+    connection.commit()
+    data_entry = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-data-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "setpoints": [-80.0],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert data_entry.status_code == 200
+    irtd_rows = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/verification-irtd-rows",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "verification_uploaded_file_id": "file-002",
+            "rows": [
+                ["Time", "IRTD (deg C)", "MJT1-A"],
+                ["2026-04-08T15:45:00+00:00", "-80.031", "-80.036"],
+                ["2026-04-08T15:46:00+00:00", "-80.030", "-80.034"],
+            ],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert irtd_rows.status_code == 200
+
+    selection = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-windows",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "window_id": "window-001",
+            "dut_id": "dut-MJT1-A",
+            "dut_channel_id": "MJT1-A",
+            "setpoint": -80.0,
+            "unit": "deg C",
+            "start_timestamp": "2026-04-08T15:45:00+00:00",
+            "end_timestamp": "2026-04-08T15:46:00+00:00",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert selection.status_code == 200
+    selection_payload = selection.json()
+    assert selection_payload["job_id"] == "job-001"
+    assert selection_payload["window_id"] == "window-001"
+    assert selection_payload["dut_channel_id"] == "MJT1-A"
+    assert selection_payload["reading_count"] == 2
+    assert selection_payload["linked_reading_count"] == 2
+    assert (
+        SQLiteMeasurementWindowRepository(connection)
+        .get("window-001")
+        .reading_count
+        == 2
+    )
+
+    completion = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-windows/complete",
+        headers={"X-Session-Id": "session-001"},
+        json={"software_version": "app-0.1.0"},
+    )
+
+    assert completion.status_code == 200
+    assert completion.json()["state"] == "windows_selected"
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.WINDOWS_SELECTED
+    )
 
 
 def test_api_upload_rejects_missing_artifact_storage_before_file_write():
