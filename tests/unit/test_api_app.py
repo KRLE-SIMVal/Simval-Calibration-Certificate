@@ -33,6 +33,7 @@ from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
     SQLiteCertificateMetadataRepository,
+    SQLiteCertificateNumberAllocator,
     SQLiteCertificateRecordRepository,
     SQLiteCertificateRevisionRepository,
     SQLiteConstantSetRepository,
@@ -195,6 +196,8 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/users/user-001/roles" in action_paths
     assert "/users/user-001/deactivation" in action_paths
     assert "/user-sessions/session-001/revocation" in action_paths
+    assert "/certificate-number-sequences" in action_paths
+    assert "/certificate-number-allocations" in action_paths
     assert "/constant-sets/approved" in action_paths
     assert "/uncertainty-budgets/approved" in action_paths
     assert "/calibration-jobs/job-001/files" in action_paths
@@ -512,6 +515,94 @@ def test_api_admin_revokes_user_session_with_reasoned_audit_evidence():
     assert event.previous_value == {"revoked_at": None}
     assert event.new_value == {"revoked_at": "2026-06-01T15:30:00+00:00"}
     assert event.reason == "Lost workstation."
+
+
+def test_api_admin_creates_and_allocates_certificate_number_sequence():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    app = create_app(connection=connection, clock=_fixed_now)
+
+    sequence_response = _api_request(
+        app,
+        "POST",
+        "/certificate-number-sequences",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "prefix": "SIMVAL-CAL",
+            "next_value": 7,
+            "software_version": "app-0.1.0",
+        },
+    )
+    allocation_response = _api_request(
+        app,
+        "POST",
+        "/certificate-number-allocations",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "prefix": "SIMVAL-CAL",
+            "padding": 4,
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert sequence_response.status_code == 200
+    assert sequence_response.json() == {
+        "prefix": "SIMVAL-CAL",
+        "next_value": 7,
+        "created_by": "user-001",
+        "created_at": "2026-06-01T15:30:00+00:00",
+        "audit_event_id": 1,
+    }
+    assert allocation_response.status_code == 200
+    assert allocation_response.json() == {
+        "prefix": "SIMVAL-CAL",
+        "certificate_number": "SIMVAL-CAL-0007",
+        "next_value_after": 8,
+        "allocated_by": "user-001",
+        "allocated_at": "2026-06-01T15:30:00+00:00",
+        "audit_event_id": 2,
+    }
+    assert SQLiteCertificateNumberAllocator(connection).next_value("SIMVAL-CAL") == 8
+    assert [
+        event.action.value
+        for event in SQLiteAuditEventRepository(connection).list_for_entity(
+            "certificate_number_sequence",
+            "SIMVAL-CAL",
+        )
+    ] == ["certificate_number_sequence_changed"]
+    assert [
+        event.action.value
+        for event in SQLiteAuditEventRepository(connection).list_for_entity(
+            "certificate_number",
+            "SIMVAL-CAL-0007",
+        )
+    ] == ["certificate_number_allocated"]
+
+
+def test_api_certificate_number_allocation_rejects_non_admin_before_increment():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+    SQLiteCertificateNumberAllocator(connection).create_sequence(
+        prefix="SIMVAL-CAL",
+        next_value=7,
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-number-allocations",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "prefix": "SIMVAL-CAL",
+            "padding": 4,
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 403
+    assert SQLiteCertificateNumberAllocator(connection).next_value("SIMVAL-CAL") == 7
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "certificate_number",
+        "SIMVAL-CAL-0007",
+    ) == ()
 
 
 def test_api_approved_calculation_versions_record_audit_evidence():

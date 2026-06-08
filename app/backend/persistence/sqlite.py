@@ -1992,32 +1992,34 @@ class SQLiteCertificateNumberAllocator:
         if padding < 1 or padding > 12:
             raise PersistenceError("Certificate number padding must be between 1 and 12.")
         try:
-            with self._connection:
-                row = self._connection.execute(
-                    """
-                    SELECT next_value
-                    FROM certificate_number_sequences
-                    WHERE prefix = ?
-                    """,
-                    (prefix,),
-                ).fetchone()
-                if row is None:
-                    raise RecordNotFoundError(
-                        f"Certificate number sequence {prefix!r} was not found."
-                    )
-                next_value = int(row["next_value"])
-                self._connection.execute(
-                    """
-                    UPDATE certificate_number_sequences
-                    SET next_value = ?
-                    WHERE prefix = ?
-                    """,
-                    (next_value + 1, prefix),
+            row = self._connection.execute(
+                """
+                SELECT next_value
+                FROM certificate_number_sequences
+                WHERE prefix = ?
+                """,
+                (prefix,),
+            ).fetchone()
+            if row is None:
+                raise RecordNotFoundError(
+                    f"Certificate number sequence {prefix!r} was not found."
                 )
-                return f"{prefix}-{next_value:0{padding}d}"
+            next_value = int(row["next_value"])
+            self._connection.execute(
+                """
+                UPDATE certificate_number_sequences
+                SET next_value = ?
+                WHERE prefix = ?
+                """,
+                (next_value + 1, prefix),
+            )
+            self._commit_if_needed()
+            return f"{prefix}-{next_value:0{padding}d}"
         except PersistenceError:
+            self._rollback_if_needed()
             raise
         except sqlite3.DatabaseError as error:
+            self._rollback_if_needed()
             raise PersistenceError(
                 "Could not allocate certificate number."
             ) from error

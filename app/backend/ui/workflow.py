@@ -362,6 +362,16 @@ def browser_workflow_html() -> str:
         linked_constant_set_version: "constants-2026-001",
         software_version: "app-0.1.0"
       },
+      "/certificate-number-sequences": {
+        prefix: "SIMVAL-CAL",
+        next_value: 1,
+        software_version: "app-0.1.0"
+      },
+      "/certificate-number-allocations": {
+        prefix: "SIMVAL-CAL",
+        padding: 4,
+        software_version: "app-0.1.0"
+      },
       "/calibration-jobs/job-001/files": "",
       "/calibration-jobs/job-001/imports": "",
       "/calibration-jobs/job-001/temperature-data-entry": {
@@ -893,12 +903,25 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/user-sessions/session-001/revocation",
                     required_roles=("admin",),
                 ),
+                WorkflowAction(
+                    label="Create certificate number sequence",
+                    method="POST",
+                    path="/certificate-number-sequences",
+                    required_roles=("admin",),
+                ),
+                WorkflowAction(
+                    label="Allocate certificate number",
+                    method="POST",
+                    path="/certificate-number-allocations",
+                    required_roles=("admin",),
+                ),
             ),
             evidence=(
                 "reviewed_by",
                 "reviewed_at",
                 "user_account_audit_event_id",
                 "user_session_audit_event_id",
+                "certificate_number_audit_event_id",
                 "reason",
             ),
         ),

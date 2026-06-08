@@ -33,6 +33,7 @@ class Action(StrEnum):
     APPROVE_CONSTANTS = "approve_constants"
     CREATE_UNCERTAINTY_BUDGET = "create_uncertainty_budget"
     APPROVE_UNCERTAINTY_BUDGET = "approve_uncertainty_budget"
+    MANAGE_CERTIFICATE_NUMBERS = "manage_certificate_numbers"
     MANAGE_USERS_AND_ROLES = "manage_users_and_roles"
     VIEW_RELEASED_CERTIFICATE = "view_released_certificate"
 

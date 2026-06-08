@@ -22,7 +22,7 @@ Status values:
 | F-011 manual/automatic mode | Required fields and calculation path selection. | WF-020, TEMP-010, PRESS-010 | Planned |
 | F-012 language/template | Template selection and required labels. | CERT-010, CERT-011 | Planned |
 | F-013 certificate metadata | Required metadata validation. | CERT-133 to CERT-136, API-011 to API-013, PERSIST-037, PERSIST-038 | Partial |
-| F-014 certificate numbers | Internal sequence, duplicate prevention, future provider boundary. | CERT-001, CERT-002, INT-001 | Planned |
+| F-014 certificate numbers | Internal sequence, duplicate prevention, future provider boundary. | CERT-001, CERT-002, API-048, API-049, INT-001 | Partial |
 | F-015 one certificate per DUT and batch generation | Batch grouping, per-DUT artifacts, combined summary. | CERT-020, CERT-021, CERT-022 | Planned |
 | F-016 preview and calculation summary before export | Export blocked until preview/review complete. | CERT-030, CALC-001, WF-040, API-014 to API-016 | Partial |
 | F-020 manual entry and file import | Manual readings, known import, unknown import handling. | IMP-001, IMP-002, IMP-003 | Planned |

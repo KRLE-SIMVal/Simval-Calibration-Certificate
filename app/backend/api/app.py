@@ -60,6 +60,13 @@ from app.backend.services.certificates import (
     revise_released_certificate_for_session,
     select_reference_equipment_for_session,
 )
+from app.backend.services.certificate_numbers import (
+    CertificateNumberAllocationResult,
+    CertificateNumberSequenceResult,
+    CertificateNumberServiceError,
+    allocate_certificate_number_for_session,
+    create_certificate_number_sequence_for_session,
+)
 from app.backend.services.data_entry import (
     DataEntryServiceError,
     TemperatureDataEntryPreparation,
@@ -190,6 +197,39 @@ class UserSessionRevocationResponse(BaseModel):
     issued_at: str
     expires_at: str
     revoked_at: str | None
+    audit_event_id: int
+
+
+class CertificateNumberSequenceRequest(BaseModel):
+    prefix: str
+    next_value: int
+    software_version: str
+
+
+class CertificateNumberSequenceResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    prefix: str
+    next_value: int
+    created_by: str
+    created_at: str
+    audit_event_id: int
+
+
+class CertificateNumberAllocationRequest(BaseModel):
+    prefix: str
+    padding: int
+    software_version: str
+
+
+class CertificateNumberAllocationResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    prefix: str
+    certificate_number: str
+    next_value_after: int
+    allocated_by: str
+    allocated_at: str
     audit_event_id: int
 
 
@@ -926,6 +966,72 @@ def create_app(
         except (UserManagementServiceError, UserIdentityError, PersistenceError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _user_session_revocation_response(result)
+
+    @app.post(
+        "/certificate-number-sequences",
+        response_model=CertificateNumberSequenceResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def create_certificate_number_sequence(
+        request: CertificateNumberSequenceRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateNumberSequenceResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = create_certificate_number_sequence_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    prefix=request.prefix,
+                    next_value=request.next_value,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CertificateNumberServiceError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _certificate_number_sequence_response(result)
+
+    @app.post(
+        "/certificate-number-allocations",
+        response_model=CertificateNumberAllocationResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def allocate_certificate_number(
+        request: CertificateNumberAllocationRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CertificateNumberAllocationResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = allocate_certificate_number_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    prefix=request.prefix,
+                    padding=request.padding,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CertificateNumberServiceError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _certificate_number_allocation_response(result)
 
     @app.post(
         "/constant-sets/approved",
@@ -1766,6 +1872,31 @@ def _user_session_revocation_response(
             if session.revoked_at is not None
             else None
         ),
+        audit_event_id=result.audit_event_id,
+    )
+
+
+def _certificate_number_sequence_response(
+    result: CertificateNumberSequenceResult,
+) -> CertificateNumberSequenceResponse:
+    return CertificateNumberSequenceResponse(
+        prefix=result.prefix,
+        next_value=result.next_value,
+        created_by=result.audit_event.user_id,
+        created_at=result.audit_event.timestamp.isoformat(),
+        audit_event_id=result.audit_event_id,
+    )
+
+
+def _certificate_number_allocation_response(
+    result: CertificateNumberAllocationResult,
+) -> CertificateNumberAllocationResponse:
+    return CertificateNumberAllocationResponse(
+        prefix=result.prefix,
+        certificate_number=result.certificate_number,
+        next_value_after=result.next_value_after,
+        allocated_by=result.audit_event.user_id,
+        allocated_at=result.audit_event.timestamp.isoformat(),
         audit_event_id=result.audit_event_id,
     )
 

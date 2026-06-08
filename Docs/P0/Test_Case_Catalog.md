@@ -341,6 +341,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUD-005 | Release audit event. | Artifact checksum and version refs stored. |
 | AUD-006 | Workflow transition audit event. | Previous and new workflow states are stored. |
 | AUD-007 | Certificate preview audit event. | Preview event records summary ids, DUT ids, reference-equipment ids, row count, template version, user, and version references. |
+| AUD-008 | Certificate number sequence audit event. | Sequence creation records prefix, next value, user, timestamp, and software version. |
+| AUD-009 | Certificate number allocation audit event. | Allocation records prefix, certificate number, next value after allocation, user, timestamp, and software version. |
 | AUTH-001 | Store and reload user account identity. | User id, display name, email, roles, active status, signature label, and created timestamp round-trip unchanged. |
 | AUTH-002 | Store duplicate user email. | Duplicate email is rejected. |
 | AUTH-003 | Store and reload user session. | Session id, user id, issued timestamp, expiry timestamp, and revocation status round-trip unchanged. |
@@ -409,6 +411,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-045 | API user deactivation endpoint. | `POST /users/{user_id}/deactivation` deactivates a user with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
 | API-046 | API user session revocation endpoint. | `POST /user-sessions/{session_id}/revocation` revokes a session with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
 | API-047 | API multi-DUT certificate release regression. | The public API workflow supports multiple DUT/channel results in one released rendered PDF certificate. |
+| API-048 | API certificate number sequence endpoint. | `POST /certificate-number-sequences` creates an internal sequence with audit evidence for authorized admins. |
+| API-049 | API certificate number allocation endpoint. | `POST /certificate-number-allocations` allocates the next number, increments the sequence, records audit evidence, and rejects non-admin sessions before increment. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
