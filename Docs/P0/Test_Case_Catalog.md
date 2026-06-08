@@ -325,6 +325,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUTH-008 | Admin changes user roles through audited service. | Previous/new roles and reason are recorded in audit evidence. |
 | AUTH-009 | Admin deactivates user account through audited service. | Previous/new active state and reason are recorded in audit evidence. |
 | AUTH-010 | Admin revokes user session through audited service. | Previous/new revocation state and reason are recorded in audit evidence. |
+| AUTH-011 | First-user bootstrap on empty database. | Bootstrap creates the first admin user, optional local session, and user-account audit evidence only when no user accounts exist. |
+| AUTH-012 | First-user bootstrap after users exist. | Bootstrap is rejected and no new user, session, or audit evidence is written. |
 | API-001 | API health endpoint. | `GET /health` returns status `ok`. |
 | API-002 | API authenticated actor endpoint. | `GET /me` resolves the supplied session and returns controlled user id, display name, and roles. |
 | API-003 | API certificate preview endpoint. | `POST /certificate-previews` returns locked preview rows and audit event id. |

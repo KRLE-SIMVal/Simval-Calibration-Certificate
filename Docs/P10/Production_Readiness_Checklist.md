@@ -53,6 +53,7 @@ Use this checklist before routine production use.
 |---|---|---|
 | Production authentication | Authentication provider selected and verified. | Pending |
 | Roles | Operator, reviewer, QA approver, admin, and read-only roles verified. | Pending |
+| First admin user | Initial admin user created through controlled first-user bootstrap or production identity provider. | Pending |
 | User review | Active users reviewed before go-live. | Pending |
 | Secrets | Secrets are stored outside source control. | Pending |
 | Backup access | Backup access control matches production database access control. | Pending |
@@ -69,4 +70,3 @@ Production use is blocked if any of the following are unresolved:
 - Unapproved calculation, uncertainty, CMC, rounding, or certificate-template
   change.
 - Missing human approval from System Owner and QA/Compliance Reviewer.
-
