@@ -15,7 +15,9 @@ from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteDeviceUnderTestRepository,
     SQLiteParsedReadingRepository,
+    SQLiteRequiredTemperatureSetpointRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -224,6 +226,211 @@ def test_api_import_review_rejects_read_only_user(tmp_path):
     assert response.status_code == 403
 
 
+def test_api_prepare_temperature_data_entry_creates_duts_setpoints_and_state(
+    tmp_path,
+):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[
+                    ("2026-04-08T15:45:00+00:00", "-80.036"),
+                    ("2026-04-08T15:46:00+00:00", "-80.034"),
+                ]
+            )
+        },
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+    upload_response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    assert upload_response.status_code == 200
+    connection.execute(
+        "UPDATE calibration_jobs SET state = ? WHERE id = ?",
+        (WorkflowState.EQUIPMENT_SELECTED.value, "job-001"),
+    )
+    connection.commit()
+
+    response = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-data-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "setpoints": [-80.0],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "job-001"
+    assert payload["state"] == "data_entered"
+    assert payload["dut_ids"] == ["dut-MJT1-A"]
+    assert payload["setpoint_ids"] == ["setpoint-001"]
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.DATA_ENTERED
+    )
+    assert SQLiteDeviceUnderTestRepository(connection).list_for_job("job-001")[
+        0
+    ].channel_id == "MJT1-A"
+    assert SQLiteRequiredTemperatureSetpointRepository(connection).list_for_job(
+        "job-001"
+    )[0].setpoint == -80.0
+    events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    )
+    assert [event.action for event in events][-2:] == [
+        AuditAction.DATA_ENTRY_RECORDED,
+        AuditAction.WORKFLOW_TRANSITIONED,
+    ]
+
+
+def test_api_prepare_temperature_data_entry_rejects_before_equipment_selected(
+    tmp_path,
+):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[("2026-04-08T15:45:00+00:00", "-80.036")]
+            )
+        },
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+    upload_response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    assert upload_response.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-data-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "setpoints": [-80.0],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "equipment_selected" in response.json()["detail"]
+    assert SQLiteDeviceUnderTestRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteRequiredTemperatureSetpointRepository(connection).list_for_job(
+        "job-001"
+    ) == ()
+
+
+def test_api_prepare_temperature_data_entry_rejects_duplicate_generated_dut_ids(
+    tmp_path,
+):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                channels=("MJT1 A", "MJT1_A"),
+                data_rows=[("2026-04-08T15:45:00+00:00", "-80.036", "-80.034")],
+            )
+        },
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+    upload_response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    assert upload_response.status_code == 200
+    connection.execute(
+        "UPDATE calibration_jobs SET state = ? WHERE id = ?",
+        (WorkflowState.EQUIPMENT_SELECTED.value, "job-001"),
+    )
+    connection.commit()
+
+    response = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-data-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "setpoints": [-80.0],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "unique controlled DUT IDs" in response.json()["detail"]
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.EQUIPMENT_SELECTED
+    )
+    assert SQLiteDeviceUnderTestRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteRequiredTemperatureSetpointRepository(connection).list_for_job(
+        "job-001"
+    ) == ()
+
+
 def test_api_upload_rejects_missing_artifact_storage_before_file_write():
     connection = _connection_with_user_and_job()
 
@@ -357,19 +564,52 @@ def _session() -> UserSession:
     )
 
 
-def _temperature_sheet_xml(*, data_rows: list[tuple[str, str]]) -> str:
+def _temperature_sheet_xml(
+    *,
+    data_rows: list[tuple[str, ...]],
+    channels: tuple[str, ...] = ("MJT1-A",),
+) -> str:
+    header_cells = "".join(
+        f'<c r="{_column_label(index + 2)}7" t="inlineStr">'
+        f"<is><t>Sensor{index + 1}(deg C)</t></is></c>"
+        for index, _channel in enumerate(channels)
+    )
+    channel_cells = "".join(
+        f'<c r="{_column_label(index + 2)}8" t="inlineStr">'
+        f"<is><t>{channel}</t></is></c>"
+        for index, channel in enumerate(channels)
+    )
     rows = [
-        '<row r="7"><c r="B7" t="inlineStr"><is><t>Sensor1(deg C)</t></is></c></row>',
-        '<row r="8"><c r="B8" t="inlineStr"><is><t>MJT1-A</t></is></c></row>',
+        f'<row r="7">{header_cells}</row>',
+        f'<row r="8">{channel_cells}</row>',
     ]
-    for offset, (timestamp, value) in enumerate(data_rows, start=12):
+    for offset, row in enumerate(data_rows, start=12):
+        timestamp = row[0]
+        values = row[1:]
+        if len(values) != len(channels):
+            raise ValueError("Temperature fixture row must match channel count.")
+        measurement_cells = "".join(
+            f'<c r="{_column_label(index + 2)}{offset}"><v>{value}</v></c>'
+            for index, value in enumerate(values)
+        )
         rows.append(
             f'<row r="{offset}">'
             f'<c r="A{offset}" t="inlineStr"><is><t>{timestamp}</t></is></c>'
-            f'<c r="B{offset}"><v>{value}</v></c>'
+            f"{measurement_cells}"
             "</row>"
         )
-    return _worksheet_xml(dimension=f"A7:B{11 + len(data_rows)}", rows=rows)
+    last_column = _column_label(len(channels) + 1)
+    return _worksheet_xml(dimension=f"A7:{last_column}{11 + len(data_rows)}", rows=rows)
+
+
+def _column_label(index: int) -> str:
+    if index < 1:
+        raise ValueError("Column index must be positive.")
+    label = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        label = chr(ord("A") + remainder) + label
+    return label
 
 
 def _worksheet_xml(*, dimension: str, rows: list[str]) -> str:

@@ -254,10 +254,17 @@ def browser_workflow_html() -> str:
           <label class="wide">Source file
             <input id="sourceFile" type="file">
           </label>
+          <label>Calibration file ID
+            <input id="calibrationUploadedFileId" autocomplete="off">
+          </label>
+          <label>Setpoints
+            <input id="temperatureSetpoints" autocomplete="off" value="-80">
+          </label>
         </div>
         <div class="panel-actions">
           <button id="uploadSourceFile">Upload File</button>
           <button class="secondary" id="reviewImports">Review Imports</button>
+          <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
         </div>
       </section>
     </div>
@@ -286,6 +293,12 @@ def browser_workflow_html() -> str:
       },
       "/calibration-jobs/job-001/files": "",
       "/calibration-jobs/job-001/imports": "",
+      "/calibration-jobs/job-001/temperature-data-entry": {
+        calibration_uploaded_file_id: "file-001",
+        setpoints: [-80],
+        unit: "deg C",
+        software_version: "app-0.1.0"
+      },
       "/certificate-metadata": {
         job_id: "job-001",
         certificate_date: "2026-06-03",
@@ -473,6 +486,9 @@ def browser_workflow_html() -> str:
           body: await file.arrayBuffer()
         });
         const parsed = await response.json();
+        if (response.ok && parsed.uploaded_file_id && parsed.file_kind === "calibration_xlsx") {
+          document.getElementById("calibrationUploadedFileId").value = parsed.uploaded_file_id;
+        }
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -494,12 +510,37 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function prepareTemperatureData() {
+      const jobId = document.getElementById("jobId").value.trim();
+      const rawSetpoints = document.getElementById("temperatureSetpoints").value;
+      const setpoints = rawSetpoints.split(",").map(value => Number(value.trim())).filter(value => Number.isFinite(value));
+      const payload = {
+        calibration_uploaded_file_id: document.getElementById("calibrationUploadedFileId").value.trim(),
+        setpoints,
+        unit: "deg C",
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/temperature-data-entry`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
     document.getElementById("createJob").addEventListener("click", createJob);
     document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
     document.getElementById("reviewImports").addEventListener("click", reviewImports);
+    document.getElementById("prepareTemperatureData").addEventListener("click", prepareTemperatureData);
     loadContract();
   </script>
 </body>
@@ -554,12 +595,19 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/calibration-jobs/job-001/imports",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
+                WorkflowAction(
+                    label="Prepare temperature data",
+                    method="POST",
+                    path="/calibration-jobs/job-001/temperature-data-entry",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
             ),
             evidence=(
                 "upload_audit_event_id",
                 "checksum_sha256",
                 "parser_status",
                 "reading_count",
+                "data_entry_audit_event_id",
             ),
             deferred=(
                 "Verification PDF text extraction remains deferred; raw PDF evidence is stored.",

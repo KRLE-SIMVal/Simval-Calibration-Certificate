@@ -56,6 +56,11 @@ from app.backend.services.certificates import (
     revise_released_certificate_for_session,
     select_reference_equipment_for_session,
 )
+from app.backend.services.data_entry import (
+    DataEntryServiceError,
+    TemperatureDataEntryPreparation,
+    prepare_temperature_data_entry_for_session,
+)
 from app.backend.services.jobs import (
     CalibrationJobCreation,
     CalibrationJobServiceError,
@@ -152,6 +157,24 @@ class ImportReviewResponse(BaseModel):
     reviewed_by: str
     reviewed_at: str
     files: tuple[UploadedFileReviewResponse, ...]
+
+
+class TemperatureDataEntryRequest(BaseModel):
+    calibration_uploaded_file_id: str
+    setpoints: tuple[float, ...]
+    unit: str
+    software_version: str
+
+
+class TemperatureDataEntryResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
+    dut_ids: tuple[str, ...]
+    setpoint_ids: tuple[str, ...]
+    data_entry_audit_event_id: int
+    workflow_audit_event_id: int
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -570,6 +593,42 @@ def create_app(
         except ImportReviewServiceError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _import_review_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/temperature-data-entry",
+        response_model=TemperatureDataEntryResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def temperature_data_entry(
+        job_id: str,
+        request: TemperatureDataEntryRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> TemperatureDataEntryResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = prepare_temperature_data_entry_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    calibration_uploaded_file_id=request.calibration_uploaded_file_id,
+                    setpoints=request.setpoints,
+                    unit=request.unit,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except DataEntryServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _temperature_data_entry_response(result)
 
     @app.get(
         "/me",
@@ -1013,6 +1072,19 @@ def _import_review_response(result: ImportReview) -> ImportReviewResponse:
             )
             for file_review in result.files
         ),
+    )
+
+
+def _temperature_data_entry_response(
+    result: TemperatureDataEntryPreparation,
+) -> TemperatureDataEntryResponse:
+    return TemperatureDataEntryResponse(
+        job_id=result.job_id,
+        state=result.state.value,
+        dut_ids=result.dut_ids,
+        setpoint_ids=result.setpoint_ids,
+        data_entry_audit_event_id=result.data_entry_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
     )
 
 

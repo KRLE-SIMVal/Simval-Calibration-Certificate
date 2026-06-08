@@ -24,6 +24,12 @@ certificate generation from the UI.
   `GET /calibration-jobs/{job_id}/imports`.
 - Added browser `Review Imports` action that returns uploaded-file and parser
   evidence for the current job.
+- Added temperature data-entry preparation service and API endpoint:
+  `POST /calibration-jobs/{job_id}/temperature-data-entry`.
+- Added browser `Prepare Data` action that creates DUT/channel records and a
+  required setpoint plan from parsed calibration workbook evidence.
+- Temperature data entry is blocked unless the job is in `equipment_selected`,
+  preserving the approved workflow order.
 
 ## Scope Not Implemented
 
@@ -31,8 +37,8 @@ certificate generation from the UI.
   complete.
 - Verification PDF text extraction remains deferred until a PDF dependency and
   validation approach are approved.
-- Logger/channel mapping, measurement-window selection, and calculation
-  execution are not yet exposed as technician-friendly screens.
+- Measurement-window selection and calculation execution are not yet exposed as
+  technician-friendly screens.
 - Production authentication provider remains pending.
 
 ## Compliance Notes
@@ -52,6 +58,8 @@ certificate generation from the UI.
   30 passed on Python 3.12.10.
 - Import review focused suite:
   32 passed on Python 3.12.10.
+- Temperature data-entry focused suite:
+  35 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -60,3 +68,4 @@ certificate generation from the UI.
 | Verification PDF extraction is not implemented. | Keep raw verification PDF upload available now, then add approved PDF extraction with controlled fixtures and parser tests before relying on automatic IRTD extraction from uploaded PDFs. |
 | Browser workflow still lacks measurement-window selection. | Continue P11 with channel summaries, window selection, and calculation execution as separate tested slices. |
 | Upload endpoint uses raw request bytes rather than multipart form upload. | Keep this dependency-free path for now; move to multipart only if the production UI needs metadata and files submitted in one form. |
+| DUT identity is currently derived from logger channel IDs. | Keep this as a traceable default for ValProbe imports, then add an editable mapping screen before production release if customer-facing DUT serial numbers differ from logger channel IDs. |
