@@ -140,6 +140,12 @@ def browser_workflow_html() -> str:
       grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
       gap: 14px;
     }
+    .task-grid {
+      display: grid;
+      grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
     section.panel {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -147,6 +153,13 @@ def browser_workflow_html() -> str:
       padding: 14px;
     }
     section.panel h2 { margin: 0 0 12px; font-size: 1rem; }
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .wide { grid-column: 1 / -1; }
+    .panel-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
     pre {
       margin: 0;
       min-height: 248px;
@@ -164,7 +177,8 @@ def browser_workflow_html() -> str:
     .danger { color: var(--danger); font-weight: 700; }
     @media (max-width: 780px) {
       header { grid-template-columns: 1fr; }
-      .toolbar, .split { grid-template-columns: 1fr; }
+      .toolbar, .split, .task-grid, .field-grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
     }
   </style>
 </head>
@@ -190,6 +204,62 @@ def browser_workflow_html() -> str:
       </div>
     </div>
     <div class="workflow" id="workflow"></div>
+    <div class="task-grid">
+      <section class="panel">
+        <h2>Create Job</h2>
+        <div class="field-grid">
+          <label>Job ID
+            <input id="jobId" autocomplete="off" value="job-001">
+          </label>
+          <label>Client
+            <input id="clientName" autocomplete="off" value="SIMVal customer">
+          </label>
+          <label class="wide">Client address
+            <input id="clientAddress" autocomplete="off" value="Validated Road 1">
+          </label>
+          <label>Discipline
+            <select id="jobDiscipline">
+              <option value="temperature">Temperature</option>
+              <option value="pressure">Pressure</option>
+            </select>
+          </label>
+          <label>Mode
+            <select id="measurementMode">
+              <option value="automatic">Automatic</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
+          <label class="wide">Method
+            <input id="jobMethod" autocomplete="off" value="ValProbe RT linked XLSX/PDF workflow">
+          </label>
+        </div>
+        <div class="panel-actions">
+          <button id="createJob">Create Job</button>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Upload Source File</h2>
+        <div class="field-grid">
+          <label>File kind
+            <select id="uploadFileKind">
+              <option value="calibration_xlsx">Calibration XLSX</option>
+              <option value="verification_pdf">Verification PDF</option>
+              <option value="certificate_reference_pdf">Certificate reference PDF</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Software version
+            <input id="uploadSoftwareVersion" autocomplete="off" value="app-0.1.0">
+          </label>
+          <label class="wide">Source file
+            <input id="sourceFile" type="file">
+          </label>
+        </div>
+        <div class="panel-actions">
+          <button id="uploadSourceFile">Upload File</button>
+        </div>
+      </section>
+    </div>
     <div class="split">
       <section class="panel">
         <h2>Request</h2>
@@ -204,6 +274,16 @@ def browser_workflow_html() -> str:
   <script>
     const samples = {
       "/me": "",
+      "/calibration-jobs": {
+        job_id: "job-001",
+        client_name: "SIMVal customer",
+        client_address: "Validated Road 1",
+        discipline: "temperature",
+        measurement_mode: "automatic",
+        method: "ValProbe RT linked XLSX/PDF workflow",
+        software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/files": "",
       "/certificate-metadata": {
         job_id: "job-001",
         certificate_date: "2026-06-03",
@@ -339,9 +419,69 @@ def browser_workflow_html() -> str:
       }
     }
 
+    function sessionHeaders() {
+      const headers = {};
+      const sessionId = document.getElementById("sessionId").value.trim();
+      if (sessionId) headers["X-Session-Id"] = sessionId;
+      return headers;
+    }
+
+    async function createJob() {
+      const payload = {
+        job_id: document.getElementById("jobId").value.trim(),
+        client_name: document.getElementById("clientName").value.trim(),
+        client_address: document.getElementById("clientAddress").value.trim(),
+        discipline: document.getElementById("jobDiscipline").value,
+        measurement_mode: document.getElementById("measurementMode").value,
+        method: document.getElementById("jobMethod").value.trim(),
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch("/calibration-jobs", {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
+    async function uploadSourceFile() {
+      const fileInput = document.getElementById("sourceFile");
+      const file = fileInput.files[0];
+      if (!file) {
+        responseBodyEl.textContent = "Select a source file first.";
+        return;
+      }
+      const jobId = document.getElementById("jobId").value.trim();
+      const params = new URLSearchParams({
+        original_filename: file.name,
+        file_kind: document.getElementById("uploadFileKind").value,
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      });
+      responseBodyEl.textContent = "Uploading...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/files?${params}`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/octet-stream" },
+          body: await file.arrayBuffer()
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
+    document.getElementById("createJob").addEventListener("click", createJob);
+    document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
     loadContract();
   </script>
 </body>
@@ -364,6 +504,42 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                 ),
             ),
             evidence=("authenticated_user", "active_session", "role_set"),
+        ),
+        WorkflowStep(
+            step_id="job",
+            label="Job",
+            status="Create draft calibration job",
+            actions=(
+                WorkflowAction(
+                    label="Create job",
+                    method="POST",
+                    path="/calibration-jobs",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+            ),
+            evidence=("job_audit_event_id", "created_by", "created_at"),
+        ),
+        WorkflowStep(
+            step_id="import_data",
+            label="Import Data",
+            status="Upload controlled calibration and verification source files",
+            actions=(
+                WorkflowAction(
+                    label="Upload source file",
+                    method="POST",
+                    path="/calibration-jobs/job-001/files",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+            ),
+            evidence=(
+                "upload_audit_event_id",
+                "checksum_sha256",
+                "parser_status",
+                "reading_count",
+            ),
+            deferred=(
+                "Verification PDF text extraction remains deferred; raw PDF evidence is stored.",
+            ),
         ),
         WorkflowStep(
             step_id="metadata",

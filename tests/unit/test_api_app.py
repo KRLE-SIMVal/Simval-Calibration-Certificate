@@ -144,6 +144,9 @@ def test_api_serves_browser_workflow_shell():
 
     assert response.status_code == 200
     assert "SIMVal Calibration Certificate" in response.text
+    assert 'id="sourceFile" type="file"' in response.text
+    assert 'id="uploadSourceFile"' in response.text
+    assert "/calibration-jobs" in response.text
     assert "/certificate-metadata" in response.text
     assert "/certificate-rendered-releases" in response.text
     assert "/design-assets/simval-logo" in response.text
@@ -165,6 +168,8 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "populated manually" in payload["equipment_library_policy"]
     assert [step["step_id"] for step in payload["steps"]] == [
         "session",
+        "job",
+        "import_data",
         "metadata",
         "reference_equipment",
         "preview",
@@ -176,6 +181,8 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
         for step in payload["steps"]
         for action in step["actions"]
     ]
+    assert "/calibration-jobs" in action_paths
+    assert "/calibration-jobs/job-001/files" in action_paths
     assert "/certificate-metadata" in action_paths
     assert "/reference-equipment-selections" in action_paths
     assert "/certificate-previews" in action_paths

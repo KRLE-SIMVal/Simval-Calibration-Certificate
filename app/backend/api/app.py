@@ -8,8 +8,9 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 import sqlite3
+import uuid
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -17,7 +18,12 @@ from app.backend.api.database import sqlite_connection_scope
 from app.backend.api.settings import ApiSettings
 from app.backend.certificates.storage import CertificateArtifactStorageError
 from app.backend.certificates.records import ArtifactType
-from app.backend.domain.entities import Discipline, DomainValidationError
+from app.backend.domain.entities import (
+    Discipline,
+    DomainValidationError,
+    MeasurementMode,
+    UploadedFileKind,
+)
 from app.backend.domain.equipment import (
     EquipmentRange,
     EquipmentStatus,
@@ -50,6 +56,16 @@ from app.backend.services.certificates import (
     revise_released_certificate_for_session,
     select_reference_equipment_for_session,
 )
+from app.backend.services.jobs import (
+    CalibrationJobCreation,
+    CalibrationJobServiceError,
+    create_calibration_job_for_session,
+)
+from app.backend.services.source_file_uploads import (
+    SourceFileUploadResult,
+    SourceFileUploadServiceError,
+    upload_source_file_for_session,
+)
 from app.backend.ui.workflow import browser_workflow_contract, browser_workflow_html
 
 
@@ -61,6 +77,52 @@ class ActorResponse(BaseModel):
     user_id: str
     display_name: str
     roles: tuple[str, ...]
+
+
+class CalibrationJobRequest(BaseModel):
+    job_id: str
+    client_name: str
+    client_address: str
+    discipline: Discipline
+    measurement_mode: MeasurementMode
+    method: str
+    software_version: str
+
+
+class CalibrationJobResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    client_name: str
+    client_address: str
+    discipline: str
+    measurement_mode: str
+    method: str
+    state: str
+    created_by: str
+    created_at: str
+    audit_event_id: int
+
+
+class SourceFileUploadResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    uploaded_file_id: str
+    job_id: str
+    original_filename: str
+    file_kind: str
+    checksum_sha256: str
+    storage_uri: str
+    parser_version: str | None
+    uploaded_by: str
+    uploaded_at: str
+    size_bytes: int
+    upload_audit_event_id: int
+    parser_status: str
+    parser_audit_event_id: int | None
+    reading_count: int
+    warning_count: int
+    warnings: tuple[str, ...]
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -313,6 +375,7 @@ def create_app(
     ) = None,
     clock: Callable[[], datetime] | None = None,
     artifact_directory: Path | None = None,
+    id_factory: Callable[[], str] | None = None,
 ) -> FastAPI:
     """Create the backend API with an injected connection or connection scope."""
     if connection is None and connection_provider is None:
@@ -326,6 +389,7 @@ def create_app(
     )
     app = FastAPI(title="SIMVal Calibration Certificate API")
     clock_fn = clock or _utc_now
+    id_factory_fn = id_factory or _uuid_id
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def browser_app() -> HTMLResponse:
@@ -360,6 +424,92 @@ def create_app(
             status_code=200 if result.ready else 503,
             content=result.to_payload(),
         )
+
+    @app.post(
+        "/calibration-jobs",
+        response_model=CalibrationJobResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def calibration_job(
+        request: CalibrationJobRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> CalibrationJobResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = create_calibration_job_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    client_name=request.client_name,
+                    client_address=request.client_address,
+                    discipline=request.discipline,
+                    measurement_mode=request.measurement_mode,
+                    method=request.method,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CalibrationJobServiceError, DomainValidationError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _calibration_job_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/files",
+        response_model=SourceFileUploadResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    async def calibration_job_file_upload(
+        job_id: str,
+        request: Request,
+        original_filename: str,
+        file_kind: UploadedFileKind,
+        software_version: str,
+        parser_version: str | None = None,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> SourceFileUploadResponse:
+        if artifact_directory is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact storage path is not configured.",
+            )
+        try:
+            content_bytes = await request.body()
+            with connection_scope() as scoped_connection:
+                result = upload_source_file_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    file_id=f"file-{id_factory_fn()}",
+                    original_filename=original_filename,
+                    file_kind=file_kind,
+                    content_bytes=content_bytes,
+                    artifact_directory=artifact_directory,
+                    software_version=software_version,
+                    timestamp=clock_fn(),
+                    parser_version=parser_version,
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (SourceFileUploadServiceError, DomainValidationError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _source_file_upload_response(result)
 
     @app.get(
         "/me",
@@ -739,6 +889,48 @@ def _preview_response(
     )
 
 
+def _calibration_job_response(
+    result: CalibrationJobCreation,
+) -> CalibrationJobResponse:
+    job = result.job
+    return CalibrationJobResponse(
+        job_id=job.id,
+        client_name=job.client.name,
+        client_address=job.client.address,
+        discipline=job.discipline.value,
+        measurement_mode=job.measurement_mode.value,
+        method=job.method,
+        state=job.state.value,
+        created_by=job.created_by,
+        created_at=job.created_at.isoformat(),
+        audit_event_id=result.audit_event_id,
+    )
+
+
+def _source_file_upload_response(
+    result: SourceFileUploadResult,
+) -> SourceFileUploadResponse:
+    uploaded_file = result.uploaded_file
+    return SourceFileUploadResponse(
+        uploaded_file_id=uploaded_file.id,
+        job_id=uploaded_file.job_id,
+        original_filename=uploaded_file.original_filename,
+        file_kind=uploaded_file.file_kind.value,
+        checksum_sha256=uploaded_file.checksum_sha256,
+        storage_uri=uploaded_file.storage_uri,
+        parser_version=uploaded_file.parser_version,
+        uploaded_by=result.uploaded_by,
+        uploaded_at=uploaded_file.uploaded_at.isoformat(),
+        size_bytes=result.size_bytes,
+        upload_audit_event_id=result.upload_audit_event_id,
+        parser_status=result.parser_status,
+        parser_audit_event_id=result.parser_audit_event_id,
+        reading_count=result.reading_count,
+        warning_count=result.warning_count,
+        warnings=result.warnings,
+    )
+
+
 def _metadata_response(result: CertificateMetadataCapture) -> CertificateMetadataResponse:
     metadata = result.metadata
     workflow_state = ""
@@ -917,6 +1109,10 @@ def _fixed_connection_scope(
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _uuid_id() -> str:
+    return uuid.uuid4().hex
 
 
 def _design_asset_path(filename: str) -> Path:

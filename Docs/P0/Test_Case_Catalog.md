@@ -33,6 +33,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-055 | Complete temperature window selection with no DUTs. | Transition is rejected because completeness cannot be established. |
 | WF-056 | Complete temperature window selection without a required setpoint plan. | Transition is rejected because setpoint completeness cannot be established. |
 | WF-057 | Complete temperature window selection with a missing DUT/setpoint pair. | Transition is rejected and identifies the missing DUT/setpoint/unit coverage. |
+| WF-060 | Create calibration job through API. | Authorized user creates a draft job with job audit evidence; unauthorized users are rejected. |
 
 ## Roles And Permissions
 
@@ -215,6 +216,10 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | IMP-063 | Linked ValProbe import rejects files from different jobs. | No uploaded files, readings, or audit events are persisted. |
 | IMP-064 | Linked ValProbe import rolls back on ambiguous IRTD alignment. | Duplicate reference timestamps prevent partial persistence. |
 | IMP-065 | Linked ValProbe import persists linked logger/IRTD pairs. | Persisted links match the service alignment result and preserve both source file references. |
+| IMP-070 | Browser/API upload stores calibration XLSX bytes. | Uploaded calibration workbook bytes are stored unchanged with SHA-256 checksum, storage URI, user, timestamp, and upload audit evidence. |
+| IMP-071 | Browser/API upload parses known ValProbe workbook. | Calibration XLSX upload returns parser status, reading count, warning count, and parser audit evidence. |
+| IMP-072 | Browser/API upload stores verification PDF bytes. | Verification PDF upload stores raw evidence and reports extraction as deferred without creating parsed readings. |
+| IMP-073 | Unauthorized upload attempt. | Upload is rejected before artifact bytes, uploaded-file records, or audit evidence are written. |
 | DATA-001 | Parsed reading stores source row/column where available. | Traceability stored. |
 | DATA-002 | Parsed reading timestamp is timezone-aware. | Naive timestamps are rejected. |
 | DATA-003 | Parsed reading value is finite. | NaN and infinite values are rejected. |
@@ -352,6 +357,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-023 | API browser workflow contract. | `GET /app/workflow` returns ordered workflow steps, endpoint paths, role requirements, evidence fields, and manual equipment-library policy. |
 | API-024 | ASGI application entrypoint. | Runtime environment paths create a FastAPI app that responds to health checks. |
 | API-025 | API runtime readiness endpoint. | `GET /readiness` checks SQLite and artifact-storage dependencies and returns 503 without exposing filesystem paths when dependencies are not ready. |
+| API-026 | API calibration job creation endpoint. | `POST /calibration-jobs` creates a draft job for an authorized session and records job audit evidence. |
+| API-027 | API source-file upload endpoint. | `POST /calibration-jobs/{job_id}/files` stores raw file evidence and returns upload/parser evidence. |
+| API-028 | Browser upload controls. | `GET /app` exposes visible job creation and source-file upload controls. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
