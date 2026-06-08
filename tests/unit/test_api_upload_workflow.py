@@ -580,7 +580,7 @@ def test_api_record_manual_irtd_rows_rejects_before_data_entered():
 
 
 def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_path):
-    connection = _connection_with_user_and_job()
+    connection = _connection_with_user_and_job(user_roles=(Role.ADMIN,))
     workbook = tmp_path / "sanitized-valprobe.xlsx"
     _write_workbook(
         workbook,
@@ -756,6 +756,38 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
     )
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.CALCULATED
+    )
+
+    technical_submission = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/technical-review-submissions",
+        headers={"X-Session-Id": "session-001"},
+        json={"software_version": "app-0.1.0"},
+    )
+    technical_approval = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/technical-review-approvals",
+        headers={"X-Session-Id": "session-001"},
+        json={"software_version": "app-0.1.0"},
+    )
+    qa_approval = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/qa-release-approvals",
+        headers={"X-Session-Id": "session-001"},
+        json={"software_version": "app-0.1.0"},
+    )
+
+    assert technical_submission.status_code == 200
+    assert technical_submission.json()["state"] == "technical_review"
+    assert technical_approval.status_code == 200
+    assert technical_approval.json()["state"] == "qa_review"
+    assert qa_approval.status_code == 200
+    assert qa_approval.json()["state"] == "approved"
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.APPROVED
     )
 
 

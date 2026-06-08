@@ -313,6 +313,9 @@ def browser_workflow_html() -> str:
           <button class="secondary" id="selectTemperatureWindow">Select Window</button>
           <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
           <button class="secondary" id="calculateTemperature">Calculate</button>
+          <button class="secondary" id="submitTechnicalReview">Submit Review</button>
+          <button class="secondary" id="approveTechnicalReview">Approve Technical</button>
+          <button class="secondary" id="approveQaRelease">Approve QA</button>
         </div>
       </section>
     </div>
@@ -386,6 +389,15 @@ def browser_workflow_html() -> str:
         calculation_engine_version: "calc-engine-0.1.0",
         constant_set_version: "constants-2026-001",
         budget_version: "budget-temp-001"
+      },
+      "/calibration-jobs/job-001/technical-review-submissions": {
+        software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/technical-review-approvals": {
+        software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/qa-release-approvals": {
+        software_version: "app-0.1.0"
       },
       "/certificate-metadata": {
         job_id: "job-001",
@@ -741,6 +753,25 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function postJobWorkflowAction(pathSuffix) {
+      const jobId = document.getElementById("jobId").value.trim();
+      const payload = {
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/${pathSuffix}`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -752,6 +783,9 @@ def browser_workflow_html() -> str:
     document.getElementById("selectTemperatureWindow").addEventListener("click", selectTemperatureWindow);
     document.getElementById("completeTemperatureWindows").addEventListener("click", completeTemperatureWindows);
     document.getElementById("calculateTemperature").addEventListener("click", calculateTemperature);
+    document.getElementById("submitTechnicalReview").addEventListener("click", () => postJobWorkflowAction("technical-review-submissions"));
+    document.getElementById("approveTechnicalReview").addEventListener("click", () => postJobWorkflowAction("technical-review-approvals"));
+    document.getElementById("approveQaRelease").addEventListener("click", () => postJobWorkflowAction("qa-release-approvals"));
     loadContract();
   </script>
 </body>
@@ -835,6 +869,24 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     method="POST",
                     path="/calibration-jobs/job-001/temperature-calculations",
                     required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Submit technical review",
+                    method="POST",
+                    path="/calibration-jobs/job-001/technical-review-submissions",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Approve technical review",
+                    method="POST",
+                    path="/calibration-jobs/job-001/technical-review-approvals",
+                    required_roles=("technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Approve QA release",
+                    method="POST",
+                    path="/calibration-jobs/job-001/qa-release-approvals",
+                    required_roles=("qa_approver", "admin"),
                 ),
             ),
             evidence=(

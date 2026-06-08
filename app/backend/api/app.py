@@ -73,6 +73,13 @@ from app.backend.services.measurement_windows import (
     complete_temperature_window_selection_for_session,
     select_temperature_window_from_linked_readings_for_session,
 )
+from app.backend.services.review_workflow import (
+    ReviewWorkflowServiceError,
+    ReviewWorkflowTransition,
+    approve_qa_release_for_session,
+    approve_technical_review_for_session,
+    submit_technical_review_for_session,
+)
 from app.backend.services.import_review import (
     ImportReview,
     ImportReviewServiceError,
@@ -309,6 +316,18 @@ class TemperatureCalculationResponse(BaseModel):
     summary_ids: tuple[str, ...]
     summaries: tuple[TemperatureCalculationSummaryResponse, ...]
     calculation_audit_event_id: int
+    workflow_audit_event_id: int
+
+
+class ReviewWorkflowRequest(BaseModel):
+    software_version: str
+
+
+class ReviewWorkflowResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
     workflow_audit_event_id: int
 
 
@@ -916,6 +935,105 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _temperature_calculation_response(job_id=job_id, result=result)
 
+    @app.post(
+        "/calibration-jobs/{job_id}/technical-review-submissions",
+        response_model=ReviewWorkflowResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def technical_review_submission(
+        job_id: str,
+        request: ReviewWorkflowRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ReviewWorkflowResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = submit_technical_review_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except ReviewWorkflowServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _review_workflow_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/technical-review-approvals",
+        response_model=ReviewWorkflowResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def technical_review_approval(
+        job_id: str,
+        request: ReviewWorkflowRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ReviewWorkflowResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = approve_technical_review_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except ReviewWorkflowServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _review_workflow_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/qa-release-approvals",
+        response_model=ReviewWorkflowResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def qa_release_approval(
+        job_id: str,
+        request: ReviewWorkflowRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ReviewWorkflowResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = approve_qa_release_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except ReviewWorkflowServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _review_workflow_response(result)
+
     @app.get(
         "/me",
         response_model=ActorResponse,
@@ -1467,6 +1585,16 @@ def _temperature_calculation_response(
         ),
         calculation_audit_event_id=result.calculation_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _review_workflow_response(
+    result: ReviewWorkflowTransition,
+) -> ReviewWorkflowResponse:
+    return ReviewWorkflowResponse(
+        job_id=result.job.id,
+        state=result.job.state.value,
+        workflow_audit_event_id=result.audit_event_id,
     )
 
 

@@ -189,6 +189,9 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/calibration-jobs/job-001/temperature-windows" in action_paths
     assert "/calibration-jobs/job-001/temperature-windows/complete" in action_paths
     assert "/calibration-jobs/job-001/temperature-calculations" in action_paths
+    assert "/calibration-jobs/job-001/technical-review-submissions" in action_paths
+    assert "/calibration-jobs/job-001/technical-review-approvals" in action_paths
+    assert "/calibration-jobs/job-001/qa-release-approvals" in action_paths
     assert "/certificate-metadata" in action_paths
     assert "/reference-equipment-selections" in action_paths
     assert "/certificate-previews" in action_paths

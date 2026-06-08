@@ -45,6 +45,12 @@ certificate generation from the UI.
   `POST /calibration-jobs/{job_id}/temperature-calculations`.
 - Added browser `Calculate` action that submits explicit uncertainty inputs and
   governed version identifiers for the existing temperature calculation engine.
+- Added review transition API endpoints:
+  `POST /calibration-jobs/{job_id}/technical-review-submissions`,
+  `POST /calibration-jobs/{job_id}/technical-review-approvals`, and
+  `POST /calibration-jobs/{job_id}/qa-release-approvals`.
+- Added browser review buttons for moving calculated jobs through technical
+  review, QA review, and approved state before certificate release.
 
 ## Scope Not Implemented
 
@@ -74,6 +80,8 @@ certificate generation from the UI.
   still requires approved constant and uncertainty budget versions.
 - This slice does not change formulas, rounding, uncertainty combination, CMC
   floors, or displayed result formatting.
+- Review transitions use existing regulated permission actions and append
+  workflow audit evidence for each state change.
 
 ## Verification
 
@@ -89,6 +97,8 @@ certificate generation from the UI.
   38 passed on Python 3.12.10.
 - Temperature calculation API focused suite:
   38 passed on Python 3.12.10.
+- Review workflow API focused suite:
+  38 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -98,3 +108,4 @@ certificate generation from the UI.
 | Browser workflow still lacks preview and release actions. | Continue P11 with preview and release actions as separate tested slices. |
 | Upload endpoint uses raw request bytes rather than multipart form upload. | Keep this dependency-free path for now; move to multipart only if the production UI needs metadata and files submitted in one form. |
 | DUT identity is currently derived from logger channel IDs. | Keep this as a traceable default for ValProbe imports, then add an editable mapping screen before production release if customer-facing DUT serial numbers differ from logger channel IDs. |
+| Reviewer independence is not technically enforced by separate user IDs yet. | Keep permission-gated review transitions now, then add independence checks before production release when the production user model and SOP approval responsibilities are finalized. |
