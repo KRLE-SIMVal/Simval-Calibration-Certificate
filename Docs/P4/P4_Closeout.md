@@ -45,7 +45,8 @@ validation remain for later phases.
 - Full equipment-library CRUD workflow.
 - Full uncertainty-budget editor/export workflow.
 - PDF/A, digital signature, and qualified-signature support.
-- Stale `.pending` artifact cleanup after process crash.
+- Stale `.pending` artifact cleanup after process crash is deferred to P9
+  production hardening.
 - Final production validation package and SOP.
 
 ## Metrology Impact
@@ -73,5 +74,5 @@ references for audit and review.
 | PDF output is backend-controlled but not visually validated against the final approved template. | Add template-contract tests, text extraction checks, and reviewed visual snapshots before customer-ready validation. |
 | Accreditation mark scope is backend-controlled but not yet visible to reviewers in a UI. | Add a reviewer-visible UI decision control with approved SOP decision rules. |
 | Released certificates can be revised, but a replacement certificate is not yet generated from the revised job. | Implement replacement-certificate generation before routine correction workflow use. |
-| A crash could leave stale pending artifact files. | Add startup or admin cleanup for stale `.pending` files before production deployment. |
+| A crash could leave stale pending artifact files. | P9 adds controlled stale `.pending` cleanup with JSON evidence; deployment still needs a scheduled invocation once hosting is fixed. |
 | PDF/A and signature requirements are undecided. | Decide archival/signature policy before final production validation. |

@@ -1,9 +1,13 @@
+import os
+from datetime import datetime, timezone
+
 import pytest
 
 from app.backend.certificates.records import ArtifactType
 from app.backend.certificates.rendering import RenderedCertificateArtifact
 from app.backend.certificates.storage import (
     CertificateArtifactStorageError,
+    cleanup_stale_pending_artifacts,
     discard_staged_artifact,
     finalize_staged_artifact,
     stage_rendered_artifact,
@@ -76,6 +80,37 @@ def test_discard_staged_artifact_removes_pending_without_final_file(tmp_path):
 
     assert not pending.pending_path.exists()
     assert not (tmp_path / "SIMVAL-CAL-0001.pdf").exists()
+
+
+def test_cleanup_stale_pending_artifacts_removes_only_old_pending_files(tmp_path):
+    stale_pending = tmp_path / ".SIMVAL-CAL-0001.pdf.pending"
+    recent_pending = tmp_path / ".SIMVAL-CAL-0002.pdf.pending"
+    final_artifact = tmp_path / "SIMVAL-CAL-0003.pdf"
+    stale_pending.write_bytes(b"stale")
+    recent_pending.write_bytes(b"recent")
+    final_artifact.write_bytes(b"final")
+    os.utime(stale_pending, (1_700_000_000, 1_700_000_000))
+    os.utime(recent_pending, (1_800_000_000, 1_800_000_000))
+    cutoff = datetime.fromtimestamp(1_750_000_000, tz=timezone.utc)
+
+    result = cleanup_stale_pending_artifacts(
+        base_path=tmp_path,
+        cutoff=cutoff,
+    )
+
+    assert result.removed_count == 1
+    assert result.removed_files == (stale_pending.resolve(),)
+    assert not stale_pending.exists()
+    assert recent_pending.exists()
+    assert final_artifact.exists()
+
+
+def test_cleanup_stale_pending_artifacts_rejects_naive_cutoff(tmp_path):
+    with pytest.raises(CertificateArtifactStorageError, match="timezone-aware"):
+        cleanup_stale_pending_artifacts(
+            base_path=tmp_path,
+            cutoff=datetime(2026, 6, 1, 12, 0),
+        )
 
 
 def _artifact() -> RenderedCertificateArtifact:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.backend.certificates.rendering import RenderedCertificateArtifact
@@ -34,6 +35,17 @@ class PendingCertificateArtifact:
             storage_uri=self.storage_uri,
             checksum_sha256=self.checksum_sha256,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PendingArtifactCleanupResult:
+    base_path: Path
+    cutoff: datetime
+    removed_files: tuple[Path, ...]
+
+    @property
+    def removed_count(self) -> int:
+        return len(self.removed_files)
 
 
 def store_rendered_artifact(
@@ -128,6 +140,44 @@ def discard_staged_artifact(pending_artifact: PendingCertificateArtifact) -> Non
         ) from exc
 
 
+def cleanup_stale_pending_artifacts(
+    *,
+    base_path: Path,
+    cutoff: datetime,
+) -> PendingArtifactCleanupResult:
+    """Remove pending artifact files older than the supplied cutoff."""
+    _require_timezone_aware(cutoff, "Pending artifact cleanup cutoff")
+    base_path.mkdir(parents=True, exist_ok=True)
+    resolved_base = base_path.resolve()
+    removed: list[Path] = []
+    for pending_path in sorted(resolved_base.glob(".*.pending")):
+        if pending_path.name in {".", ".."}:
+            continue
+        resolved_pending = pending_path.resolve()
+        if resolved_base not in resolved_pending.parents:
+            raise CertificateArtifactStorageError(
+                "Pending artifact path must stay within the configured base path."
+            )
+        modified_at = datetime.fromtimestamp(
+            resolved_pending.stat().st_mtime,
+            tz=timezone.utc,
+        )
+        if modified_at > cutoff:
+            continue
+        try:
+            resolved_pending.unlink()
+        except OSError as exc:
+            raise CertificateArtifactStorageError(
+                "Could not remove stale pending artifact file."
+            ) from exc
+        removed.append(resolved_pending)
+    return PendingArtifactCleanupResult(
+        base_path=resolved_base,
+        cutoff=cutoff,
+        removed_files=tuple(removed),
+    )
+
+
 def _target_path(*, base_path: Path, filename: str) -> Path:
     if filename != Path(filename).name:
         raise CertificateArtifactStorageError(
@@ -141,3 +191,8 @@ def _target_path(*, base_path: Path, filename: str) -> Path:
             "Artifact path must stay within the configured base path."
         )
     return target_path
+
+
+def _require_timezone_aware(value: datetime, field_name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise CertificateArtifactStorageError(f"{field_name} must be timezone-aware.")

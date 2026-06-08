@@ -307,6 +307,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-144 | Certificate history retrieval. | History returns released certificate records, artifact checksum/storage URI evidence, and linked revision evidence for authorized sessions. |
 | CERT-145 | Rendered release staged artifact finalization. | PDF bytes are written to a pending file first, finalized only after DB release succeeds, and discarded if release persistence fails. |
 | CERT-146 | Certificate template contract validation. | Rendered release validates PDF header, page count, certificate number, structure markers, logo scope, version evidence, and absence of placeholder text before artifact staging. |
+| CERT-147 | Stale pending artifact cleanup. | Cleanup removes only `.pending` artifact files older than a timezone-aware cutoff and leaves recent pending files and final artifacts untouched. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
@@ -397,6 +398,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | VAL-002 | Validation report classifies run context. | Report records trigger event, run type, quarter, CI metadata, platform, and controlled-fixture policy. |
 | VAL-003 | Validation package generation. | Package records IQ/OQ/PQ evidence files with SHA-256 checksums, known limitations, release version, source commit, and required reviewers. |
 | VAL-004 | Reviewer disposition template generation. | Validation package output includes a human reviewer disposition template with pending decision and required review checks. |
+| MAINT-001 | Pending artifact cleanup CLI. | Maintenance CLI removes stale pending artifacts and writes JSON evidence with cutoff, removed count, and removed files. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
