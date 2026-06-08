@@ -11,15 +11,20 @@ from app.backend.api.app import create_app
 from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
+from app.backend.domain.entities import Discipline
+from app.backend.domain.versioning import ConstantSet, UncertaintyBudget, VersionStatus
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
+    SQLiteConstantSetRepository,
     SQLiteDeviceUnderTestRepository,
     SQLiteLinkedTemperatureReadingRepository,
+    SQLiteMeasurementPointSummaryRepository,
     SQLiteMeasurementWindowRepository,
     SQLiteParsedReadingRepository,
     SQLiteRequiredTemperatureSetpointRepository,
+    SQLiteUncertaintyBudgetRepository,
     SQLiteUploadedFileRepository,
     SQLiteUserAccountRepository,
     SQLiteUserSessionRepository,
@@ -574,7 +579,7 @@ def test_api_record_manual_irtd_rows_rejects_before_data_entered():
     assert SQLiteLinkedTemperatureReadingRepository(connection).list_for_job("job-001") == ()
 
 
-def test_api_select_and_complete_temperature_window_from_linked_readings(tmp_path):
+def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_path):
     connection = _connection_with_user_and_job()
     workbook = tmp_path / "sanitized-valprobe.xlsx"
     _write_workbook(
@@ -708,6 +713,50 @@ def test_api_select_and_complete_temperature_window_from_linked_readings(tmp_pat
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.WINDOWS_SELECTED
     )
+    SQLiteConstantSetRepository(connection).add(_constant_set())
+    SQLiteUncertaintyBudgetRepository(connection).add(_budget())
+
+    calculation = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "uncertainty_inputs": [
+                {
+                    "setpoint": -80.0,
+                    "unit": "deg C",
+                    "cmc_floor": "0.010",
+                    "reference_expanded_uncertainty": 0.010,
+                    "bath_expanded_uncertainty": 0.004,
+                    "dut_resolution": 0.010,
+                }
+            ],
+            "software_version": "app-0.1.0",
+            "calculation_engine_version": "calc-engine-0.1.0",
+            "constant_set_version": "constants-2026-001",
+            "budget_version": "budget-temp-001",
+        },
+    )
+
+    assert calculation.status_code == 200
+    calculation_payload = calculation.json()
+    assert calculation_payload["state"] == "calculated"
+    assert calculation_payload["summary_ids"] == ["job-001-window-001-summary"]
+    assert calculation_payload["summaries"][0]["reference"] == -80.0305
+    assert calculation_payload["summaries"][0]["indication"] == -80.035
+    assert calculation_payload["summaries"][0]["reported_expanded_uncertainty"] == "0.012"
+    assert (
+        str(
+            SQLiteMeasurementPointSummaryRepository(connection)
+            .get("job-001-window-001-summary")
+            .reported_expanded_uncertainty
+        )
+        == "0.012"
+    )
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.CALCULATED
+    )
 
 
 def test_api_upload_rejects_missing_artifact_storage_before_file_write():
@@ -821,6 +870,30 @@ def _job_payload() -> dict:
         "method": "ValProbe RT linked XLSX/PDF workflow",
         "software_version": "app-0.1.0",
     }
+
+
+def _constant_set() -> ConstantSet:
+    return ConstantSet(
+        version="constants-2026-001",
+        discipline=Discipline.TEMPERATURE,
+        status=VersionStatus.APPROVED,
+        effective_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        approved_by="qa-001",
+        approved_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+
+def _budget() -> UncertaintyBudget:
+    return UncertaintyBudget(
+        version="budget-temp-001",
+        budget_type="temperature_logger",
+        method="ValProbe RT automatic temperature",
+        discipline=Discipline.TEMPERATURE,
+        status=VersionStatus.APPROVED,
+        linked_constant_set_version="constants-2026-001",
+        approved_by="qa-001",
+        approved_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+    )
 
 
 def _user(roles: tuple[Role, ...]) -> UserAccount:

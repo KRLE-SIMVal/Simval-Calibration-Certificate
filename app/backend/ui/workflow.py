@@ -283,6 +283,27 @@ def browser_workflow_html() -> str:
           <label>Window end
             <input id="windowEnd" autocomplete="off" value="2026-04-08T15:46:00+00:00">
           </label>
+          <label>CMC floor
+            <input id="cmcFloor" autocomplete="off" value="0.010">
+          </label>
+          <label>Reference U
+            <input id="referenceExpandedUncertainty" autocomplete="off" value="0.010">
+          </label>
+          <label>Bath U
+            <input id="bathExpandedUncertainty" autocomplete="off" value="0.004">
+          </label>
+          <label>DUT resolution
+            <input id="dutResolution" autocomplete="off" value="0.010">
+          </label>
+          <label>Calculation engine
+            <input id="calculationEngineVersion" autocomplete="off" value="calc-engine-0.1.0">
+          </label>
+          <label>Constants version
+            <input id="constantSetVersion" autocomplete="off" value="constants-2026-001">
+          </label>
+          <label>Budget version
+            <input id="budgetVersion" autocomplete="off" value="budget-temp-001">
+          </label>
         </div>
         <div class="panel-actions">
           <button id="uploadSourceFile">Upload File</button>
@@ -291,6 +312,7 @@ def browser_workflow_html() -> str:
           <button class="secondary" id="recordIrtdRows">Record IRTD</button>
           <button class="secondary" id="selectTemperatureWindow">Select Window</button>
           <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
+          <button class="secondary" id="calculateTemperature">Calculate</button>
         </div>
       </section>
     </div>
@@ -348,6 +370,22 @@ def browser_workflow_html() -> str:
       },
       "/calibration-jobs/job-001/temperature-windows/complete": {
         software_version: "app-0.1.0"
+      },
+      "/calibration-jobs/job-001/temperature-calculations": {
+        uncertainty_inputs: [
+          {
+            setpoint: -80,
+            unit: "deg C",
+            cmc_floor: "0.010",
+            reference_expanded_uncertainty: 0.010,
+            bath_expanded_uncertainty: 0.004,
+            dut_resolution: 0.010
+          }
+        ],
+        software_version: "app-0.1.0",
+        calculation_engine_version: "calc-engine-0.1.0",
+        constant_set_version: "constants-2026-001",
+        budget_version: "budget-temp-001"
       },
       "/certificate-metadata": {
         job_id: "job-001",
@@ -669,6 +707,40 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function calculateTemperature() {
+      const jobId = document.getElementById("jobId").value.trim();
+      const setpointValues = document.getElementById("temperatureSetpoints").value
+        .split(",")
+        .map(value => Number(value.trim()))
+        .filter(value => Number.isFinite(value));
+      const payload = {
+        uncertainty_inputs: [{
+          setpoint: setpointValues[0],
+          unit: "deg C",
+          cmc_floor: document.getElementById("cmcFloor").value.trim(),
+          reference_expanded_uncertainty: Number(document.getElementById("referenceExpandedUncertainty").value),
+          bath_expanded_uncertainty: Number(document.getElementById("bathExpandedUncertainty").value),
+          dut_resolution: Number(document.getElementById("dutResolution").value)
+        }],
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim(),
+        calculation_engine_version: document.getElementById("calculationEngineVersion").value.trim(),
+        constant_set_version: document.getElementById("constantSetVersion").value.trim(),
+        budget_version: document.getElementById("budgetVersion").value.trim()
+      };
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/temperature-calculations`, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -679,6 +751,7 @@ def browser_workflow_html() -> str:
     document.getElementById("recordIrtdRows").addEventListener("click", recordIrtdRows);
     document.getElementById("selectTemperatureWindow").addEventListener("click", selectTemperatureWindow);
     document.getElementById("completeTemperatureWindows").addEventListener("click", completeTemperatureWindows);
+    document.getElementById("calculateTemperature").addEventListener("click", calculateTemperature);
     loadContract();
   </script>
 </body>
@@ -757,6 +830,12 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/calibration-jobs/job-001/temperature-windows/complete",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
+                WorkflowAction(
+                    label="Run temperature calculation",
+                    method="POST",
+                    path="/calibration-jobs/job-001/temperature-calculations",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
             ),
             evidence=(
                 "upload_audit_event_id",
@@ -768,6 +847,8 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                 "alignment_audit_event_id",
                 "selection_audit_event_id",
                 "workflow_audit_event_id",
+                "calculation_audit_event_id",
+                "summary_ids",
             ),
             deferred=(
                 "Verification PDF text extraction remains deferred; raw PDF evidence is stored.",

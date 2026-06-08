@@ -83,10 +83,20 @@ from app.backend.services.source_file_uploads import (
     SourceFileUploadServiceError,
     upload_source_file_for_session,
 )
+from app.backend.services.temperature_calculations import (
+    TemperatureCalculationRun,
+    TemperatureCalculationServiceError,
+    calculate_temperature_measurement_points_for_session,
+)
 from app.backend.services.verification_transcription import (
     ManualIrtdAlignment,
     VerificationTranscriptionServiceError,
     record_manual_irtd_rows_for_session,
+)
+from app.calculation_engine.temperature.results import (
+    AdditionalStandardUncertainty,
+    TemperatureCalculationError,
+    TemperaturePointUncertaintyInput,
 )
 from app.backend.ui.workflow import browser_workflow_contract, browser_workflow_html
 
@@ -246,6 +256,59 @@ class TemperatureWindowCompletionResponse(BaseModel):
 
     job_id: str
     state: str
+    workflow_audit_event_id: int
+
+
+class AdditionalStandardUncertaintyRequest(BaseModel):
+    name: str
+    standard_uncertainty: float
+    sensitivity_coefficient: float = 1.0
+
+
+class TemperatureUncertaintyInputRequest(BaseModel):
+    setpoint: float
+    unit: str
+    cmc_floor: Decimal
+    reference_expanded_uncertainty: float
+    reference_coverage_factor: float = 2.0
+    bath_expanded_uncertainty: float = 0.0
+    bath_coverage_factor: float = 2.0
+    dut_resolution: float = 0.0
+    coverage_factor: float = 2.0
+    additional_standard_uncertainties: tuple[
+        AdditionalStandardUncertaintyRequest,
+        ...,
+    ] = ()
+
+
+class TemperatureCalculationRequest(BaseModel):
+    uncertainty_inputs: tuple[TemperatureUncertaintyInputRequest, ...]
+    software_version: str
+    calculation_engine_version: str
+    constant_set_version: str
+    budget_version: str
+
+
+class TemperatureCalculationSummaryResponse(BaseModel):
+    point_id: str
+    dut_id: str
+    measurement_window_id: str
+    reference: float
+    indication: float
+    error_of_indication: float
+    display_error_of_indication: str
+    reported_expanded_uncertainty: str
+    unit: str
+
+
+class TemperatureCalculationResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
+    summary_ids: tuple[str, ...]
+    summaries: tuple[TemperatureCalculationSummaryResponse, ...]
+    calculation_audit_event_id: int
     workflow_audit_event_id: int
 
 
@@ -812,6 +875,47 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _temperature_window_completion_response(result)
 
+    @app.post(
+        "/calibration-jobs/{job_id}/temperature-calculations",
+        response_model=TemperatureCalculationResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def temperature_calculation(
+        job_id: str,
+        request: TemperatureCalculationRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> TemperatureCalculationResponse:
+        try:
+            uncertainty_inputs = tuple(
+                _temperature_uncertainty_input(value)
+                for value in request.uncertainty_inputs
+            )
+            with connection_scope() as scoped_connection:
+                result = calculate_temperature_measurement_points_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    uncertainty_inputs=uncertainty_inputs,
+                    software_version=request.software_version,
+                    calculation_engine_version=request.calculation_engine_version,
+                    constant_set_version=request.constant_set_version,
+                    budget_version=request.budget_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (TemperatureCalculationServiceError, TemperatureCalculationError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _temperature_calculation_response(job_id=job_id, result=result)
+
     @app.get(
         "/me",
         response_model=ActorResponse,
@@ -1309,6 +1413,60 @@ def _temperature_window_completion_response(
         job_id=result.job.id,
         state=result.job.state.value,
         workflow_audit_event_id=result.audit_event_id,
+    )
+
+
+def _temperature_uncertainty_input(
+    request: TemperatureUncertaintyInputRequest,
+) -> TemperaturePointUncertaintyInput:
+    return TemperaturePointUncertaintyInput(
+        setpoint=request.setpoint,
+        unit=request.unit,
+        cmc_floor=request.cmc_floor,
+        reference_expanded_uncertainty=request.reference_expanded_uncertainty,
+        reference_coverage_factor=request.reference_coverage_factor,
+        bath_expanded_uncertainty=request.bath_expanded_uncertainty,
+        bath_coverage_factor=request.bath_coverage_factor,
+        dut_resolution=request.dut_resolution,
+        coverage_factor=request.coverage_factor,
+        additional_standard_uncertainties=tuple(
+            AdditionalStandardUncertainty(
+                name=value.name,
+                standard_uncertainty=value.standard_uncertainty,
+                sensitivity_coefficient=value.sensitivity_coefficient,
+            )
+            for value in request.additional_standard_uncertainties
+        ),
+    )
+
+
+def _temperature_calculation_response(
+    *,
+    job_id: str,
+    result: TemperatureCalculationRun,
+) -> TemperatureCalculationResponse:
+    return TemperatureCalculationResponse(
+        job_id=job_id,
+        state="calculated",
+        summary_ids=tuple(summary.point_id for summary in result.summaries),
+        summaries=tuple(
+            TemperatureCalculationSummaryResponse(
+                point_id=summary.point_id,
+                dut_id=summary.dut_id,
+                measurement_window_id=summary.measurement_window_id,
+                reference=summary.reference,
+                indication=summary.indication,
+                error_of_indication=summary.error_of_indication,
+                display_error_of_indication=str(summary.display_error_of_indication),
+                reported_expanded_uncertainty=str(
+                    summary.reported_expanded_uncertainty
+                ),
+                unit=summary.unit,
+            )
+            for summary in result.summaries
+        ),
+        calculation_audit_event_id=result.calculation_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
     )
 
 

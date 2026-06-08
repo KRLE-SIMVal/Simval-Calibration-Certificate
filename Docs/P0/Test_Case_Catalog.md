@@ -40,6 +40,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-064 | Record manual verification IRTD rows before data entry. | Manual IRTD transcription is rejected before `data_entered` and writes no linked readings. |
 | WF-065 | Select temperature measurement window through API. | Authorized user selects linked logger/IRTD readings for a DUT, setpoint, unit, and timestamp range with window audit evidence. |
 | WF-066 | Complete temperature measurement windows through API. | Job transitions from `data_entered` to `windows_selected` only after selected windows cover every DUT and required setpoint. |
+| WF-067 | Run temperature calculation through API. | Job transitions from `windows_selected` to `calculated` only when approved constants, approved uncertainty budget, selected windows, linked readings, and uncertainty inputs are available. |
 
 ## Roles And Permissions
 
@@ -376,6 +377,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-031 | API manual IRTD transcription endpoint. | `POST /calibration-jobs/{job_id}/verification-irtd-rows` records manually transcribed IRTD rows and linked logger/reference evidence. |
 | API-032 | API temperature-window selection endpoint. | `POST /calibration-jobs/{job_id}/temperature-windows` records a selected measurement window from linked readings. |
 | API-033 | API temperature-window completion endpoint. | `POST /calibration-jobs/{job_id}/temperature-windows/complete` transitions the job to `windows_selected` when coverage is complete. |
+| API-034 | API temperature-calculation endpoint. | `POST /calibration-jobs/{job_id}/temperature-calculations` persists calculation summaries, audit evidence, and the `calculated` workflow transition. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

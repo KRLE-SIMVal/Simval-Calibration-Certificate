@@ -41,6 +41,10 @@ certificate generation from the UI.
   `POST /calibration-jobs/{job_id}/temperature-windows/complete`.
 - Added browser `Select Window` and `Complete Windows` actions for moving from
   linked readings to `windows_selected` through the controlled workflow.
+- Added temperature calculation API endpoint:
+  `POST /calibration-jobs/{job_id}/temperature-calculations`.
+- Added browser `Calculate` action that submits explicit uncertainty inputs and
+  governed version identifiers for the existing temperature calculation engine.
 
 ## Scope Not Implemented
 
@@ -48,7 +52,8 @@ certificate generation from the UI.
   complete.
 - Verification PDF text extraction remains deferred until a PDF dependency and
   validation approach are approved.
-- Calculation execution is not yet exposed as a technician-friendly screen.
+- Certificate preview and release actions are not yet exposed as
+  technician-friendly screens.
 - Production authentication provider remains pending.
 
 ## Compliance Notes
@@ -65,6 +70,10 @@ certificate generation from the UI.
   permission and does not claim automated PDF extraction.
 - Temperature-window selection uses existing linked-reading service checks for
   DUT/channel match, timestamp range, units, state, and coverage completion.
+- Calculation execution uses the existing temperature calculation service and
+  still requires approved constant and uncertainty budget versions.
+- This slice does not change formulas, rounding, uncertainty combination, CMC
+  floors, or displayed result formatting.
 
 ## Verification
 
@@ -78,12 +87,14 @@ certificate generation from the UI.
   37 passed on Python 3.12.10.
 - Temperature-window API focused suite:
   38 passed on Python 3.12.10.
+- Temperature calculation API focused suite:
+  38 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
 | Verification PDF extraction is not implemented. | Use controlled manual IRTD transcription tied to raw PDF evidence now, then add approved PDF extraction with controlled fixtures and parser tests before relying on automatic IRTD extraction from uploaded PDFs. |
-| Browser workflow still lacks calculation execution. | Continue P11 with calculation execution, preview, and release actions as separate tested slices. |
+| Browser workflow still lacks preview and release actions. | Continue P11 with preview and release actions as separate tested slices. |
 | Upload endpoint uses raw request bytes rather than multipart form upload. | Keep this dependency-free path for now; move to multipart only if the production UI needs metadata and files submitted in one form. |
 | DUT identity is currently derived from logger channel IDs. | Keep this as a traceable default for ValProbe imports, then add an editable mapping screen before production release if customer-facing DUT serial numbers differ from logger channel IDs. |
