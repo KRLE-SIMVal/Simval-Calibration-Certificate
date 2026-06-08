@@ -27,6 +27,12 @@ operating the application without an in-house developer.
   deactivation, and session revocation.
 - Added the user-administration maintenance controls to the browser workflow
   contract so the exposed API surface is discoverable from `/app/workflow`.
+- Added `Docs/P10/Production_Runtime_Guide.md` for controlled startup,
+  environment, first-admin bootstrap, readiness verification, and unresolved
+  production decisions.
+- Added `deployment/production.env.example` with runtime path placeholders only.
+- Expanded `README.md` from placeholder text to local runtime, verification, and
+  production-readiness entry points.
 
 ## Scope Not Implemented
 
@@ -60,6 +66,8 @@ operating the application without an in-house developer.
   19 passed on Python 3.12.10.
 - User-management API focused suite:
   36 passed on Python 3.12.10.
+- Production runtime documentation focused suite:
+  4 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -70,3 +78,4 @@ operating the application without an in-house developer.
 | Operational controls can drift after release. | Keep P10 docs under version control and retain quarterly regression, backup, restore, and readiness evidence. |
 | First-user bootstrap can create a powerful admin account. | Keep bootstrap limited to empty databases, retain audit evidence, and replace temporary local sessions with the approved production authentication model before go-live. |
 | User-management API is session-header based until production authentication is selected. | Keep these endpoints admin-only and audit-backed now; retest them with the approved production identity provider before go-live. |
+| Runtime guide cannot choose hosting, TLS, SSO, retention, or PDF signature policy for SIMVal. | Keep those as explicit go/no-go blockers and add deployment-specific evidence after SIMVal approves each decision. |

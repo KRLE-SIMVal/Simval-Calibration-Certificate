@@ -460,7 +460,9 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | MAINT-004 | Invalid backup inputs. | Missing source database, naive timestamps, duplicate backup names, invalid SQLite files, and existing restore targets are rejected. |
 | SOP-001 | Handover SOP required controls. | Handover documentation retains human approval, tests-first changes, no silent calculation changes, quarterly regression, backup/restore, deviation, and GDPR controls. |
 | SOP-002 | Production readiness checklist blockers. | Go/no-go checklist retains health, readiness, backup, restore, production authentication, and human approval blockers. |
+| SOP-003 | Production runtime guide controls. | Runtime guide retains required environment variables, startup command, first-admin bootstrap, readiness checks, admin user review, no-secret source-control rule, and open production decisions. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
+| ENV-002 | Production environment example. | Example environment file contains only runtime path placeholders and no password or token placeholders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
 | REG-003 | Scheduled regression failure creates issue/deviation evidence. | Failed scheduled regression writes JSON/Markdown deviation evidence and opens a tracked issue from the generated evidence. |
