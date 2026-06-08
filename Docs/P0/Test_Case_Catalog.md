@@ -348,6 +348,15 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | AUTH-010 | Admin revokes user session through audited service. | Previous/new revocation state and reason are recorded in audit evidence. |
 | AUTH-011 | First-user bootstrap on empty database. | Bootstrap creates the first admin user, optional local session, and user-account audit evidence only when no user accounts exist. |
 | AUTH-012 | First-user bootstrap after users exist. | Bootstrap is rejected and no new user, session, or audit evidence is written. |
+| AUTH-013 | Admin lists active users through API. | Active users are returned for access review; inactive users are excluded. |
+| AUTH-014 | Admin creates user account through API. | User account creation records actor, roles, timestamp, and audit evidence. |
+| AUTH-015 | Non-admin attempts user account creation through API. | Request is rejected before user or audit evidence is written. |
+| AUTH-016 | Admin changes user roles through API. | Previous/new roles and reason are recorded in audit evidence. |
+| AUTH-017 | Non-admin attempts user role change through API. | Request is rejected before roles or audit evidence are changed. |
+| AUTH-018 | Admin deactivates user account through API. | Previous/new active state and reason are recorded in audit evidence. |
+| AUTH-019 | Non-admin attempts user deactivation through API. | Request is rejected before active state or audit evidence are changed. |
+| AUTH-020 | Admin revokes user session through API. | Previous/new session revocation state and reason are recorded in audit evidence. |
+| AUTH-021 | Non-admin attempts session revocation through API. | Request is rejected before revocation state or audit evidence are changed. |
 | API-001 | API health endpoint. | `GET /health` returns status `ok`. |
 | API-002 | API authenticated actor endpoint. | `GET /me` resolves the supplied session and returns controlled user id, display name, and roles. |
 | API-003 | API certificate preview endpoint. | `POST /certificate-previews` returns locked preview rows and audit event id. |
@@ -389,6 +398,11 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-039 | API approved constant-set endpoint. | `POST /constant-sets/approved` records an approved constant-set version with actor approval and audit evidence. |
 | API-040 | API approved uncertainty-budget endpoint. | `POST /uncertainty-budgets/approved` records an approved uncertainty-budget version linked to an approved constant set with actor approval and audit evidence. |
 | API-041 | API end-to-end certificate release regression. | The API workflow uses only public endpoints after job creation and produces released certificate evidence plus a controlled PDF artifact. |
+| API-042 | API user access review endpoint. | `GET /users` returns active users for authorized admins and rejects non-admin sessions. |
+| API-043 | API user account creation endpoint. | `POST /users` creates a user account with audit evidence for authorized admins and rejects non-admin sessions. |
+| API-044 | API user role change endpoint. | `POST /users/{user_id}/roles` changes roles with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
+| API-045 | API user deactivation endpoint. | `POST /users/{user_id}/deactivation` deactivates a user with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
+| API-046 | API user session revocation endpoint. | `POST /user-sessions/{session_id}/revocation` revokes a session with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

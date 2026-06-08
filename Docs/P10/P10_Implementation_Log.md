@@ -18,6 +18,15 @@ operating the application without an in-house developer.
 - First-user bootstrap is allowed only when the database has no user accounts.
 - Bootstrap can issue a temporary local session for development/runtime access
   and records user-account audit evidence with `system-bootstrap` as actor.
+- Added admin-only user-maintenance API endpoints:
+  `GET /users`, `POST /users`, `POST /users/{user_id}/roles`,
+  `POST /users/{user_id}/deactivation`, and
+  `POST /user-sessions/{session_id}/revocation`.
+- User-maintenance API routes use the existing `MANAGE_USERS_AND_ROLES`
+  permission boundary and record reasoned audit evidence for role changes,
+  deactivation, and session revocation.
+- Added the user-administration maintenance controls to the browser workflow
+  contract so the exposed API surface is discoverable from `/app/workflow`.
 
 ## Scope Not Implemented
 
@@ -49,6 +58,8 @@ operating the application without an in-house developer.
   36 passed on Python 3.12.10.
 - First-user bootstrap focused suite:
   19 passed on Python 3.12.10.
+- User-management API focused suite:
+  36 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
@@ -58,3 +69,4 @@ operating the application without an in-house developer.
 | Production authentication and hosting are not fixed yet. | Select the hosting/authentication model before production go-live and add deployment-specific verification evidence. |
 | Operational controls can drift after release. | Keep P10 docs under version control and retain quarterly regression, backup, restore, and readiness evidence. |
 | First-user bootstrap can create a powerful admin account. | Keep bootstrap limited to empty databases, retain audit evidence, and replace temporary local sessions with the approved production authentication model before go-live. |
+| User-management API is session-header based until production authentication is selected. | Keep these endpoints admin-only and audit-backed now; retest them with the approved production identity provider before go-live. |

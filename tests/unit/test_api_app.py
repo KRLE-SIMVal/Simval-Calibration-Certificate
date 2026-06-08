@@ -176,6 +176,7 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "populated manually" in payload["equipment_library_policy"]
     assert [step["step_id"] for step in payload["steps"]] == [
         "session",
+        "user_admin",
         "job",
         "import_data",
         "metadata",
@@ -190,6 +191,10 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
         for action in step["actions"]
     ]
     assert "/calibration-jobs" in action_paths
+    assert "/users" in action_paths
+    assert "/users/user-001/roles" in action_paths
+    assert "/users/user-001/deactivation" in action_paths
+    assert "/user-sessions/session-001/revocation" in action_paths
     assert "/constant-sets/approved" in action_paths
     assert "/uncertainty-budgets/approved" in action_paths
     assert "/calibration-jobs/job-001/files" in action_paths
@@ -240,6 +245,273 @@ def test_api_me_returns_authenticated_actor():
         "display_name": "Operator User",
         "roles": ["operator"],
     }
+
+
+def test_api_admin_lists_active_users_for_access_review():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    SQLiteUserAccountRepository(connection).add(
+        UserAccount(
+            id="inactive-001",
+            display_name="Inactive User",
+            email="inactive@example.com",
+            roles=(Role.OPERATOR,),
+            active=False,
+            created_at=datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc),
+        )
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "GET",
+        "/users",
+        headers={"X-Session-Id": "session-001"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["reviewed_by"] == "user-001"
+    assert [user["user_id"] for user in payload["users"]] == ["user-001"]
+    assert payload["users"][0]["roles"] == ["admin"]
+
+
+def test_api_user_access_review_rejects_non_admin():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "GET",
+        "/users",
+        headers={"X-Session-Id": "session-001"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_api_admin_creates_user_account_with_audit_evidence():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/users",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "user_id": "technical-001",
+            "display_name": "Technical Reviewer",
+            "email": "technical@example.com",
+            "roles": ["technical_reviewer"],
+            "signature_label": "Technical Reviewer",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == "technical-001"
+    assert payload["roles"] == ["technical_reviewer"]
+    assert payload["active"] is True
+    assert payload["signature_label"] == "Technical Reviewer"
+    assert payload["audit_event_id"] == 1
+    assert SQLiteUserAccountRepository(connection).get("technical-001").email == (
+        "technical@example.com"
+    )
+    event = SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_account",
+        "technical-001",
+    )[0]
+    assert event.user_id == "user-001"
+    assert event.new_value == {
+        "active": True,
+        "email": "technical@example.com",
+        "roles": ["technical_reviewer"],
+    }
+
+
+def test_api_user_creation_rejects_non_admin_before_write():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/users",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "user_id": "technical-001",
+            "display_name": "Technical Reviewer",
+            "email": "technical@example.com",
+            "roles": ["technical_reviewer"],
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 403
+    assert SQLiteUserAccountRepository(connection).list_active() == (
+        _user((Role.OPERATOR,)),
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_account",
+        "technical-001",
+    ) == ()
+
+
+def test_api_role_change_rejects_non_admin_before_write():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+    SQLiteUserAccountRepository(connection).add(_operator_user())
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/users/operator-001/roles",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "roles": ["technical_reviewer"],
+            "reason": "Unauthorized escalation attempt.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 403
+    assert SQLiteUserAccountRepository(connection).get("operator-001").roles == (
+        Role.OPERATOR,
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_account",
+        "operator-001",
+    ) == ()
+
+
+def test_api_admin_changes_user_roles_with_reasoned_audit_evidence():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    SQLiteUserAccountRepository(connection).add(_operator_user())
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/users/operator-001/roles",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "roles": ["operator", "technical_reviewer"],
+            "reason": "Assigned technical review duties.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == ["operator", "technical_reviewer"]
+    event = SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_account",
+        "operator-001",
+    )[0]
+    assert event.previous_value == {"roles": ["operator"]}
+    assert event.new_value == {"roles": ["operator", "technical_reviewer"]}
+    assert event.reason == "Assigned technical review duties."
+
+
+def test_api_user_deactivation_rejects_non_admin_before_write():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+    SQLiteUserAccountRepository(connection).add(_operator_user())
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/users/operator-001/deactivation",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "reason": "Unauthorized deactivation attempt.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 403
+    assert SQLiteUserAccountRepository(connection).get("operator-001").active is True
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_account",
+        "operator-001",
+    ) == ()
+
+
+def test_api_admin_deactivates_user_account_with_reasoned_audit_evidence():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    SQLiteUserAccountRepository(connection).add(_operator_user())
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/users/operator-001/deactivation",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "reason": "User left SIMVal.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+    event = SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_account",
+        "operator-001",
+    )[0]
+    assert event.previous_value == {"active": True}
+    assert event.new_value == {"active": False}
+    assert event.reason == "User left SIMVal."
+
+
+def test_api_user_session_revocation_rejects_non_admin_before_write():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+    SQLiteUserAccountRepository(connection).add(_operator_user())
+    SQLiteUserSessionRepository(connection).add(_operator_session())
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/user-sessions/operator-session/revocation",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "reason": "Unauthorized revocation attempt.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 403
+    assert (
+        SQLiteUserSessionRepository(connection)
+        .get("operator-session")
+        .revoked_at
+        is None
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_session",
+        "operator-session",
+    ) == ()
+
+
+def test_api_admin_revokes_user_session_with_reasoned_audit_evidence():
+    connection = _connection_with_preview_data(user_roles=(Role.ADMIN,))
+    SQLiteUserAccountRepository(connection).add(_operator_user())
+    SQLiteUserSessionRepository(connection).add(_operator_session())
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/user-sessions/operator-session/revocation",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "reason": "Lost workstation.",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "operator-session"
+    assert payload["revoked_at"] == "2026-06-01T15:30:00+00:00"
+    event = SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_session",
+        "operator-session",
+    )[0]
+    assert event.previous_value == {"revoked_at": None}
+    assert event.new_value == {"revoked_at": "2026-06-01T15:30:00+00:00"}
+    assert event.reason == "Lost workstation."
 
 
 def test_api_approved_calculation_versions_record_audit_evidence():
@@ -1148,10 +1420,30 @@ def _user(roles: tuple[Role, ...]) -> UserAccount:
     )
 
 
+def _operator_user() -> UserAccount:
+    return UserAccount(
+        id="operator-001",
+        display_name="Operator User",
+        email="operator-secondary@example.com",
+        roles=(Role.OPERATOR,),
+        active=True,
+        created_at=datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc),
+    )
+
+
 def _session() -> UserSession:
     return UserSession(
         id="session-001",
         user_id="user-001",
         issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
+    )
+
+
+def _operator_session() -> UserSession:
+    return UserSession(
+        id="operator-session",
+        user_id="operator-001",
+        issued_at=datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc),
         expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
     )

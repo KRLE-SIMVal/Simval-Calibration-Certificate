@@ -859,6 +859,50 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
             evidence=("authenticated_user", "active_session", "role_set"),
         ),
         WorkflowStep(
+            step_id="user_admin",
+            label="User Administration",
+            status="Admin-only user access review and account maintenance",
+            actions=(
+                WorkflowAction(
+                    label="List active users",
+                    method="GET",
+                    path="/users",
+                    required_roles=("admin",),
+                ),
+                WorkflowAction(
+                    label="Create user",
+                    method="POST",
+                    path="/users",
+                    required_roles=("admin",),
+                ),
+                WorkflowAction(
+                    label="Change user roles",
+                    method="POST",
+                    path="/users/user-001/roles",
+                    required_roles=("admin",),
+                ),
+                WorkflowAction(
+                    label="Deactivate user",
+                    method="POST",
+                    path="/users/user-001/deactivation",
+                    required_roles=("admin",),
+                ),
+                WorkflowAction(
+                    label="Revoke user session",
+                    method="POST",
+                    path="/user-sessions/session-001/revocation",
+                    required_roles=("admin",),
+                ),
+            ),
+            evidence=(
+                "reviewed_by",
+                "reviewed_at",
+                "user_account_audit_event_id",
+                "user_session_audit_event_id",
+                "reason",
+            ),
+        ),
+        WorkflowStep(
             step_id="job",
             label="Job",
             status="Create draft calibration job",

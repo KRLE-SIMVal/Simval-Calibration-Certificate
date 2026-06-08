@@ -16,6 +16,8 @@ from pydantic import BaseModel, ConfigDict
 
 from app.backend.api.database import sqlite_connection_scope
 from app.backend.api.settings import ApiSettings
+from app.backend.auth.permissions import Action, Role
+from app.backend.auth.users import UserAccount, UserIdentityError
 from app.backend.certificates.storage import CertificateArtifactStorageError
 from app.backend.certificates.records import ArtifactType
 from app.backend.domain.entities import (
@@ -30,10 +32,12 @@ from app.backend.domain.equipment import (
     ReferenceEquipment,
 )
 from app.backend.operations.readiness import check_runtime_readiness
+from app.backend.persistence.sqlite import PersistenceError, SQLiteUserAccountRepository
 from app.backend.services.authentication import (
     AuthenticationFailureError,
     AuthenticationServiceError,
     AuthorizationServiceError,
+    resolve_actor_for_action,
     resolve_actor_for_session,
 )
 from app.backend.services.certificates import (
@@ -95,6 +99,15 @@ from app.backend.services.temperature_calculations import (
     TemperatureCalculationServiceError,
     calculate_temperature_measurement_points_for_session,
 )
+from app.backend.services.user_management import (
+    UserAccountManagementResult,
+    UserManagementServiceError,
+    UserSessionManagementResult,
+    change_user_roles_for_session,
+    create_user_account_for_session,
+    deactivate_user_account_for_session,
+    revoke_user_session_for_session,
+)
 from app.backend.services.verification_transcription import (
     ManualIrtdAlignment,
     VerificationTranscriptionServiceError,
@@ -123,6 +136,61 @@ class ActorResponse(BaseModel):
     user_id: str
     display_name: str
     roles: tuple[str, ...]
+
+
+class UserAccountCreateRequest(BaseModel):
+    user_id: str
+    display_name: str
+    email: str
+    roles: tuple[Role, ...]
+    signature_label: str | None = None
+    software_version: str
+
+
+class UserRolesChangeRequest(BaseModel):
+    roles: tuple[Role, ...]
+    reason: str
+    software_version: str
+
+
+class ReasonedUserManagementRequest(BaseModel):
+    reason: str
+    software_version: str
+
+
+class UserAccountResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    user_id: str
+    display_name: str
+    email: str
+    roles: tuple[str, ...]
+    active: bool
+    signature_label: str | None
+    created_at: str
+
+
+class UserAccountManagementResponse(UserAccountResponse):
+    audit_event_id: int
+
+
+class UserAccessReviewResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    reviewed_by: str
+    reviewed_at: str
+    users: tuple[UserAccountResponse, ...]
+
+
+class UserSessionRevocationResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    session_id: str
+    user_id: str
+    issued_at: str
+    expires_at: str
+    revoked_at: str | None
+    audit_event_id: int
 
 
 class CalibrationJobRequest(BaseModel):
@@ -679,6 +747,185 @@ def create_app(
             status_code=200 if result.ready else 503,
             content=result.to_payload(),
         )
+
+    @app.get(
+        "/users",
+        response_model=UserAccessReviewResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+        },
+    )
+    def users(
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> UserAccessReviewResponse:
+        timestamp = clock_fn()
+        try:
+            with connection_scope() as scoped_connection:
+                actor = resolve_actor_for_action(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    action=Action.MANAGE_USERS_AND_ROLES,
+                    timestamp=timestamp,
+                )
+                users = SQLiteUserAccountRepository(
+                    scoped_connection,
+                ).list_active()
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        return UserAccessReviewResponse(
+            reviewed_by=actor.user_id,
+            reviewed_at=timestamp.isoformat(),
+            users=tuple(_user_account_response(user) for user in users),
+        )
+
+    @app.post(
+        "/users",
+        response_model=UserAccountManagementResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def create_user(
+        request: UserAccountCreateRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> UserAccountManagementResponse:
+        timestamp = clock_fn()
+        try:
+            user = UserAccount(
+                id=request.user_id,
+                display_name=request.display_name,
+                email=request.email,
+                roles=request.roles,
+                signature_label=request.signature_label,
+                created_at=timestamp,
+            )
+            with connection_scope() as scoped_connection:
+                result = create_user_account_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    user=user,
+                    software_version=request.software_version,
+                    timestamp=timestamp,
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (UserManagementServiceError, UserIdentityError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _user_account_management_response(result)
+
+    @app.post(
+        "/users/{user_id}/roles",
+        response_model=UserAccountManagementResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def change_user_roles(
+        user_id: str,
+        request: UserRolesChangeRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> UserAccountManagementResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = change_user_roles_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    target_user_id=user_id,
+                    roles=request.roles,
+                    reason=request.reason,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (UserManagementServiceError, UserIdentityError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _user_account_management_response(result)
+
+    @app.post(
+        "/users/{user_id}/deactivation",
+        response_model=UserAccountManagementResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def deactivate_user(
+        user_id: str,
+        request: ReasonedUserManagementRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> UserAccountManagementResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = deactivate_user_account_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    target_user_id=user_id,
+                    reason=request.reason,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (UserManagementServiceError, UserIdentityError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _user_account_management_response(result)
+
+    @app.post(
+        "/user-sessions/{session_id}/revocation",
+        response_model=UserSessionRevocationResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def revoke_user_session(
+        session_id: str,
+        request: ReasonedUserManagementRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> UserSessionRevocationResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = revoke_user_session_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    target_session_id=session_id,
+                    reason=request.reason,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (UserManagementServiceError, UserIdentityError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _user_session_revocation_response(result)
 
     @app.post(
         "/constant-sets/approved",
@@ -1474,6 +1721,52 @@ def create_app_from_settings(
         connection_provider=lambda: sqlite_connection_scope(settings.database_path),
         clock=clock,
         artifact_directory=settings.artifact_storage_path,
+    )
+
+
+def _user_account_response(user: UserAccount) -> UserAccountResponse:
+    return UserAccountResponse(
+        user_id=user.id,
+        display_name=user.display_name,
+        email=user.email,
+        roles=tuple(role.value for role in user.roles),
+        active=user.active,
+        signature_label=user.signature_label,
+        created_at=user.created_at.isoformat(),
+    )
+
+
+def _user_account_management_response(
+    result: UserAccountManagementResult,
+) -> UserAccountManagementResponse:
+    user = result.user
+    return UserAccountManagementResponse(
+        user_id=user.id,
+        display_name=user.display_name,
+        email=user.email,
+        roles=tuple(role.value for role in user.roles),
+        active=user.active,
+        signature_label=user.signature_label,
+        created_at=user.created_at.isoformat(),
+        audit_event_id=result.audit_event_id,
+    )
+
+
+def _user_session_revocation_response(
+    result: UserSessionManagementResult,
+) -> UserSessionRevocationResponse:
+    session = result.session
+    return UserSessionRevocationResponse(
+        session_id=session.id,
+        user_id=session.user_id,
+        issued_at=session.issued_at.isoformat(),
+        expires_at=session.expires_at.isoformat(),
+        revoked_at=(
+            session.revoked_at.isoformat()
+            if session.revoked_at is not None
+            else None
+        ),
+        audit_event_id=result.audit_event_id,
     )
 
 
