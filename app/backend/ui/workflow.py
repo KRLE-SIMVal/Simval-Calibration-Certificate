@@ -235,6 +235,8 @@ def browser_workflow_html() -> str:
         </div>
         <div class="panel-actions">
           <button id="createJob">Create Job</button>
+          <button class="secondary" id="captureMetadata">Capture Metadata</button>
+          <button class="secondary" id="selectReferenceEquipment">Select Equipment</button>
         </div>
       </section>
       <section class="panel">
@@ -316,6 +318,8 @@ def browser_workflow_html() -> str:
           <button class="secondary" id="submitTechnicalReview">Submit Review</button>
           <button class="secondary" id="approveTechnicalReview">Approve Technical</button>
           <button class="secondary" id="approveQaRelease">Approve QA</button>
+          <button class="secondary" id="buildCertificatePreview">Build Preview</button>
+          <button class="secondary" id="renderCertificateRelease">Render Release</button>
         </div>
       </section>
     </div>
@@ -772,10 +776,35 @@ def browser_workflow_html() -> str:
       }
     }
 
+    function samplePayload(path) {
+      const payload = JSON.parse(JSON.stringify(samples[path] ?? {}));
+      if (payload && typeof payload === "object" && "job_id" in payload) {
+        payload.job_id = document.getElementById("jobId").value.trim();
+      }
+      return payload;
+    }
+
+    async function postSample(path) {
+      responseBodyEl.textContent = "Waiting...";
+      try {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(samplePayload(path))
+        });
+        const parsed = await response.json();
+        responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
+      } catch (error) {
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
     document.getElementById("createJob").addEventListener("click", createJob);
+    document.getElementById("captureMetadata").addEventListener("click", () => postSample("/certificate-metadata"));
+    document.getElementById("selectReferenceEquipment").addEventListener("click", () => postSample("/reference-equipment-selections"));
     document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
     document.getElementById("reviewImports").addEventListener("click", reviewImports);
     document.getElementById("prepareTemperatureData").addEventListener("click", prepareTemperatureData);
@@ -786,6 +815,8 @@ def browser_workflow_html() -> str:
     document.getElementById("submitTechnicalReview").addEventListener("click", () => postJobWorkflowAction("technical-review-submissions"));
     document.getElementById("approveTechnicalReview").addEventListener("click", () => postJobWorkflowAction("technical-review-approvals"));
     document.getElementById("approveQaRelease").addEventListener("click", () => postJobWorkflowAction("qa-release-approvals"));
+    document.getElementById("buildCertificatePreview").addEventListener("click", () => postSample("/certificate-previews"));
+    document.getElementById("renderCertificateRelease").addEventListener("click", () => postSample("/certificate-rendered-releases"));
     loadContract();
   </script>
 </body>

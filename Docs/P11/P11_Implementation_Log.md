@@ -51,15 +51,16 @@ certificate generation from the UI.
   `POST /calibration-jobs/{job_id}/qa-release-approvals`.
 - Added browser review buttons for moving calculated jobs through technical
   review, QA review, and approved state before certificate release.
+- Added direct browser shortcut buttons for certificate metadata capture,
+  reference equipment selection, certificate preview generation, and rendered
+  PDF certificate release.
 
 ## Scope Not Implemented
 
-- Multi-file linked XLSX/PDF import orchestration from the browser is not yet
-  complete.
+- Automated multi-file linked XLSX/PDF import orchestration from the browser is
+  not yet complete.
 - Verification PDF text extraction remains deferred until a PDF dependency and
   validation approach are approved.
-- Certificate preview and release actions are not yet exposed as
-  technician-friendly screens.
 - Production authentication provider remains pending.
 
 ## Compliance Notes
@@ -99,13 +100,14 @@ certificate generation from the UI.
   38 passed on Python 3.12.10.
 - Review workflow API focused suite:
   38 passed on Python 3.12.10.
+- Browser certificate shortcut focused suite:
+  25 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
 | Verification PDF extraction is not implemented. | Use controlled manual IRTD transcription tied to raw PDF evidence now, then add approved PDF extraction with controlled fixtures and parser tests before relying on automatic IRTD extraction from uploaded PDFs. |
-| Browser workflow still lacks preview and release actions. | Continue P11 with preview and release actions as separate tested slices. |
 | Upload endpoint uses raw request bytes rather than multipart form upload. | Keep this dependency-free path for now; move to multipart only if the production UI needs metadata and files submitted in one form. |
 | DUT identity is currently derived from logger channel IDs. | Keep this as a traceable default for ValProbe imports, then add an editable mapping screen before production release if customer-facing DUT serial numbers differ from logger channel IDs. |
 | Reviewer independence is not technically enforced by separate user IDs yet. | Keep permission-gated review transitions now, then add independence checks before production release when the production user model and SOP approval responsibilities are finalized. |

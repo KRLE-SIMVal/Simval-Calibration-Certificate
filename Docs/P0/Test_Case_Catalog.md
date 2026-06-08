@@ -384,6 +384,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-035 | API technical-review submission endpoint. | `POST /calibration-jobs/{job_id}/technical-review-submissions` transitions a calculated job to technical review. |
 | API-036 | API technical-review approval endpoint. | `POST /calibration-jobs/{job_id}/technical-review-approvals` transitions a technically reviewed job to QA review. |
 | API-037 | API QA-release approval endpoint. | `POST /calibration-jobs/{job_id}/qa-release-approvals` transitions a QA-reviewed job to approved state. |
+| API-038 | Browser certificate workflow shortcuts. | `GET /app` exposes direct controls for metadata capture, reference equipment selection, preview generation, and rendered PDF release. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

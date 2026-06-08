@@ -146,6 +146,10 @@ def test_api_serves_browser_workflow_shell():
     assert "SIMVal Calibration Certificate" in response.text
     assert 'id="sourceFile" type="file"' in response.text
     assert 'id="uploadSourceFile"' in response.text
+    assert 'id="captureMetadata"' in response.text
+    assert 'id="selectReferenceEquipment"' in response.text
+    assert 'id="buildCertificatePreview"' in response.text
+    assert 'id="renderCertificateRelease"' in response.text
     assert "/calibration-jobs" in response.text
     assert "/certificate-metadata" in response.text
     assert "/certificate-rendered-releases" in response.text
