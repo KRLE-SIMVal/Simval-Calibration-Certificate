@@ -886,6 +886,247 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
     )
 
 
+def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path):
+    connection = _connection_with_user_and_job(user_roles=(Role.ADMIN,))
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                channels=("MJT1-A", "MJT2-A"),
+                data_rows=[
+                    ("2026-04-08T15:45:00+00:00", "-80.036", "-80.041"),
+                    ("2026-04-08T15:46:00+00:00", "-80.034", "-80.039"),
+                ],
+            )
+        },
+    )
+    generated_ids = iter(("001", "002"))
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: next(generated_ids),
+    )
+
+    calibration_upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+    verification_upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=verification.pdf&"
+            "file_kind=verification_pdf&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=b"%PDF-1.4 controlled verification fixture",
+    )
+    assert calibration_upload.status_code == 200
+    assert verification_upload.status_code == 200
+
+    metadata = _api_request(
+        app,
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json=_metadata_payload(),
+    )
+    reference_selection = _api_request(
+        app,
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json=_reference_equipment_payload(),
+    )
+    data_entry = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-data-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "setpoints": [-80.0],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+    irtd_rows = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/verification-irtd-rows",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "calibration_uploaded_file_id": "file-001",
+            "verification_uploaded_file_id": "file-002",
+            "rows": [
+                ["Time", "IRTD (deg C)", "MJT1-A", "MJT2-A"],
+                ["2026-04-08T15:45:00+00:00", "-80.031", "-80.036", "-80.041"],
+                ["2026-04-08T15:46:00+00:00", "-80.030", "-80.034", "-80.039"],
+            ],
+            "unit": "deg C",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert metadata.status_code == 200
+    assert reference_selection.status_code == 200
+    assert data_entry.status_code == 200
+    assert data_entry.json()["dut_ids"] == ["dut-MJT1-A", "dut-MJT2-A"]
+    assert irtd_rows.status_code == 200
+    assert irtd_rows.json()["linked_reading_count"] == 4
+
+    for window_id, dut_channel_id in (
+        ("window-001", "MJT1-A"),
+        ("window-002", "MJT2-A"),
+    ):
+        selection = _api_request(
+            app,
+            "POST",
+            "/calibration-jobs/job-001/temperature-windows",
+            headers={"X-Session-Id": "session-001"},
+            json={
+                "window_id": window_id,
+                "dut_id": f"dut-{dut_channel_id}",
+                "dut_channel_id": dut_channel_id,
+                "setpoint": -80.0,
+                "unit": "deg C",
+                "start_timestamp": "2026-04-08T15:45:00+00:00",
+                "end_timestamp": "2026-04-08T15:46:00+00:00",
+                "software_version": "app-0.1.0",
+            },
+        )
+        assert selection.status_code == 200
+        assert selection.json()["linked_reading_count"] == 2
+
+    completion = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-windows/complete",
+        headers={"X-Session-Id": "session-001"},
+        json={"software_version": "app-0.1.0"},
+    )
+    constant_set = _api_request(
+        app,
+        "POST",
+        "/constant-sets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json=_constant_set_payload(),
+    )
+    budget = _api_request(
+        app,
+        "POST",
+        "/uncertainty-budgets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json=_budget_payload(),
+    )
+    assert completion.status_code == 200
+    assert constant_set.status_code == 200
+    assert budget.status_code == 200
+
+    calculation = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/job-001/temperature-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "uncertainty_inputs": [
+                {
+                    "setpoint": -80.0,
+                    "unit": "deg C",
+                    "cmc_floor": "0.010",
+                    "reference_expanded_uncertainty": 0.010,
+                    "bath_expanded_uncertainty": 0.004,
+                    "dut_resolution": 0.010,
+                }
+            ],
+            "software_version": "app-0.1.0",
+            "calculation_engine_version": "calc-engine-0.1.0",
+            "constant_set_version": "constants-2026-001",
+            "budget_version": "budget-temp-001",
+        },
+    )
+    assert calculation.status_code == 200
+    assert calculation.json()["summary_ids"] == [
+        "job-001-window-001-summary",
+        "job-001-window-002-summary",
+    ]
+
+    for path_suffix in (
+        "technical-review-submissions",
+        "technical-review-approvals",
+        "qa-release-approvals",
+    ):
+        response = _api_request(
+            app,
+            "POST",
+            f"/calibration-jobs/job-001/{path_suffix}",
+            headers={"X-Session-Id": "session-001"},
+            json={"software_version": "app-0.1.0"},
+        )
+        assert response.status_code == 200
+
+    preview = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    release = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-multi-001",
+            "certificate_number": "SIMVAL-CAL-MULTI-0001",
+            "artifact_id": "artifact-multi-001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+
+    assert preview.status_code == 200
+    preview_payload = preview.json()
+    assert preview_payload["summary_ids"] == [
+        "job-001-window-001-summary",
+        "job-001-window-002-summary",
+    ]
+    assert [row["dut_id"] for row in preview_payload["rows"]] == [
+        "dut-MJT1-A",
+        "dut-MJT2-A",
+    ]
+    assert release.status_code == 200
+    assert release.json()["status"] == "released"
+    assert (
+        tmp_path / "artifacts" / "SIMVAL-CAL-MULTI-0001.pdf"
+    ).exists()
+
+
 def test_api_upload_rejects_missing_artifact_storage_before_file_write():
     connection = _connection_with_user_and_job()
 

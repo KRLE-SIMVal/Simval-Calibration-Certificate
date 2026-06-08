@@ -63,6 +63,8 @@ certificate generation from the UI.
   proceeds through public endpoints from metadata capture and reference
   selection through rendered PDF release, without direct test-side workflow state
   mutation or direct governed-version repository seeding.
+- Added end-to-end API regression coverage for one released rendered PDF
+  certificate containing multiple DUT/channel results.
 
 ## Scope Not Implemented
 
@@ -117,6 +119,8 @@ certificate generation from the UI.
   26 passed on Python 3.12.10.
 - End-to-end API workflow focused suite:
   39 passed on Python 3.12.10.
+- Multi-DUT certificate API workflow focused suite:
+  14 passed on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 

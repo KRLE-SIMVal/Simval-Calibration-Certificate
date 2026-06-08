@@ -45,6 +45,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | WF-069 | Approve technical review through API. | Authorized technical reviewer transitions a job from `technical_review` to `qa_review` with workflow audit evidence. |
 | WF-070 | Approve QA release through API. | Authorized QA approver transitions a job from `qa_review` to `approved` with workflow audit evidence. |
 | WF-071 | End-to-end temperature certificate workflow through API. | A controlled job proceeds through metadata capture, reference selection, file upload, data entry, manual IRTD transcription, window selection, approved governed versions, calculation, technical review, QA approval, preview, and rendered PDF release without direct state mutation. |
+| WF-072 | End-to-end multi-DUT temperature certificate workflow through API. | A controlled job with multiple logger channels proceeds through selected windows, calculation summaries, preview rows, and one rendered released PDF containing multiple DUT results. |
 
 ## Roles And Permissions
 
@@ -403,6 +404,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-044 | API user role change endpoint. | `POST /users/{user_id}/roles` changes roles with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
 | API-045 | API user deactivation endpoint. | `POST /users/{user_id}/deactivation` deactivates a user with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
 | API-046 | API user session revocation endpoint. | `POST /user-sessions/{session_id}/revocation` revokes a session with reasoned audit evidence for authorized admins and rejects non-admin sessions. |
+| API-047 | API multi-DUT certificate release regression. | The public API workflow supports multiple DUT/channel results in one released rendered PDF certificate. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |
