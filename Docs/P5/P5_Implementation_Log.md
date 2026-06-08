@@ -1,6 +1,6 @@
 # P5 Implementation Log
 
-Status: started.
+Status: completed for validation evidence and scheduled regression controls.
 
 P5 begins production-readiness hardening after P4 backend certificate
 rendering/export controls were closed.
@@ -25,10 +25,9 @@ rendering/export controls were closed.
 
 ## Scope Not Implemented
 
-- Reviewer disposition capture is not implemented yet.
+- Human reviewer approval is not automated and remains required.
 - Controlled confidential fixture execution remains opt-in only through
   `SIMVAL_RUN_CONTROLLED_FIXTURE_TESTS=1`.
-- Full IQ/OQ/PQ validation package generation is not complete.
 - Full equipment-library CRUD remains deferred. The equipment library will be
   populated manually once the program is production ready.
 
@@ -62,6 +61,6 @@ rendering/export controls were closed.
 
 | Risk | Recommended solution |
 |---|---|
-| Human reviewer disposition is not captured in the generated evidence package. | Add a controlled reviewer-disposition template and require attachment/review after scheduled runs. |
+| Human reviewer disposition is generated as a pending template, not completed automatically. | Require human QA/laboratory review and approval before production release. |
 | Controlled fixture tests remain opt-in and local unless explicitly enabled. | Keep them opt-in until fixture confidentiality and CI storage approvals are formally documented. |
 | GitHub issue creation depends on workflow token issue permissions. | Keep generated JSON/Markdown deviation artifacts as retained evidence even if issue creation fails, and verify repository Actions permissions before production validation. |

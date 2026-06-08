@@ -81,6 +81,12 @@ Current CI implementation:
 - The workflow uploads the generated evidence tree as a GitHub Actions artifact.
 - The validation report records trigger event, run type, quarter, CI metadata,
   platform metadata, controlled-fixture policy, and evidence paths.
+- The workflow generates a draft validation package under
+  `validation-package/` inside the evidence directory.
+- The validation package contains `validation-package.json`,
+  `validation-package.md`, and `reviewer-disposition.md`.
+- Validation package evidence entries store paths and SHA-256 checksums rather
+  than embedding controlled source documents directly.
 
 ## Failure Handling
 

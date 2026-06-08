@@ -77,6 +77,37 @@ jobs:
             --evidence "artifact=validation-evidence-${{ github.run_id }}" \
             --output "$evidence_dir/validation-report.json"
 
+      - name: Generate validation package
+        if: always()
+        run: |
+          evidence_dir="${SIMVAL_EVIDENCE_DIR:-Docs/Validation/evidence/latest}"
+          mkdir -p "$evidence_dir"
+          if [ ! -f "$evidence_dir/pytest.xml" ]; then
+            printf '<testsuite name="pytest" errors="1"></testsuite>\n' > "$evidence_dir/pytest.xml"
+          fi
+          python scripts/validation/generate_validation_package.py \
+            --status "draft_pending_review" \
+            --release-version "${{ github.sha }}" \
+            --objective "Production readiness validation package" \
+            --source-commit "${{ github.sha }}" \
+            --iq "pyproject.toml" \
+            --iq ".github/workflows/ci.yml" \
+            --iq "Docs/P0/Architecture_And_Repository_Structure.md" \
+            --iq "Docs/P0/Validation_And_Regression_Plan.md" \
+            --oq "$evidence_dir/pytest.xml" \
+            --oq "Docs/P0/Test_Case_Catalog.md" \
+            --oq "Docs/P0/Requirements_To_Test_Matrix.md" \
+            --pq "$evidence_dir/validation-report.json" \
+            --pq "Docs/P4/P4_Closeout.md" \
+            --pq "Docs/P6/P6_Implementation_Log.md" \
+            --pq "Docs/P7/P7_Implementation_Log.md" \
+            --pq "Docs/P8/P8_Implementation_Log.md" \
+            --known-limitation "Controlled confidential fixture execution remains opt-in." \
+            --known-limitation "Full equipment-library data population is a manual production-readiness activity." \
+            --known-limitation "PDF/A and digital-signature policy remains pending." \
+            --known-limitation "Human QA/laboratory approval is required before production use." \
+            --output-dir "$evidence_dir/validation-package"
+
       - name: Generate scheduled regression deviation
         if: ${{ failure() && github.event_name == 'schedule' }}
         run: |

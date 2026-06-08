@@ -394,6 +394,8 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | MIG-007 | Re-run SQLite schema bootstrap. | Bootstrap is idempotent when the baseline migration checksum is unchanged. |
 | VAL-001 | Validation report generated from automated test run. | Report includes suite, version, result, evidence paths. |
 | VAL-002 | Validation report classifies run context. | Report records trigger event, run type, quarter, CI metadata, platform, and controlled-fixture policy. |
+| VAL-003 | Validation package generation. | Package records IQ/OQ/PQ evidence files with SHA-256 checksums, known limitations, release version, source commit, and required reviewers. |
+| VAL-004 | Reviewer disposition template generation. | Validation package output includes a human reviewer disposition template with pending decision and required review checks. |
 | ENV-001 | Clean Python 3.12 environment installs project API and test dependencies. | `pip install -e .[api,test]` succeeds without packaging unrelated folders. |
 | REG-001 | Quarterly schedule exists. | Cron/scheduler definition present when CI exists. |
 | REG-002 | Quarterly run stores evidence. | Evidence artifact retained. |
