@@ -334,6 +334,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | CERT-145 | Rendered release staged artifact finalization. | PDF bytes are written to a pending file first, finalized only after DB release succeeds, and discarded if release persistence fails. |
 | CERT-146 | Certificate template contract validation. | Rendered release validates PDF header, page count, certificate number, structure markers, logo scope, version evidence, and absence of placeholder text before artifact staging. |
 | CERT-147 | Stale pending artifact cleanup. | Cleanup removes only `.pending` artifact files older than a timezone-aware cutoff and leaves recent pending files and final artifacts untouched. |
+| CERT-148 | Released artifact retrieval checksum verification. | Stored artifact retrieval resolves inside the artifact directory and rejects missing or tampered files before download. |
 | AUD-001 | Job creation audit event. | Event includes user/timestamp/action. |
 | AUD-002 | Metadata change audit event. | Previous and new values stored. |
 | AUD-003 | Calculation run audit event. | Calculation version and inputs reference stored. |
@@ -414,6 +415,7 @@ The catalog must expand whenever requirements, calculations, workflows, or risks
 | API-048 | API certificate number sequence endpoint. | `POST /certificate-number-sequences` creates an internal sequence with audit evidence for authorized admins. |
 | API-049 | API certificate number allocation endpoint. | `POST /certificate-number-allocations` allocates the next number, increments the sequence, records audit evidence, and rejects non-admin sessions before increment. |
 | API-050 | API certificate number sequence retirement endpoint. | `POST /certificate-number-sequences/{prefix}/retirement` retires an active sequence with reasoned audit evidence and blocks later allocation. |
+| API-051 | API released artifact download endpoint. | `GET /certificate-artifacts/{artifact_id}` authorizes released-certificate access, verifies stored file checksum against release evidence, and serves controlled artifact bytes. |
 | PERSIST-001 | Store and reload a calibration job. | Client, discipline, mode, state, and created timestamp round-trip unchanged. |
 | PERSIST-002 | Store duplicate calibration job ID. | Duplicate is rejected and existing record is unchanged. |
 | PERSIST-003 | Append audit events and read by entity. | Events are returned in append order with JSON values and version references preserved. |

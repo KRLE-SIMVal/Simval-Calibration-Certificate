@@ -38,6 +38,7 @@ from app.backend.certificates.storage import (
     discard_staged_artifact,
     finalize_staged_artifact,
     stage_rendered_artifact,
+    verified_stored_artifact_path,
 )
 from app.backend.certificates.template_contract import (
     CertificateTemplateContractError,
@@ -160,6 +161,13 @@ class CertificateHistoryEntry:
 class CertificateHistory:
     job_id: str
     entries: tuple[CertificateHistoryEntry, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ReleasedCertificateArtifactRetrieval:
+    certificate: CertificateRecord
+    artifact: ExportArtifact
+    path: Path
 
 
 def capture_certificate_metadata_for_session(
@@ -1032,6 +1040,49 @@ def get_certificate_history_for_session(
     )
 
 
+def get_released_certificate_artifact_for_session(
+    *,
+    connection: sqlite3.Connection,
+    session_id: str,
+    artifact_id: str,
+    artifact_directory: Path,
+    timestamp: datetime,
+) -> ReleasedCertificateArtifactRetrieval:
+    """Return a verified local path for an authorized released artifact download."""
+    _require_history_text(artifact_id, "Artifact id")
+    resolve_actor_for_action(
+        connection=connection,
+        session_id=session_id,
+        action=Action.VIEW_RELEASED_CERTIFICATE,
+        timestamp=timestamp,
+    )
+    certificate_repository = SQLiteCertificateRecordRepository(connection)
+    try:
+        certificate = certificate_repository.get_by_artifact_id(artifact_id)
+    except RecordNotFoundError as exc:
+        raise CertificatePreviewServiceError(str(exc)) from exc
+    artifact = _artifact_by_id(certificate, artifact_id)
+    if artifact.filename != Path(artifact.filename).name:
+        raise CertificatePreviewServiceError(
+            "Artifact filename must not contain path components."
+        )
+    expected_storage_uri = f"controlled-local://{artifact.filename}"
+    if artifact.storage_uri != expected_storage_uri:
+        raise CertificatePreviewServiceError(
+            "Artifact storage URI does not match controlled local storage."
+        )
+    path = verified_stored_artifact_path(
+        base_path=artifact_directory,
+        filename=artifact.filename,
+        checksum_sha256=artifact.checksum_sha256,
+    )
+    return ReleasedCertificateArtifactRetrieval(
+        certificate=certificate,
+        artifact=artifact,
+        path=path,
+    )
+
+
 def revise_released_certificate_for_session(
     *,
     connection: sqlite3.Connection,
@@ -1498,6 +1549,18 @@ def _single_release_version(versions: set[str], label: str) -> str:
         return _single_version(versions, label)
     except CertificatePreviewServiceError as exc:
         raise CertificateReleaseServiceError(str(exc)) from exc
+
+
+def _artifact_by_id(
+    certificate: CertificateRecord,
+    artifact_id: str,
+) -> ExportArtifact:
+    for artifact in certificate.export_artifacts:
+        if artifact.artifact_id == artifact_id:
+            return artifact
+    raise CertificatePreviewServiceError(
+        f"Artifact {artifact_id!r} was not found for the released certificate."
+    )
 
 
 def _validate_release_inputs(

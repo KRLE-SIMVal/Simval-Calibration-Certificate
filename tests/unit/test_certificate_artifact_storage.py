@@ -12,6 +12,7 @@ from app.backend.certificates.storage import (
     finalize_staged_artifact,
     stage_rendered_artifact,
     store_rendered_artifact,
+    verified_stored_artifact_path,
 )
 
 
@@ -110,6 +111,31 @@ def test_cleanup_stale_pending_artifacts_rejects_naive_cutoff(tmp_path):
         cleanup_stale_pending_artifacts(
             base_path=tmp_path,
             cutoff=datetime(2026, 6, 1, 12, 0),
+        )
+
+
+def test_verified_stored_artifact_path_returns_path_when_checksum_matches(tmp_path):
+    artifact = _artifact()
+    store_rendered_artifact(base_path=tmp_path, artifact=artifact)
+
+    path = verified_stored_artifact_path(
+        base_path=tmp_path,
+        filename=artifact.filename,
+        checksum_sha256=artifact.checksum_sha256,
+    )
+
+    assert path == (tmp_path / artifact.filename).resolve()
+
+
+def test_verified_stored_artifact_path_rejects_checksum_mismatch(tmp_path):
+    artifact = _artifact()
+    store_rendered_artifact(base_path=tmp_path, artifact=artifact)
+
+    with pytest.raises(CertificateArtifactStorageError, match="checksum"):
+        verified_stored_artifact_path(
+            base_path=tmp_path,
+            filename=artifact.filename,
+            checksum_sha256="0" * 64,
         )
 
 

@@ -14,6 +14,7 @@ from app.backend.services.authentication import AuthenticationServiceError
 from app.backend.services.certificates import (
     CertificateReleaseServiceError,
     build_certificate_preview_for_session,
+    get_released_certificate_artifact_for_session,
     render_and_release_certificate_pdf_with_allocated_number_for_session,
     render_and_release_certificate_pdf_for_session,
 )
@@ -61,6 +62,17 @@ def test_render_and_release_certificate_pdf_for_session_uses_generated_artifact(
     assert SQLiteCertificateRecordRepository(connection).get("cert-001") == (
         result.release.certificate
     )
+
+    retrieved = get_released_certificate_artifact_for_session(
+        connection=connection,
+        session_id="qa-session",
+        artifact_id="artifact-001",
+        artifact_directory=tmp_path,
+        timestamp=datetime(2026, 6, 1, 15, 35, tzinfo=timezone.utc),
+    )
+    assert retrieved.certificate == result.release.certificate
+    assert retrieved.artifact == result.release.certificate.primary_artifact
+    assert retrieved.path == stored_path.resolve()
 
 
 def test_render_and_release_certificate_pdf_for_session_can_suppress_danak_mark(

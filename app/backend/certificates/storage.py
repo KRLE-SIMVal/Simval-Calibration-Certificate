@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
 
 from app.backend.certificates.rendering import RenderedCertificateArtifact
@@ -176,6 +177,22 @@ def cleanup_stale_pending_artifacts(
         cutoff=cutoff,
         removed_files=tuple(removed),
     )
+
+
+def verified_stored_artifact_path(
+    *,
+    base_path: Path,
+    filename: str,
+    checksum_sha256: str,
+) -> Path:
+    """Resolve a stored artifact path and verify it against release evidence."""
+    target_path = _target_path(base_path=base_path, filename=filename)
+    if not target_path.is_file():
+        raise CertificateArtifactStorageError("Artifact file was not found.")
+    actual_checksum = hashlib.sha256(target_path.read_bytes()).hexdigest()
+    if actual_checksum != checksum_sha256.lower():
+        raise CertificateArtifactStorageError("Artifact checksum does not match.")
+    return target_path
 
 
 def _target_path(*, base_path: Path, filename: str) -> Path:

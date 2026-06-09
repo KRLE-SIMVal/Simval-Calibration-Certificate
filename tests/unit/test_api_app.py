@@ -159,6 +159,7 @@ def test_api_serves_browser_workflow_shell():
     assert "/certificate-metadata" in response.text
     assert "/certificate-rendered-releases" in response.text
     assert "/certificate-rendered-releases/allocated" in response.text
+    assert "/certificate-artifacts/artifact-001" in response.text
     assert "/certificate-number-sequences/SIMVAL-CAL/retirement" in response.text
     assert "/design-assets/simval-logo" in response.text
 
@@ -219,6 +220,7 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/certificate-rendered-releases" in action_paths
     assert "/certificate-rendered-releases/allocated" in action_paths
     assert "/certificate-history/job-001" in action_paths
+    assert "/certificate-artifacts/artifact-001" in action_paths
 
 
 def test_api_serves_controlled_simval_logo_asset():
@@ -1040,6 +1042,16 @@ def test_api_certificate_rendered_release_generates_pdf_and_release_evidence(tmp
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.RELEASED
     )
+
+    artifact_response = _api_request(
+        app,
+        "GET",
+        "/certificate-artifacts/artifact-001",
+        headers={"X-Session-Id": "session-001"},
+    )
+    assert artifact_response.status_code == 200
+    assert artifact_response.headers["content-type"].startswith("application/pdf")
+    assert artifact_response.content == artifact_path.read_bytes()
 
 
 def test_api_certificate_rendered_release_can_allocate_certificate_number(tmp_path):

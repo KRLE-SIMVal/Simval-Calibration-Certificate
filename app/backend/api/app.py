@@ -56,6 +56,7 @@ from app.backend.services.certificates import (
     build_certificate_preview_for_session,
     capture_certificate_metadata_for_session,
     get_certificate_history_for_session,
+    get_released_certificate_artifact_for_session,
     release_certificate_for_session,
     render_and_release_certificate_pdf_with_allocated_number_for_session,
     render_and_release_certificate_pdf_for_session,
@@ -1629,6 +1630,55 @@ def create_app(
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         return _history_response(result)
 
+    @app.get(
+        "/certificate-artifacts/{artifact_id}",
+        responses={
+            200: {
+                "content": {
+                    "application/pdf": {},
+                    (
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ): {},
+                }
+            },
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def certificate_artifact(
+        artifact_id: str,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> FileResponse:
+        if artifact_directory is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact storage path is not configured.",
+            )
+        try:
+            with connection_scope() as scoped_connection:
+                result = get_released_certificate_artifact_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    artifact_id=artifact_id,
+                    artifact_directory=artifact_directory,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CertificatePreviewServiceError, CertificateArtifactStorageError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return FileResponse(
+            path=result.path,
+            media_type=_artifact_media_type(result.artifact.artifact_type),
+            filename=result.artifact.filename,
+        )
+
     @app.post(
         "/certificate-metadata",
         response_model=CertificateMetadataResponse,
@@ -2493,6 +2543,14 @@ def _artifact_response(artifact) -> ExportArtifactResponse:
         generated_by=artifact.generated_by,
         generated_at=artifact.generated_at.isoformat(),
     )
+
+
+def _artifact_media_type(artifact_type: ArtifactType) -> str:
+    if artifact_type is ArtifactType.PDF:
+        return "application/pdf"
+    if artifact_type is ArtifactType.XLSX:
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return "application/octet-stream"
 
 
 def _decimal_to_text(value: Decimal) -> str:

@@ -2382,6 +2382,22 @@ class SQLiteCertificateRecordRepository:
         ).fetchall()
         return tuple(self.get(row["certificate_id"]) for row in rows)
 
+    def get_by_artifact_id(self, artifact_id: str) -> CertificateRecord:
+        _require_text(artifact_id, "Artifact id")
+        row = self._connection.execute(
+            """
+            SELECT certificate_id
+            FROM export_artifacts
+            WHERE artifact_id = ?
+            """,
+            (artifact_id,),
+        ).fetchone()
+        if row is None:
+            raise RecordNotFoundError(
+                f"Artifact {artifact_id!r} was not found."
+            )
+        return self.get(row["certificate_id"])
+
     def _summary_ids_for_certificate(self, certificate_id: str) -> tuple[str, ...]:
         rows = self._connection.execute(
             """

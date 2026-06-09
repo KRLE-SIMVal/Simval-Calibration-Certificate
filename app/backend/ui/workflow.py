@@ -499,7 +499,8 @@ def browser_workflow_html() -> str:
         reason: "Controlled correction after QA approval.",
         software_version: "app-0.1.0"
       },
-      "/certificate-history/job-001": ""
+      "/certificate-history/job-001": "",
+      "/certificate-artifacts/artifact-001": ""
     };
 
     let operations = [];
@@ -1138,6 +1139,12 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     label="Certificate history",
                     method="GET",
                     path="/certificate-history/job-001",
+                    required_roles=("operator", "technical_reviewer", "qa_approver", "admin", "read_only"),
+                ),
+                WorkflowAction(
+                    label="Download released artifact",
+                    method="GET",
+                    path="/certificate-artifacts/artifact-001",
                     required_roles=("operator", "technical_reviewer", "qa_approver", "admin", "read_only"),
                 ),
                 WorkflowAction(
