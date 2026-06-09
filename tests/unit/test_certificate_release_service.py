@@ -323,6 +323,53 @@ def test_release_certificate_for_session_rejects_unauthorized_actor_before_audit
     ]
 
 
+def test_release_certificate_for_session_rejects_same_user_qa_approval_and_release():
+    connection = _connection_with_release_data()
+    SQLiteAuditEventRepository(connection).append(
+        AuditEvent(
+            entity_type="calibration_job",
+            entity_id="job-001",
+            action=AuditAction.WORKFLOW_TRANSITIONED,
+            user_id="qa-001",
+            timestamp=datetime(2026, 6, 1, 15, 0, tzinfo=timezone.utc),
+            previous_value={"state": "qa_review"},
+            new_value={"state": "approved"},
+            software_version="app-0.1.0",
+        )
+    )
+    build_certificate_preview_for_session(
+        connection=connection,
+        session_id="qa-session",
+        job_id="job-001",
+        template_version="template-2026-001",
+        software_version="app-0.1.0",
+        timestamp=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(CertificateReleaseServiceError) as exc_info:
+        release_certificate_for_session(
+            connection=connection,
+            session_id="qa-session",
+            job_id="job-001",
+            certificate_id="cert-001",
+            certificate_number="SIMVAL-CAL-0001",
+            artifact_id="artifact-001",
+            artifact_type=ArtifactType.PDF,
+            filename="SIMVAL-CAL-0001.pdf",
+            checksum_sha256="b" * 64,
+            storage_uri="controlled-local://SIMVAL-CAL-0001.pdf",
+            template_version="template-2026-001",
+            software_version="app-0.1.0",
+            timestamp=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        )
+
+    assert "reviewer_independence_violation" in str(exc_info.value)
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.APPROVED
+    )
+
+
 def _connection_with_release_data(
     *,
     job_state: WorkflowState = WorkflowState.APPROVED,

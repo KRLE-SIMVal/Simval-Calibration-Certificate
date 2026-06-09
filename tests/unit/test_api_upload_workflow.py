@@ -640,6 +640,24 @@ def test_api_record_manual_irtd_rows_rejects_before_data_entered():
 
 def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_path):
     connection = _connection_with_user_and_job(user_roles=(Role.ADMIN,))
+    _add_user_session(
+        connection,
+        user_id="reviewer-001",
+        session_id="reviewer-session",
+        roles=(Role.TECHNICAL_REVIEWER,),
+    )
+    _add_user_session(
+        connection,
+        user_id="qa-001",
+        session_id="qa-session",
+        roles=(Role.QA_APPROVER,),
+    )
+    _add_user_session(
+        connection,
+        user_id="release-001",
+        session_id="release-session",
+        roles=(Role.QA_APPROVER,),
+    )
     workbook = tmp_path / "sanitized-valprobe.xlsx"
     _write_workbook(
         workbook,
@@ -861,14 +879,14 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         app,
         "POST",
         "/calibration-jobs/job-001/technical-review-approvals",
-        headers={"X-Session-Id": "session-001"},
+        headers={"X-Session-Id": "reviewer-session"},
         json={"software_version": "app-0.1.0"},
     )
     qa_approval = _api_request(
         app,
         "POST",
         "/calibration-jobs/job-001/qa-release-approvals",
-        headers={"X-Session-Id": "session-001"},
+        headers={"X-Session-Id": "qa-session"},
         json={"software_version": "app-0.1.0"},
     )
 
@@ -886,7 +904,7 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         app,
         "POST",
         "/certificate-previews",
-        headers={"X-Session-Id": "session-001"},
+        headers={"X-Session-Id": "release-session"},
         json={
             "job_id": "job-001",
             "template_version": "template-2026-001",
@@ -904,7 +922,7 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         app,
         "POST",
         "/certificate-rendered-releases",
-        headers={"X-Session-Id": "session-001"},
+        headers={"X-Session-Id": "release-session"},
         json={
             "job_id": "job-001",
             "certificate_id": "cert-001",
@@ -929,12 +947,30 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         WorkflowState.RELEASED
     )
     assert SQLiteCertificateRecordRepository(connection).get("cert-001").released_by == (
-        "user-001"
+        "release-001"
     )
 
 
 def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path):
     connection = _connection_with_user_and_job(user_roles=(Role.ADMIN,))
+    _add_user_session(
+        connection,
+        user_id="reviewer-001",
+        session_id="reviewer-session",
+        roles=(Role.TECHNICAL_REVIEWER,),
+    )
+    _add_user_session(
+        connection,
+        user_id="qa-001",
+        session_id="qa-session",
+        roles=(Role.QA_APPROVER,),
+    )
+    _add_user_session(
+        connection,
+        user_id="release-001",
+        session_id="release-session",
+        roles=(Role.QA_APPROVER,),
+    )
     workbook = tmp_path / "sanitized-valprobe.xlsx"
     _write_workbook(
         workbook,
@@ -1115,16 +1151,16 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
         "job-001-window-002-summary",
     ]
 
-    for path_suffix in (
-        "technical-review-submissions",
-        "technical-review-approvals",
-        "qa-release-approvals",
+    for path_suffix, session_id in (
+        ("technical-review-submissions", "session-001"),
+        ("technical-review-approvals", "reviewer-session"),
+        ("qa-release-approvals", "qa-session"),
     ):
         response = _api_request(
             app,
             "POST",
             f"/calibration-jobs/job-001/{path_suffix}",
-            headers={"X-Session-Id": "session-001"},
+            headers={"X-Session-Id": session_id},
             json={"software_version": "app-0.1.0"},
         )
         assert response.status_code == 200
@@ -1133,7 +1169,7 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
         app,
         "POST",
         "/certificate-previews",
-        headers={"X-Session-Id": "session-001"},
+        headers={"X-Session-Id": "release-session"},
         json={
             "job_id": "job-001",
             "template_version": "template-2026-001",
@@ -1145,7 +1181,7 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
         app,
         "POST",
         "/certificate-rendered-releases",
-        headers={"X-Session-Id": "session-001"},
+        headers={"X-Session-Id": "release-session"},
         json={
             "job_id": "job-001",
             "certificate_id": "cert-multi-001",
@@ -1253,6 +1289,33 @@ def _connection_with_user(
     SQLiteUserAccountRepository(connection).add(_user(user_roles))
     SQLiteUserSessionRepository(connection).add(_session())
     return connection
+
+
+def _add_user_session(
+    connection: sqlite3.Connection,
+    *,
+    user_id: str,
+    session_id: str,
+    roles: tuple[Role, ...],
+) -> None:
+    SQLiteUserAccountRepository(connection).add(
+        UserAccount(
+            id=user_id,
+            display_name=f"{user_id} User",
+            email=f"{user_id}@example.com",
+            roles=roles,
+            active=True,
+            created_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+        )
+    )
+    SQLiteUserSessionRepository(connection).add(
+        UserSession(
+            id=session_id,
+            user_id=user_id,
+            issued_at=datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc),
+            expires_at=datetime(2026, 6, 1, 16, 0, tzinfo=timezone.utc),
+        )
+    )
 
 
 def _connection_with_user_and_job(

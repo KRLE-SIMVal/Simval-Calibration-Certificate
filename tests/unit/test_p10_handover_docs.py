@@ -33,9 +33,7 @@ def test_p10_production_readiness_checklist_contains_go_no_go_blockers():
     assert "POST /auth/entra/session" in checklist
     assert "user_session_created" in checklist
     assert "Missing Microsoft Entra ID Free live tenant/app registration" in checklist
-    assert "Missing reviewer independence control or approved deviation." in (
-        checklist
-    )
+    assert "Missing reviewer independence production verification evidence" in checklist
     assert "Missing human approval from System Owner and QA/Compliance Reviewer." in (
         checklist
     )
@@ -57,6 +55,7 @@ def test_p10_production_runtime_guide_contains_required_runtime_controls():
     assert "POST /auth/entra/session" in guide
     assert "user_session_created" in guide
     assert "Roles are not accepted from Entra token claims" in guide
+    assert "Same-user preparation/calculation" in guide
     assert "Pressure workflow code remains a future extension point" in guide
     assert "SIMVAL_ENABLED_DISCIPLINES" in guide
 
@@ -90,3 +89,15 @@ def test_p16_entra_implementation_log_records_auth_boundary_controls():
     assert "Entra token claims do not grant SIMVal roles" in log
     assert "user_session_created" in log
     assert "live tenant/app registration" in log
+
+
+def test_p17_reviewer_independence_log_records_backend_control():
+    log = (ROOT / "Docs" / "P17" / "P17_Implementation_Log.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "reviewer-independence backend enforcement" in log
+    assert "calibration-job audit evidence" in log
+    assert "Technical review approval is blocked" in log
+    assert "QA release approval is blocked" in log
+    assert "Certificate release is blocked" in log

@@ -123,6 +123,9 @@ After startup, verify:
 - `GET /app/workflow` lists the regulated workflow and user-administration
   maintenance endpoints.
 - `SIMVAL_ENABLED_DISCIPLINES` is set to `temperature` for production v1.
+- Same-user preparation/calculation, technical review approval, QA approval,
+  and certificate release are blocked by reviewer-independence audit-evidence
+  checks.
 
 Any failed readiness, access-review, backup, restore, or regression evidence is
 a deviation until reviewed and resolved.
@@ -160,4 +163,4 @@ verified:
 | Database | SQLite on controlled SIMVal storage with backup and restore evidence. |
 | Artifacts | Controlled local artifact directory backed up with the database. |
 | Validation | Repository test suite, GitHub Actions within free included usage, and retained validation package evidence. |
-| Reviewer independence | Required before go-live; local/bootstrap sessions are not production approval evidence. |
+| Reviewer independence | Backend audit-evidence checks block same-user preparation/calculation, review approval, QA approval, and release conflicts; production verification evidence is still required before go-live. |

@@ -43,4 +43,4 @@ actions.
 |---|---|
 | Live SIMVal Entra tenant/app registration has not been verified in this workspace. | Perform a go-live authentication test with the approved app registration, verify `POST /auth/entra/session`, then verify `GET /me` using the returned local session id. |
 | Local SIMVal users are matched by email. | Include email matching in access review; if Entra UPN/email changes, update/deactivate the local SIMVal user before routine use. |
-| Reviewer independence is still a production blocker. | Implement same-user release/review blocking or document an approved deviation before go-live. |
+| Reviewer independence now has backend enforcement but still needs production evidence. | Run a go-live workflow verification with independent users and retain the validation evidence before routine use. |

@@ -15,6 +15,11 @@ from app.backend.persistence.sqlite import (
     SQLiteCalibrationJobRepository,
 )
 from app.backend.services.authentication import resolve_actor_for_action
+from app.backend.services.reviewer_independence import (
+    ReviewerIndependenceError,
+    ReviewerIndependenceStage,
+    assert_reviewer_independence,
+)
 from app.backend.services.workflow import (
     WorkflowServiceError,
     transition_calibration_job,
@@ -115,6 +120,12 @@ def _review_transition_for_session(
     _require_text(job_id, "Job id")
     _require_text(software_version, "Software version")
     _require_timezone_aware(timestamp, "Review transition timestamp")
+    _assert_independent_review_actor(
+        connection=connection,
+        job_id=job_id,
+        user_id=actor.user_id,
+        action=action,
+    )
 
     with connection:
         job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
@@ -152,6 +163,30 @@ def _review_transition_for_session(
 def _require_text(value: str, field_name: str) -> None:
     if value.strip() == "":
         raise ReviewWorkflowServiceError(f"{field_name} is required.")
+
+
+def _assert_independent_review_actor(
+    *,
+    connection: sqlite3.Connection,
+    job_id: str,
+    user_id: str,
+    action: Action,
+) -> None:
+    if action is Action.APPROVE_TECHNICAL_REVIEW:
+        stage = ReviewerIndependenceStage.TECHNICAL_REVIEW_APPROVAL
+    elif action is Action.APPROVE_QA_RELEASE:
+        stage = ReviewerIndependenceStage.QA_RELEASE_APPROVAL
+    else:
+        return
+    try:
+        assert_reviewer_independence(
+            connection=connection,
+            job_id=job_id,
+            user_id=user_id,
+            stage=stage,
+        )
+    except ReviewerIndependenceError as exc:
+        raise ReviewWorkflowServiceError(str(exc)) from exc
 
 
 def _require_timezone_aware(value: datetime, field_name: str) -> None:

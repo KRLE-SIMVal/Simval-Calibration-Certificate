@@ -66,6 +66,11 @@ from app.backend.services.certificate_numbers import (
     CertificateNumberServiceError,
     allocate_certificate_number_in_transaction,
 )
+from app.backend.services.reviewer_independence import (
+    ReviewerIndependenceError,
+    ReviewerIndependenceStage,
+    assert_reviewer_independence,
+)
 from app.backend.services.workflow import transition_calibration_job
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
@@ -491,6 +496,11 @@ def render_and_release_certificate_pdf_for_session(
         action=Action.RELEASE_CERTIFICATE,
         timestamp=timestamp,
     )
+    _assert_independent_release_actor(
+        connection=connection,
+        job_id=job_id,
+        user_id=actor.user_id,
+    )
     preview = _preview_for_release_rendering(
         connection=connection,
         job_id=job_id,
@@ -564,6 +574,11 @@ def render_and_release_certificate_pdf_with_allocated_number_for_session(
         session_id=session_id,
         action=Action.RELEASE_CERTIFICATE,
         timestamp=timestamp,
+    )
+    _assert_independent_release_actor(
+        connection=connection,
+        job_id=job_id,
+        user_id=actor.user_id,
     )
     preview = _preview_for_release_rendering(
         connection=connection,
@@ -661,6 +676,11 @@ def release_certificate_for_session(
         session_id=session_id,
         action=Action.RELEASE_CERTIFICATE,
         timestamp=timestamp,
+    )
+    _assert_independent_release_actor(
+        connection=connection,
+        job_id=job_id,
+        user_id=actor.user_id,
     )
     return release_certificate(
         connection=connection,
@@ -826,6 +846,23 @@ def release_certificate(
         )
 
 
+def _assert_independent_release_actor(
+    *,
+    connection: sqlite3.Connection,
+    job_id: str,
+    user_id: str,
+) -> None:
+    try:
+        assert_reviewer_independence(
+            connection=connection,
+            job_id=job_id,
+            user_id=user_id,
+            stage=ReviewerIndependenceStage.CERTIFICATE_RELEASE,
+        )
+    except ReviewerIndependenceError as exc:
+        raise CertificateReleaseServiceError(str(exc)) from exc
+
+
 def _release_certificate_in_transaction(
     *,
     connection: sqlite3.Connection,
@@ -858,6 +895,11 @@ def _release_certificate_in_transaction(
     )
     if not isinstance(artifact_type, ArtifactType):
         raise CertificateReleaseServiceError("Artifact type is invalid.")
+    _assert_independent_release_actor(
+        connection=connection,
+        job_id=job_id,
+        user_id=released_by,
+    )
 
     job_repository = SQLiteCalibrationJobRepository(connection, autocommit=False)
     metadata_repository = SQLiteCertificateMetadataRepository(

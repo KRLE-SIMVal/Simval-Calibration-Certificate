@@ -44,6 +44,9 @@ operating the application without an in-house developer.
   local SIMVal sessions for existing active local users.
 - Added Entra runtime settings for tenant id, client id, audience, and local
   session duration.
+- Added reviewer-independence enforcement for technical review approval, QA
+  release approval, and certificate release using retained calibration-job audit
+  evidence.
 
 ## Scope Not Implemented
 
@@ -70,6 +73,10 @@ operating the application without an in-house developer.
   boundary.
 - Entra token claims do not grant application roles. Local SIMVal user accounts
   remain the controlled role source and must match the Entra account email.
+- Reviewer independence is enforced from backend audit evidence, not UI-only
+  controls. The same user cannot perform preparation/calculation and later
+  approve review, QA release, or release the certificate when conflicting audit
+  evidence exists.
 - Production v1 is temperature-only. Pressure calculation infrastructure exists
   for a later phase but is disabled by `SIMVAL_ENABLED_DISCIPLINES=temperature`.
 
@@ -96,4 +103,5 @@ operating the application without an in-house developer.
 | First-user bootstrap can create a powerful admin account. | Keep bootstrap limited to empty databases, retain audit evidence, and replace temporary local sessions with the approved production authentication model before go-live. |
 | Live Entra tenant/app registration is not yet verified against the local host. | Complete a go-live test where `POST /auth/entra/session` exchanges a real Entra token and `GET /me` confirms the issued local session. |
 | User-management API is session-header based after Entra token exchange. | Keep these endpoints admin-only and audit-backed; use the Entra-issued local session id for production requests. |
+| Reviewer independence implementation still needs production evidence. | Run a go-live workflow test with independent operator, technical reviewer, QA approver, and release actor accounts; retain validation evidence. |
 | Runtime guide still cannot provide site-specific TLS, monitoring, retention, or PDF signature evidence. | Keep those as go/no-go blockers and add deployment-specific evidence before production use. |

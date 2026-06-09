@@ -58,6 +58,8 @@ Approved v1 production decisions:
   free/open-source runtime components.
 - Database and certificate artifacts use controlled SQLite/local storage with
   backup and restore evidence.
+- Reviewer independence is enforced by backend audit-evidence checks for
+  review, QA approval, and certificate-release conflicts.
 
 Use these controlled documents before routine production use:
 
@@ -69,5 +71,5 @@ Use these controlled documents before routine production use:
 
 Production use remains blocked until live Entra tenant/app registration
 verification, TLS/host evidence, retention, backup storage,
-reviewer-independence control, and final human QA/laboratory approval are
-complete.
+reviewer-independence production evidence, and final human QA/laboratory
+approval are complete.

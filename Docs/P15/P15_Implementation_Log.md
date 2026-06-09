@@ -29,6 +29,9 @@ pressure extension point for a later approved phase.
   `/auth/entra/session` support in the follow-on production-auth slice.
 - Entra-backed local sessions are issued only for existing active local users
   and are recorded with `user_session_created` audit evidence.
+- Reviewer-independence enforcement was added in the follow-on
+  production-control slice for review approval, QA approval, and certificate
+  release conflicts.
 - Updated `deployment/production.env.example` with the approved free-service
   production choices.
 - Updated P10 runtime/readiness docs and README with the approved decisions.
@@ -59,5 +62,5 @@ pressure extension point for a later approved phase.
 | Risk | Recommended solution |
 |---|---|
 | Microsoft Entra ID Free integration is implemented but not live-tenant verified. | Verify `POST /auth/entra/session` with the approved SIMVal tenant/app registration before go-live; keep local session auth as setup/development only. |
-| Reviewer independence is approved but not technically enforced yet. | Add reviewer-independence checks before production release validation. |
+| Reviewer independence is technically enforced but still needs production evidence. | Run and retain a go-live workflow verification with independent operator, technical reviewer, QA approver, and release actor accounts. |
 | Free internal hosting still needs site-specific TLS, monitoring, backup, and restore evidence. | Collect deployment-specific evidence using the P10 readiness checklist before go-live. |
