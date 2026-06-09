@@ -780,6 +780,7 @@ def create_app(
     clock: Callable[[], datetime] | None = None,
     artifact_directory: Path | None = None,
     id_factory: Callable[[], str] | None = None,
+    enabled_disciplines: frozenset[Discipline] | None = None,
 ) -> FastAPI:
     """Create the backend API with an injected connection or connection scope."""
     if connection is None and connection_provider is None:
@@ -794,6 +795,7 @@ def create_app(
     app = FastAPI(title="SIMVal Calibration Certificate API")
     clock_fn = clock or _utc_now
     id_factory_fn = id_factory or _uuid_id
+    enabled_discipline_set = enabled_disciplines or frozenset({Discipline.TEMPERATURE})
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def browser_app() -> HTMLResponse:
@@ -1191,6 +1193,14 @@ def create_app(
         request: CalibrationJobRequest,
         x_session_id: str = Header(alias="X-Session-Id"),
     ) -> CalibrationJobResponse:
+        if request.discipline not in enabled_discipline_set:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Discipline {request.discipline.value!r} is not enabled "
+                    "for this deployment."
+                ),
+            )
         try:
             with connection_scope() as scoped_connection:
                 result = create_calibration_job_for_session(
@@ -2003,6 +2013,7 @@ def create_app_from_settings(
         connection_provider=lambda: sqlite_connection_scope(settings.database_path),
         clock=clock,
         artifact_directory=settings.artifact_storage_path,
+        enabled_disciplines=settings.enabled_disciplines,
     )
 
 

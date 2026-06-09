@@ -29,7 +29,13 @@ def test_p10_production_readiness_checklist_contains_go_no_go_blockers():
     assert "GET /readiness" in checklist
     assert "SQLite backup evidence" in checklist
     assert "Restore to a separate target path succeeds" in checklist
-    assert "Missing production authentication decision." in checklist
+    assert "SIMVAL_ENABLED_DISCIPLINES=temperature" in checklist
+    assert "Microsoft Entra ID Free production authentication verification" in (
+        checklist
+    )
+    assert "Missing reviewer independence control or approved deviation." in (
+        checklist
+    )
     assert "Missing human approval from System Owner and QA/Compliance Reviewer." in (
         checklist
     )
@@ -47,7 +53,9 @@ def test_p10_production_runtime_guide_contains_required_runtime_controls():
     assert "GET /readiness" in guide
     assert "GET /users" in guide
     assert "Do not commit production paths, credentials, tokens" in guide
-    assert "Production authentication provider" in guide
+    assert "Microsoft Entra ID Free" in guide
+    assert "Pressure workflow code remains a future extension point" in guide
+    assert "SIMVAL_ENABLED_DISCIPLINES" in guide
 
 
 def test_production_environment_example_contains_only_runtime_path_placeholders():
@@ -57,5 +65,9 @@ def test_production_environment_example_contains_only_runtime_path_placeholders(
 
     assert "SIMVAL_DATABASE_PATH=" in env_example
     assert "SIMVAL_ARTIFACT_STORAGE_PATH=" in env_example
+    assert "SIMVAL_ENABLED_DISCIPLINES=temperature" in env_example
+    assert "SIMVAL_AUTH_PROVIDER=entra_id_free" in env_example
+    assert "SIMVAL_HOSTING_MODEL=simval_internal_host" in env_example
+    assert "SIMVAL_REVIEWER_INDEPENDENCE_REQUIRED=true" in env_example
     assert "password" not in env_example.lower()
     assert "token" not in env_example.lower()

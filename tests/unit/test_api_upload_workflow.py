@@ -11,6 +11,7 @@ from app.backend.api.app import create_app
 from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
+from app.backend.domain.entities import Discipline
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
@@ -54,6 +55,52 @@ def test_api_create_calibration_job_records_job_and_audit_event():
         "job-001",
     )
     assert events[0].action is AuditAction.JOB_CREATED
+
+
+def test_api_create_calibration_job_rejects_disabled_pressure_discipline():
+    connection = _connection_with_user()
+    payload = _job_payload()
+    payload["discipline"] = "pressure"
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/calibration-jobs",
+        headers={"X-Session-Id": "session-001"},
+        json=payload,
+    )
+
+    assert response.status_code == 409
+    assert "not enabled" in response.json()["detail"]
+    row = connection.execute("SELECT count(*) AS count FROM calibration_jobs").fetchone()
+    assert row["count"] == 0
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    ) == ()
+
+
+def test_api_create_calibration_job_allows_pressure_when_enabled():
+    connection = _connection_with_user()
+    payload = _job_payload()
+    payload["discipline"] = "pressure"
+
+    response = _api_request(
+        create_app(
+            connection=connection,
+            clock=_fixed_now,
+            enabled_disciplines=frozenset({Discipline.TEMPERATURE, Discipline.PRESSURE}),
+        ),
+        "POST",
+        "/calibration-jobs",
+        headers={"X-Session-Id": "session-001"},
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").discipline is (
+        Discipline.PRESSURE
+    )
 
 
 def test_api_upload_calibration_xlsx_stores_raw_file_and_parser_evidence(tmp_path):

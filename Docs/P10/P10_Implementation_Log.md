@@ -33,11 +33,17 @@ operating the application without an in-house developer.
 - Added `deployment/production.env.example` with runtime path placeholders only.
 - Expanded `README.md` from placeholder text to local runtime, verification, and
   production-readiness entry points.
+- Recorded approved free-service production decisions: temperature-only v1,
+  Microsoft Entra ID Free authentication boundary, existing SIMVal-controlled
+  internal hosting, SQLite/artifact storage on controlled SIMVal storage, and
+  free validation tooling.
+- Added `SIMVAL_ENABLED_DISCIPLINES=temperature` to the production environment
+  example so pressure remains a later add-on rather than a production v1 path.
 
 ## Scope Not Implemented
 
-- Production hosting, TLS, and authentication provider configuration are not
-  implemented in this repository.
+- Microsoft Entra ID Free authentication integration and deployment-specific
+  TLS/host verification evidence are not implemented in this repository yet.
 - Final SIMVal retention periods and backup storage location are not yet
   approved.
 - PDF/A and digital-signature policy decisions remain pending.
@@ -54,7 +60,9 @@ operating the application without an in-house developer.
   certificate-template change requires matching automated tests before or with
   implementation.
 - First-user bootstrap is a one-time access setup control. It does not replace
-  the pending production authentication provider decision.
+  the approved Microsoft Entra ID Free production authentication boundary.
+- Production v1 is temperature-only. Pressure calculation infrastructure exists
+  for a later phase but is disabled by `SIMVAL_ENABLED_DISCIPLINES=temperature`.
 
 ## Verification
 
@@ -74,8 +82,8 @@ operating the application without an in-house developer.
 | Risk | Recommended solution |
 |---|---|
 | No in-house developer will be available after release. | Use the SOP to require small Codex-assisted changes, human approval, focused tests, full regression, validation package evidence, and CI review before use. |
-| Production authentication and hosting are not fixed yet. | Select the hosting/authentication model before production go-live and add deployment-specific verification evidence. |
+| Production authentication and hosting are selected but not integrated or verified yet. | Implement and verify Microsoft Entra ID Free on the existing SIMVal-controlled host before production go-live. |
 | Operational controls can drift after release. | Keep P10 docs under version control and retain quarterly regression, backup, restore, and readiness evidence. |
 | First-user bootstrap can create a powerful admin account. | Keep bootstrap limited to empty databases, retain audit evidence, and replace temporary local sessions with the approved production authentication model before go-live. |
-| User-management API is session-header based until production authentication is selected. | Keep these endpoints admin-only and audit-backed now; retest them with the approved production identity provider before go-live. |
-| Runtime guide cannot choose hosting, TLS, SSO, retention, or PDF signature policy for SIMVal. | Keep those as explicit go/no-go blockers and add deployment-specific evidence after SIMVal approves each decision. |
+| User-management API is session-header based until Entra ID Free integration is implemented. | Keep these endpoints admin-only and audit-backed now; retest them with Entra ID Free before go-live. |
+| Runtime guide still cannot provide site-specific TLS, monitoring, retention, or PDF signature evidence. | Keep those as go/no-go blockers and add deployment-specific evidence before production use. |

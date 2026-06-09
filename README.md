@@ -47,6 +47,17 @@ approval plus `SIMVAL_RUN_CONTROLLED_FIXTURE_TESTS=1`.
 
 ## Production Readiness
 
+Approved v1 production decisions:
+
+- Scope is temperature certificates only; pressure remains disabled until a
+  later approved phase.
+- Authentication boundary is Microsoft Entra ID Free / existing SIMVal
+  Microsoft work accounts.
+- Hosting is an existing SIMVal-controlled internal PC/server/VM using only
+  free/open-source runtime components.
+- Database and certificate artifacts use controlled SQLite/local storage with
+  backup and restore evidence.
+
 Use these controlled documents before routine production use:
 
 - `Docs/P10/Production_Runtime_Guide.md`
@@ -55,5 +66,6 @@ Use these controlled documents before routine production use:
 - `Docs/P0/Test_Strategy.md`
 - `Docs/P0/Validation_And_Regression_Plan.md`
 
-Production use remains blocked until hosting/TLS, production authentication,
-retention, backup storage, and final human QA/laboratory approval are complete.
+Production use remains blocked until Entra ID Free integration verification,
+TLS/host evidence, retention, backup storage, reviewer-independence control, and
+final human QA/laboratory approval are complete.
