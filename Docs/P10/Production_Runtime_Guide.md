@@ -130,6 +130,28 @@ After startup, verify:
 Any failed readiness, access-review, backup, restore, or regression evidence is
 a deviation until reviewed and resolved.
 
+## Production Readiness Report
+
+Before go-live review, generate a JSON readiness report from the approved
+runtime environment:
+
+```powershell
+python scripts\validation\generate_production_readiness_report.py `
+  --software-version <approved release version> `
+  --live-entra-verified `
+  --tls-host-verified `
+  --backup-restore-verified `
+  --reviewer-independence-verified `
+  --retention-policy-approved `
+  --final-human-approval-recorded `
+  --evidence validation_package=Docs\Validation\evidence\latest\validation-package `
+  --output C:\SIMVal\evidence\production-readiness.json
+```
+
+The command returns exit code `2` while blockers remain and exit code `0` only
+when the report is ready for go-live review. It does not replace human System
+Owner and QA/Laboratory approval.
+
 ## Operational Schedule
 
 - Run the full automated regression suite before release and after changes.

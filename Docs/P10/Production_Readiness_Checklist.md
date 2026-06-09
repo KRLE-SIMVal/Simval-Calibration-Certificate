@@ -48,6 +48,7 @@ Use this checklist before routine production use.
 | Quarterly regression | Schedule exists for Jan 1, Apr 1, Jul 1, and Oct 1. | Pending |
 | Deviation evidence | Failed scheduled run produces deviation evidence. | Pending |
 | Retention | Backup, certificate, raw file, and validation evidence retention approved. | Pending |
+| Readiness report | `generate_production_readiness_report.py` retained with no blockers before go-live approval. | Pending |
 
 ## Security And Access
 
@@ -71,6 +72,7 @@ Production use is blocked if any of the following are unresolved:
 - Missing validation package review for release-significant changes.
 - Failed backup or restore drill.
 - Failed `/readiness` check.
+- Production readiness report contains blockers.
 - Missing Microsoft Entra ID Free live tenant/app registration, token exchange,
   or user lifecycle verification.
 - Production scope not restricted to temperature certificates.

@@ -47,6 +47,8 @@ operating the application without an in-house developer.
 - Added reviewer-independence enforcement for technical review approval, QA
   release approval, and certificate release using retained calibration-job audit
   evidence.
+- Added a production-readiness evidence report command:
+  `scripts/validation/generate_production_readiness_report.py`.
 
 ## Scope Not Implemented
 
@@ -104,4 +106,5 @@ operating the application without an in-house developer.
 | Live Entra tenant/app registration is not yet verified against the local host. | Complete a go-live test where `POST /auth/entra/session` exchanges a real Entra token and `GET /me` confirms the issued local session. |
 | User-management API is session-header based after Entra token exchange. | Keep these endpoints admin-only and audit-backed; use the Entra-issued local session id for production requests. |
 | Reviewer independence implementation still needs production evidence. | Run a go-live workflow test with independent operator, technical reviewer, QA approver, and release actor accounts; retain validation evidence. |
+| Production readiness can be misread as approval. | Treat the generated readiness report as go/no-go evidence only; final System Owner and QA/Laboratory approval is still mandatory. |
 | Runtime guide still cannot provide site-specific TLS, monitoring, retention, or PDF signature evidence. | Keep those as go/no-go blockers and add deployment-specific evidence before production use. |

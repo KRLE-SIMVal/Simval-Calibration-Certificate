@@ -29,6 +29,8 @@ def test_p10_production_readiness_checklist_contains_go_no_go_blockers():
     assert "GET /readiness" in checklist
     assert "SQLite backup evidence" in checklist
     assert "Restore to a separate target path succeeds" in checklist
+    assert "generate_production_readiness_report.py" in checklist
+    assert "Production readiness report contains blockers." in checklist
     assert "SIMVAL_ENABLED_DISCIPLINES=temperature" in checklist
     assert "POST /auth/entra/session" in checklist
     assert "user_session_created" in checklist
@@ -56,6 +58,8 @@ def test_p10_production_runtime_guide_contains_required_runtime_controls():
     assert "user_session_created" in guide
     assert "Roles are not accepted from Entra token claims" in guide
     assert "Same-user preparation/calculation" in guide
+    assert "generate_production_readiness_report.py" in guide
+    assert "exit code `2` while blockers remain" in guide
     assert "Pressure workflow code remains a future extension point" in guide
     assert "SIMVAL_ENABLED_DISCIPLINES" in guide
 
@@ -101,3 +105,14 @@ def test_p17_reviewer_independence_log_records_backend_control():
     assert "Technical review approval is blocked" in log
     assert "QA release approval is blocked" in log
     assert "Certificate release is blocked" in log
+
+
+def test_p18_production_readiness_log_records_go_live_report():
+    log = (ROOT / "Docs" / "P18" / "P18_Implementation_Log.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "production-readiness evidence reporting" in log
+    assert "generate_production_readiness_report.py" in log
+    assert "exit code `2` while blockers remain" in log
+    assert "temperature-only" in log
