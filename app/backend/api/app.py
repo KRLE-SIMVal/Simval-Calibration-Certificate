@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import sqlite3
@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.backend.api.database import sqlite_connection_scope
-from app.backend.api.settings import ApiSettings
+from app.backend.api.settings import AuthProvider, ApiSettings
+from app.backend.auth.entra import EntraTokenVerifier, PyJwtEntraTokenVerifier
 from app.backend.auth.permissions import Action, Role
 from app.backend.auth.users import UserAccount, UserIdentityError
 from app.backend.certificates.storage import CertificateArtifactStorageError
@@ -76,6 +77,11 @@ from app.backend.services.data_entry import (
     DataEntryServiceError,
     TemperatureDataEntryPreparation,
     prepare_temperature_data_entry_for_session,
+)
+from app.backend.services.entra_authentication import (
+    EntraAuthenticationServiceError,
+    EntraSessionIssuance,
+    issue_entra_session,
 )
 from app.backend.services.jobs import (
     CalibrationJobCreation,
@@ -148,6 +154,22 @@ class ActorResponse(BaseModel):
     user_id: str
     display_name: str
     roles: tuple[str, ...]
+
+
+class EntraSessionRequest(BaseModel):
+    software_version: str
+
+
+class EntraSessionResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    session_id: str
+    user_id: str
+    display_name: str
+    roles: tuple[str, ...]
+    issued_at: str
+    expires_at: str
+    audit_event_id: int
 
 
 class UserAccountCreateRequest(BaseModel):
@@ -781,6 +803,8 @@ def create_app(
     artifact_directory: Path | None = None,
     id_factory: Callable[[], str] | None = None,
     enabled_disciplines: frozenset[Discipline] | None = None,
+    entra_token_verifier: EntraTokenVerifier | None = None,
+    entra_session_duration: timedelta = timedelta(hours=8),
 ) -> FastAPI:
     """Create the backend API with an injected connection or connection scope."""
     if connection is None and connection_provider is None:
@@ -830,6 +854,41 @@ def create_app(
             status_code=200 if result.ready else 503,
             content=result.to_payload(),
         )
+
+    @app.post(
+        "/auth/entra/session",
+        response_model=EntraSessionResponse,
+        responses={
+            401: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def create_entra_session(
+        request: EntraSessionRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> EntraSessionResponse:
+        if entra_token_verifier is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Microsoft Entra ID Free authentication is not configured.",
+            )
+        try:
+            bearer_token = _bearer_token_from_authorization_header(authorization)
+            with connection_scope() as scoped_connection:
+                result = issue_entra_session(
+                    connection=scoped_connection,
+                    bearer_token=bearer_token,
+                    token_verifier=entra_token_verifier,
+                    session_id=id_factory_fn(),
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                    max_session_duration=entra_session_duration,
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (EntraAuthenticationServiceError, PersistenceError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _entra_session_response(result)
 
     @app.get(
         "/users",
@@ -2009,11 +2068,18 @@ def create_app_from_settings(
     clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     """Create the backend API from runtime settings."""
+    entra_token_verifier: EntraTokenVerifier | None = None
+    if settings.auth_provider is AuthProvider.ENTRA_ID_FREE:
+        if settings.entra_id is None:
+            raise ValueError("Entra ID Free settings are required.")
+        entra_token_verifier = PyJwtEntraTokenVerifier(settings.entra_id)
     return create_app(
         connection_provider=lambda: sqlite_connection_scope(settings.database_path),
         clock=clock,
         artifact_directory=settings.artifact_storage_path,
         enabled_disciplines=settings.enabled_disciplines,
+        entra_token_verifier=entra_token_verifier,
+        entra_session_duration=settings.entra_session_duration,
     )
 
 
@@ -2041,6 +2107,20 @@ def _user_account_management_response(
         active=user.active,
         signature_label=user.signature_label,
         created_at=user.created_at.isoformat(),
+        audit_event_id=result.audit_event_id,
+    )
+
+
+def _entra_session_response(result: EntraSessionIssuance) -> EntraSessionResponse:
+    user = result.user
+    session = result.session
+    return EntraSessionResponse(
+        session_id=session.id,
+        user_id=user.id,
+        display_name=user.display_name,
+        roles=tuple(role.value for role in user.roles),
+        issued_at=session.issued_at.isoformat(),
+        expires_at=session.expires_at.isoformat(),
         audit_event_id=result.audit_event_id,
     )
 
@@ -2566,6 +2646,18 @@ def _artifact_media_type(artifact_type: ArtifactType) -> str:
 
 def _decimal_to_text(value: Decimal) -> str:
     return format(value, "f")
+
+
+def _bearer_token_from_authorization_header(authorization: str | None) -> str:
+    if authorization is None or authorization.strip() == "":
+        raise AuthenticationFailureError("Authorization bearer token is required.")
+    prefix = "Bearer "
+    if not authorization.startswith(prefix):
+        raise AuthenticationFailureError("Authorization header must use Bearer scheme.")
+    token = authorization[len(prefix) :].strip()
+    if token == "":
+        raise AuthenticationFailureError("Authorization bearer token is required.")
+    return token
 
 
 @contextmanager

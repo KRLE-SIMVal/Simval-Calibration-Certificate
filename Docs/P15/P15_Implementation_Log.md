@@ -25,6 +25,10 @@ pressure extension point for a later approved phase.
 - Default enabled discipline is `temperature`.
 - Added API job-creation enforcement so disabled disciplines are rejected before
   calibration job or audit evidence is created.
+- Added Microsoft Entra ID Free token-exchange configuration and
+  `/auth/entra/session` support in the follow-on production-auth slice.
+- Entra-backed local sessions are issued only for existing active local users
+  and are recorded with `user_session_created` audit evidence.
 - Updated `deployment/production.env.example` with the approved free-service
   production choices.
 - Updated P10 runtime/readiness docs and README with the approved decisions.
@@ -45,11 +49,15 @@ pressure extension point for a later approved phase.
 - Focused API settings, API upload workflow, and P10 documentation suite:
   27 passed on Python 3.12.10.
 - Full repository regression suite: 438 passed, 2 skipped on Python 3.12.10.
+- Follow-on Entra/API/documentation focused suite:
+  70 passed on Python 3.12.10.
+- Follow-on full repository regression suite:
+  456 passed, 2 skipped on Python 3.12.10.
 
 ## Remaining Risks And Recommended Solutions
 
 | Risk | Recommended solution |
 |---|---|
-| Microsoft Entra ID Free integration is selected but not implemented yet. | Implement and verify Entra ID Free authentication before go-live; keep local session auth as setup/development only. |
+| Microsoft Entra ID Free integration is implemented but not live-tenant verified. | Verify `POST /auth/entra/session` with the approved SIMVal tenant/app registration before go-live; keep local session auth as setup/development only. |
 | Reviewer independence is approved but not technically enforced yet. | Add reviewer-independence checks before production release validation. |
 | Free internal hosting still needs site-specific TLS, monitoring, backup, and restore evidence. | Collect deployment-specific evidence using the P10 readiness checklist before go-live. |

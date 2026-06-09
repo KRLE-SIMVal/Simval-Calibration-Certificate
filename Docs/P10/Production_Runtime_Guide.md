@@ -36,6 +36,10 @@ $env:SIMVAL_DATABASE_PATH = "C:\SIMVal\data\simval.sqlite3"
 $env:SIMVAL_ARTIFACT_STORAGE_PATH = "C:\SIMVal\artifacts"
 $env:SIMVAL_ENABLED_DISCIPLINES = "temperature"
 $env:SIMVAL_AUTH_PROVIDER = "entra_id_free"
+$env:SIMVAL_ENTRA_TENANT_ID = "<SIMVal Entra tenant id>"
+$env:SIMVAL_ENTRA_CLIENT_ID = "<SIMVal app registration client id>"
+$env:SIMVAL_ENTRA_AUDIENCE = "<SIMVal accepted token audience>"
+$env:SIMVAL_ENTRA_LOCAL_SESSION_HOURS = "8"
 $env:SIMVAL_HOSTING_MODEL = "simval_internal_host"
 $env:SIMVAL_REVIEWER_INDEPENDENCE_REQUIRED = "true"
 ```
@@ -67,6 +71,34 @@ For production, temporary local sessions must be replaced by the approved
 Microsoft Entra ID Free authentication boundary before routine use. The local
 bootstrap remains only for controlled setup and recovery on an empty database.
 
+## Microsoft Entra ID Free Authentication
+
+Production sign-in uses Microsoft Entra ID Free as the external identity
+boundary. The API exposes `POST /auth/entra/session` for exchanging a verified
+Entra bearer token for a short local SIMVal session.
+
+The exchange validates the Entra token signature through the tenant JWKS,
+issuer, audience, tenant id, v2.0 token version, expiry, and required identity
+claims. The local SIMVal user account is then matched by email address against
+an existing active user account. Roles are not accepted from Entra token claims;
+application roles remain controlled in the local SIMVal user table and audit
+trail.
+
+The issued local session is audited as a `user_session_created` event and its
+expiry is no later than the Entra token expiry or
+`SIMVAL_ENTRA_LOCAL_SESSION_HOURS`, whichever is earlier.
+
+Before routine production use, verify that:
+
+- `SIMVAL_AUTH_PROVIDER=entra_id_free`.
+- `SIMVAL_ENTRA_TENANT_ID`, `SIMVAL_ENTRA_CLIENT_ID`, and
+  `SIMVAL_ENTRA_AUDIENCE` match the approved SIMVal app registration.
+- At least one controlled local user has an active account whose email matches
+  the Entra `preferred_username`, `email`, or `upn` claim.
+- `POST /auth/entra/session` succeeds with an approved SIMVal account and the
+  returned `X-Session-Id` works with `GET /me`.
+- The session issuance audit event is retained.
+
 ## Start Command
 
 Start the API behind the approved host boundary:
@@ -86,6 +118,8 @@ After startup, verify:
 - `GET /readiness` returns HTTP 200 with database and artifact storage `ok`.
 - `GET /users` with an admin session returns the active user list for access
   review.
+- `POST /auth/entra/session` can issue a local audited session from a verified
+  Entra token for an active local user.
 - `GET /app/workflow` lists the regulated workflow and user-administration
   maintenance endpoints.
 - `SIMVAL_ENABLED_DISCIPLINES` is set to `temperature` for production v1.
@@ -104,10 +138,11 @@ a deviation until reviewed and resolved.
 
 ## Open Production Decisions
 
-Routine production use remains blocked until these decisions are approved and
+Routine production use remains blocked until these items are approved and
 verified:
 
-- Microsoft Entra ID Free application/user lifecycle verification evidence.
+- Microsoft Entra ID Free live tenant/app registration and user lifecycle
+  verification evidence.
 - TLS/hosting boundary and host monitoring on the existing SIMVal-controlled
   internal host.
 - Backup retention period, off-machine storage, and restore drill schedule.

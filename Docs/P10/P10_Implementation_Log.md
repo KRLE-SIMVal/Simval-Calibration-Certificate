@@ -39,11 +39,17 @@ operating the application without an in-house developer.
   free validation tooling.
 - Added `SIMVAL_ENABLED_DISCIPLINES=temperature` to the production environment
   example so pressure remains a later add-on rather than a production v1 path.
+- Added Microsoft Entra ID Free token exchange support through
+  `POST /auth/entra/session`; verified Entra bearer tokens issue short audited
+  local SIMVal sessions for existing active local users.
+- Added Entra runtime settings for tenant id, client id, audience, and local
+  session duration.
 
 ## Scope Not Implemented
 
-- Microsoft Entra ID Free authentication integration and deployment-specific
-  TLS/host verification evidence are not implemented in this repository yet.
+- Live Microsoft Entra tenant/app registration verification and
+  deployment-specific TLS/host verification evidence are not implemented in this
+  repository yet.
 - Final SIMVal retention periods and backup storage location are not yet
   approved.
 - PDF/A and digital-signature policy decisions remain pending.
@@ -59,8 +65,11 @@ operating the application without an in-house developer.
 - Any future calculation, uncertainty, rounding, CMC, workflow, RBAC, audit, or
   certificate-template change requires matching automated tests before or with
   implementation.
-- First-user bootstrap is a one-time access setup control. It does not replace
-  the approved Microsoft Entra ID Free production authentication boundary.
+- First-user bootstrap is a one-time access setup control. Routine production
+  authentication uses the approved Microsoft Entra ID Free token exchange
+  boundary.
+- Entra token claims do not grant application roles. Local SIMVal user accounts
+  remain the controlled role source and must match the Entra account email.
 - Production v1 is temperature-only. Pressure calculation infrastructure exists
   for a later phase but is disabled by `SIMVAL_ENABLED_DISCIPLINES=temperature`.
 
@@ -82,8 +91,9 @@ operating the application without an in-house developer.
 | Risk | Recommended solution |
 |---|---|
 | No in-house developer will be available after release. | Use the SOP to require small Codex-assisted changes, human approval, focused tests, full regression, validation package evidence, and CI review before use. |
-| Production authentication and hosting are selected but not integrated or verified yet. | Implement and verify Microsoft Entra ID Free on the existing SIMVal-controlled host before production go-live. |
+| Production authentication is implemented but not verified against the live SIMVal Entra tenant and host. | Verify Microsoft Entra ID Free on the existing SIMVal-controlled host before production go-live. |
 | Operational controls can drift after release. | Keep P10 docs under version control and retain quarterly regression, backup, restore, and readiness evidence. |
 | First-user bootstrap can create a powerful admin account. | Keep bootstrap limited to empty databases, retain audit evidence, and replace temporary local sessions with the approved production authentication model before go-live. |
-| User-management API is session-header based until Entra ID Free integration is implemented. | Keep these endpoints admin-only and audit-backed now; retest them with Entra ID Free before go-live. |
+| Live Entra tenant/app registration is not yet verified against the local host. | Complete a go-live test where `POST /auth/entra/session` exchanges a real Entra token and `GET /me` confirms the issued local session. |
+| User-management API is session-header based after Entra token exchange. | Keep these endpoints admin-only and audit-backed; use the Entra-issued local session id for production requests. |
 | Runtime guide still cannot provide site-specific TLS, monitoring, retention, or PDF signature evidence. | Keep those as go/no-go blockers and add deployment-specific evidence before production use. |

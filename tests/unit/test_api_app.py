@@ -1,12 +1,13 @@
 import sqlite3
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 
 import httpx
 
 from app.backend.api.app import create_app
+from app.backend.auth.entra import EntraTokenValidationError, VerifiedEntraToken
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
 from app.backend.certificates.metadata import CertificateMetadata
@@ -254,6 +255,103 @@ def test_api_me_returns_authenticated_actor():
         "display_name": "Operator User",
         "roles": ["operator"],
     }
+
+
+def test_api_entra_session_exchange_returns_local_session_for_existing_user():
+    connection = _connection_with_preview_data()
+
+    response = _api_request(
+        create_app(
+            connection=connection,
+            clock=_fixed_now,
+            id_factory=lambda: "entra-session-001",
+            entra_token_verifier=_FakeEntraVerifier(
+                VerifiedEntraToken(
+                    subject_id="entra-subject-001",
+                    tenant_id="tenant-001",
+                    email="operator@example.com",
+                    display_name="Operator User",
+                    expires_at=datetime(2026, 6, 1, 17, 0, tzinfo=timezone.utc),
+                )
+            ),
+            entra_session_duration=timedelta(hours=1),
+        ),
+        "POST",
+        "/auth/entra/session",
+        headers={"Authorization": "Bearer verified-token"},
+        json={"software_version": "0.1.0"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "entra-session-001"
+    assert payload["user_id"] == "user-001"
+    assert payload["roles"] == ["operator"]
+    assert payload["expires_at"] == "2026-06-01T16:30:00+00:00"
+    assert SQLiteUserSessionRepository(connection).get("entra-session-001").user_id == (
+        "user-001"
+    )
+    event = SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_session",
+        "entra-session-001",
+    )[0]
+    assert event.new_value["auth_provider"] == "entra_id_free"
+
+
+def test_api_entra_session_exchange_is_not_available_without_entra_configuration():
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+        ),
+        "POST",
+        "/auth/entra/session",
+        headers={"Authorization": "Bearer verified-token"},
+        json={"software_version": "0.1.0"},
+    )
+
+    assert response.status_code == 409
+    assert "not configured" in response.json()["detail"]
+
+
+def test_api_entra_session_exchange_rejects_missing_bearer_header():
+    response = _api_request(
+        create_app(
+            connection=_connection_with_preview_data(),
+            clock=_fixed_now,
+            entra_token_verifier=_RejectingEntraVerifier(),
+        ),
+        "POST",
+        "/auth/entra/session",
+        json={"software_version": "0.1.0"},
+    )
+
+    assert response.status_code == 401
+    assert "Authorization bearer token is required" in response.json()["detail"]
+
+
+def test_api_entra_session_exchange_rejects_invalid_entra_token():
+    connection = _connection_with_preview_data()
+
+    response = _api_request(
+        create_app(
+            connection=connection,
+            clock=_fixed_now,
+            id_factory=lambda: "entra-session-001",
+            entra_token_verifier=_RejectingEntraVerifier(),
+        ),
+        "POST",
+        "/auth/entra/session",
+        headers={"Authorization": "Bearer invalid-token"},
+        json={"software_version": "0.1.0"},
+    )
+
+    assert response.status_code == 401
+    assert "Entra token is not valid" in response.json()["detail"]
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "user_session",
+        "entra-session-001",
+    ) == ()
 
 
 def test_api_admin_lists_active_users_for_access_review():
@@ -1473,6 +1571,21 @@ async def _async_api_request(app, method: str, url: str, **kwargs) -> httpx.Resp
         base_url="http://testserver",
     ) as client:
         return await client.request(method, url, **kwargs)
+
+
+class _FakeEntraVerifier:
+    def __init__(self, token: VerifiedEntraToken) -> None:
+        self._token = token
+
+    def verify(self, token: str, *, timestamp: datetime) -> VerifiedEntraToken:
+        assert token == "verified-token"
+        assert timestamp == _fixed_now()
+        return self._token
+
+
+class _RejectingEntraVerifier:
+    def verify(self, token: str, *, timestamp: datetime) -> VerifiedEntraToken:
+        raise EntraTokenValidationError("Invalid token.")
 
 
 def _connection_with_preview_data(

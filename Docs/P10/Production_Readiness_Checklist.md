@@ -54,11 +54,12 @@ Use this checklist before routine production use.
 | Check | Expected evidence | Status |
 |---|---|---|
 | Production authentication | Authentication provider selected and verified. | Pending |
-| Entra ID Free | Microsoft Entra ID Free application/user lifecycle boundary verified. | Pending |
+| Entra ID Free | Microsoft Entra ID Free token exchange verified through `POST /auth/entra/session` with approved tenant, app registration, audience, and active local user email match. | Pending |
 | Roles | Operator, reviewer, QA approver, admin, and read-only roles verified. | Pending |
 | Reviewer independence | Same-user preparation/calculation/review/release is technically blocked or documented as approved deviation. | Pending |
 | First admin user | Initial admin user created through controlled first-user bootstrap or production identity provider. | Pending |
 | User review | Active users reviewed before go-live. | Pending |
+| Session issuance audit | `user_session_created` audit event retained for Entra-backed local session issuance. | Pending |
 | Secrets | Secrets are stored outside source control. | Pending |
 | Backup access | Backup access control matches production database access control. | Pending |
 
@@ -70,7 +71,8 @@ Production use is blocked if any of the following are unresolved:
 - Missing validation package review for release-significant changes.
 - Failed backup or restore drill.
 - Failed `/readiness` check.
-- Missing Microsoft Entra ID Free production authentication verification.
+- Missing Microsoft Entra ID Free live tenant/app registration, token exchange,
+  or user lifecycle verification.
 - Production scope not restricted to temperature certificates.
 - Missing reviewer independence control or approved deviation.
 - Unapproved calculation, uncertainty, CMC, rounding, or certificate-template

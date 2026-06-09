@@ -52,7 +52,8 @@ Approved v1 production decisions:
 - Scope is temperature certificates only; pressure remains disabled until a
   later approved phase.
 - Authentication boundary is Microsoft Entra ID Free / existing SIMVal
-  Microsoft work accounts.
+  Microsoft work accounts. Entra tokens are exchanged through
+  `POST /auth/entra/session` for short audited local SIMVal sessions.
 - Hosting is an existing SIMVal-controlled internal PC/server/VM using only
   free/open-source runtime components.
 - Database and certificate artifacts use controlled SQLite/local storage with
@@ -66,6 +67,7 @@ Use these controlled documents before routine production use:
 - `Docs/P0/Test_Strategy.md`
 - `Docs/P0/Validation_And_Regression_Plan.md`
 
-Production use remains blocked until Entra ID Free integration verification,
-TLS/host evidence, retention, backup storage, reviewer-independence control, and
-final human QA/laboratory approval are complete.
+Production use remains blocked until live Entra tenant/app registration
+verification, TLS/host evidence, retention, backup storage,
+reviewer-independence control, and final human QA/laboratory approval are
+complete.

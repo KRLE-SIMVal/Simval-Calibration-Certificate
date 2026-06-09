@@ -30,9 +30,9 @@ def test_p10_production_readiness_checklist_contains_go_no_go_blockers():
     assert "SQLite backup evidence" in checklist
     assert "Restore to a separate target path succeeds" in checklist
     assert "SIMVAL_ENABLED_DISCIPLINES=temperature" in checklist
-    assert "Microsoft Entra ID Free production authentication verification" in (
-        checklist
-    )
+    assert "POST /auth/entra/session" in checklist
+    assert "user_session_created" in checklist
+    assert "Missing Microsoft Entra ID Free live tenant/app registration" in checklist
     assert "Missing reviewer independence control or approved deviation." in (
         checklist
     )
@@ -54,6 +54,9 @@ def test_p10_production_runtime_guide_contains_required_runtime_controls():
     assert "GET /users" in guide
     assert "Do not commit production paths, credentials, tokens" in guide
     assert "Microsoft Entra ID Free" in guide
+    assert "POST /auth/entra/session" in guide
+    assert "user_session_created" in guide
+    assert "Roles are not accepted from Entra token claims" in guide
     assert "Pressure workflow code remains a future extension point" in guide
     assert "SIMVAL_ENABLED_DISCIPLINES" in guide
 
@@ -67,7 +70,23 @@ def test_production_environment_example_contains_only_runtime_path_placeholders(
     assert "SIMVAL_ARTIFACT_STORAGE_PATH=" in env_example
     assert "SIMVAL_ENABLED_DISCIPLINES=temperature" in env_example
     assert "SIMVAL_AUTH_PROVIDER=entra_id_free" in env_example
+    assert "SIMVAL_ENTRA_TENANT_ID=" in env_example
+    assert "SIMVAL_ENTRA_CLIENT_ID=" in env_example
+    assert "SIMVAL_ENTRA_AUDIENCE=" in env_example
+    assert "SIMVAL_ENTRA_LOCAL_SESSION_HOURS=8" in env_example
     assert "SIMVAL_HOSTING_MODEL=simval_internal_host" in env_example
     assert "SIMVAL_REVIEWER_INDEPENDENCE_REQUIRED=true" in env_example
     assert "password" not in env_example.lower()
     assert "token" not in env_example.lower()
+
+
+def test_p16_entra_implementation_log_records_auth_boundary_controls():
+    log = (ROOT / "Docs" / "P16" / "P16_Implementation_Log.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Microsoft Entra ID Free authentication boundary" in log
+    assert "POST /auth/entra/session" in log
+    assert "Entra token claims do not grant SIMVal roles" in log
+    assert "user_session_created" in log
+    assert "live tenant/app registration" in log

@@ -36,6 +36,7 @@ class AuditAction(StrEnum):
     USER_ACCOUNT_CREATED = "user_account_created"
     USER_ACCOUNT_ROLES_CHANGED = "user_account_roles_changed"
     USER_ACCOUNT_DEACTIVATED = "user_account_deactivated"
+    USER_SESSION_CREATED = "user_session_created"
     USER_SESSION_REVOKED = "user_session_revoked"
     WORKFLOW_TRANSITIONED = "workflow_transitioned"
 

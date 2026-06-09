@@ -1,6 +1,8 @@
+from datetime import timedelta
+
 import pytest
 
-from app.backend.api.settings import ApiSettings, ApiSettingsError
+from app.backend.api.settings import AuthProvider, ApiSettings, ApiSettingsError
 from app.backend.domain.entities import Discipline
 
 
@@ -18,6 +20,9 @@ def test_api_settings_load_database_path_from_environment_mapping(tmp_path):
     assert settings.database_path == database_path
     assert settings.artifact_storage_path == artifact_storage_path
     assert settings.enabled_disciplines == frozenset({Discipline.TEMPERATURE})
+    assert settings.auth_provider is AuthProvider.LOCAL_SESSION
+    assert settings.entra_id is None
+    assert settings.entra_session_duration == timedelta(hours=8)
 
 
 def test_api_settings_loads_enabled_disciplines_from_environment_mapping(tmp_path):
@@ -32,6 +37,26 @@ def test_api_settings_loads_enabled_disciplines_from_environment_mapping(tmp_pat
     assert settings.enabled_disciplines == frozenset(
         {Discipline.TEMPERATURE, Discipline.PRESSURE}
     )
+
+
+def test_api_settings_loads_entra_id_free_configuration(tmp_path):
+    settings = ApiSettings.from_environment(
+        {
+            "SIMVAL_DATABASE_PATH": str(tmp_path / "simval.sqlite3"),
+            "SIMVAL_ARTIFACT_STORAGE_PATH": str(tmp_path / "artifacts"),
+            "SIMVAL_AUTH_PROVIDER": "entra_id_free",
+            "SIMVAL_ENTRA_TENANT_ID": "tenant-001",
+            "SIMVAL_ENTRA_CLIENT_ID": "client-001",
+            "SIMVAL_ENTRA_LOCAL_SESSION_HOURS": "4",
+        }
+    )
+
+    assert settings.auth_provider is AuthProvider.ENTRA_ID_FREE
+    assert settings.entra_id is not None
+    assert settings.entra_id.tenant_id == "tenant-001"
+    assert settings.entra_id.client_id == "client-001"
+    assert settings.entra_id.audience == "client-001"
+    assert settings.entra_session_duration == timedelta(hours=4)
 
 
 def test_api_settings_rejects_missing_database_path():
@@ -73,5 +98,39 @@ def test_api_settings_rejects_invalid_enabled_discipline(tmp_path):
                 "SIMVAL_DATABASE_PATH": str(tmp_path / "simval.sqlite3"),
                 "SIMVAL_ARTIFACT_STORAGE_PATH": str(tmp_path / "artifacts"),
                 "SIMVAL_ENABLED_DISCIPLINES": "temperature,humidity",
+            }
+        )
+
+
+def test_api_settings_rejects_invalid_auth_provider(tmp_path):
+    with pytest.raises(ApiSettingsError):
+        ApiSettings.from_environment(
+            {
+                "SIMVAL_DATABASE_PATH": str(tmp_path / "simval.sqlite3"),
+                "SIMVAL_ARTIFACT_STORAGE_PATH": str(tmp_path / "artifacts"),
+                "SIMVAL_AUTH_PROVIDER": "basic_password",
+            }
+        )
+
+
+def test_api_settings_rejects_entra_provider_without_tenant_id(tmp_path):
+    with pytest.raises(ApiSettingsError):
+        ApiSettings.from_environment(
+            {
+                "SIMVAL_DATABASE_PATH": str(tmp_path / "simval.sqlite3"),
+                "SIMVAL_ARTIFACT_STORAGE_PATH": str(tmp_path / "artifacts"),
+                "SIMVAL_AUTH_PROVIDER": "entra_id_free",
+                "SIMVAL_ENTRA_CLIENT_ID": "client-001",
+            }
+        )
+
+
+def test_api_settings_rejects_invalid_entra_session_duration(tmp_path):
+    with pytest.raises(ApiSettingsError):
+        ApiSettings.from_environment(
+            {
+                "SIMVAL_DATABASE_PATH": str(tmp_path / "simval.sqlite3"),
+                "SIMVAL_ARTIFACT_STORAGE_PATH": str(tmp_path / "artifacts"),
+                "SIMVAL_ENTRA_LOCAL_SESSION_HOURS": "24",
             }
         )
