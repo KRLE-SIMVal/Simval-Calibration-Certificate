@@ -76,7 +76,7 @@ def _required_template_markers(preview: CertificatePreview) -> tuple[str, ...]:
         "Calibration certificate",
         "Sporbarhed / Traceability:",
         "Måleusikkerhed / Uncertainty:",
-        "Måleresultater / Measurement Results:",
+        _measurement_results_marker(preview),
         "Referenceudstyr / Reference equipment:",
         "Released certificate evidence remains tied to:",
         f"Template Version: {preview.template_version}",
@@ -85,6 +85,12 @@ def _required_template_markers(preview: CertificatePreview) -> tuple[str, ...]:
         f"Constant Set Version: {preview.constant_set_version}",
         f"Budget Version: {preview.budget_version}",
     )
+
+
+def _measurement_results_marker(preview: CertificatePreview) -> str:
+    if preview.discipline.value == "pressure":
+        return "Trykresultater / Pressure results:"
+    return "Måleresultater / Measurement Results:"
 
 
 def _validate_logo_scope(

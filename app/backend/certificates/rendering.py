@@ -16,6 +16,7 @@ from app.backend.certificates.preview import (
     CertificatePreviewRow,
 )
 from app.backend.certificates.records import ArtifactType
+from app.backend.domain.entities import Discipline
 
 
 class CertificateRenderingError(ValueError):
@@ -237,8 +238,9 @@ def _result_page_lines(
             "Omgivelsesforhold / Measurement conditions: "
             f"{preview.metadata.ambient_conditions}"
         ),
-        f"Temperaturskala / Temperature scale: {preview.metadata.temperature_scale}",
-        "Måleresultater / Measurement Results:",
+        f"{_scale_or_unit_label(preview.discipline)}: "
+        f"{preview.metadata.temperature_scale}",
+        _measurement_results_label(preview.discipline),
         (
             "Reference value | Indication | Error of indication +/- expanded "
             "uncertainty"
@@ -303,6 +305,18 @@ def _result_row_line(row: CertificatePreviewRow) -> str:
             f"{row.unit}",
         )
     )
+
+
+def _scale_or_unit_label(discipline: Discipline) -> str:
+    if discipline is Discipline.PRESSURE:
+        return "Trykenhed / Pressure unit"
+    return "Temperaturskala / Temperature scale"
+
+
+def _measurement_results_label(discipline: Discipline) -> str:
+    if discipline is Discipline.PRESSURE:
+        return "Trykresultater / Pressure results:"
+    return "Måleresultater / Measurement Results:"
 
 
 def _group_rows_by_dut(

@@ -11,6 +11,7 @@ from app.backend.certificates.preview import (
     CertificatePreviewReferenceEquipment,
     CertificatePreviewRow,
 )
+from app.backend.domain.entities import Discipline
 
 
 def test_certificate_preview_records_locked_summary_rows_and_versions():
@@ -18,6 +19,7 @@ def test_certificate_preview_records_locked_summary_rows_and_versions():
         job_id="job-001",
         generated_by="user-001",
         generated_at=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+        discipline=Discipline.TEMPERATURE,
         software_version="app-0.1.0",
         calculation_engine_version="calc-engine-0.1.0",
         constant_set_version="constants-2026-001",
@@ -31,6 +33,7 @@ def test_certificate_preview_records_locked_summary_rows_and_versions():
 
     assert preview.summary_ids == ("point-001",)
     assert preview.metadata.client_name == "SIMVal customer"
+    assert preview.discipline is Discipline.TEMPERATURE
     assert preview.duts[0].serial_number == "MJT1"
     assert preview.reference_equipment[0].simval_id == "SIM-T-001"
     assert preview.rows[0].display_error_of_indication == Decimal("-0.004")
@@ -43,6 +46,7 @@ def test_certificate_preview_rejects_empty_rows():
             job_id="job-001",
             generated_by="user-001",
             generated_at=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+            discipline=Discipline.TEMPERATURE,
             software_version="app-0.1.0",
             calculation_engine_version="calc-engine-0.1.0",
             constant_set_version="constants-2026-001",
@@ -61,6 +65,7 @@ def test_certificate_preview_rejects_naive_timestamp():
             job_id="job-001",
             generated_by="user-001",
             generated_at=datetime(2026, 6, 1, 15, 30),
+            discipline=Discipline.TEMPERATURE,
             software_version="app-0.1.0",
             calculation_engine_version="calc-engine-0.1.0",
             constant_set_version="constants-2026-001",
@@ -79,6 +84,7 @@ def test_certificate_preview_rejects_row_without_dut_metadata():
             job_id="job-001",
             generated_by="user-001",
             generated_at=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+            discipline=Discipline.TEMPERATURE,
             software_version="app-0.1.0",
             calculation_engine_version="calc-engine-0.1.0",
             constant_set_version="constants-2026-001",
@@ -97,6 +103,7 @@ def test_certificate_preview_rejects_missing_reference_equipment():
             job_id="job-001",
             generated_by="user-001",
             generated_at=datetime(2026, 6, 1, 15, 30, tzinfo=timezone.utc),
+            discipline=Discipline.TEMPERATURE,
             software_version="app-0.1.0",
             calculation_engine_version="calc-engine-0.1.0",
             constant_set_version="constants-2026-001",

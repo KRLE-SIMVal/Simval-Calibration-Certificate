@@ -84,12 +84,15 @@ def build_import_review_for_session(
             uploaded_file=uploaded_file,
             parser_event=parser_event,
         )
+        reading_count = len(readings)
+        if reading_count == 0:
+            reading_count = _parser_reading_count(parser_event=parser_event)
         warning_count = _parser_warning_count(parser_event=parser_event)
         reviews.append(
             UploadedFileReview(
                 uploaded_file=uploaded_file,
                 parser_status=parser_status,
-                reading_count=len(readings),
+                reading_count=reading_count,
                 warning_count=warning_count,
                 uploaded_by=upload_event.user_id if upload_event is not None else "",
                 size_bytes=_upload_size(upload_event=upload_event),
@@ -126,6 +129,13 @@ def _parser_warning_count(*, parser_event) -> int:
     return int(raw_count)
 
 
+def _parser_reading_count(*, parser_event) -> int:
+    if parser_event is None or parser_event.new_value is None:
+        return 0
+    raw_count = parser_event.new_value.get("reading_count", 0)
+    return int(raw_count)
+
+
 def _upload_size(*, upload_event) -> int | None:
     if upload_event is None or upload_event.new_value is None:
         return None
@@ -133,4 +143,3 @@ def _upload_size(*, upload_event) -> int | None:
     if raw_size is None:
         return None
     return int(raw_size)
-

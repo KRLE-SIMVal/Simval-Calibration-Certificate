@@ -9,6 +9,13 @@ from pathlib import Path
 import sqlite3
 import uuid
 
+from app.backend.persistence.migrations import list_applied_migrations
+from app.backend.persistence.schema_bootstrap import (
+    BASELINE_SCHEMA_VERSION,
+    SQLITE_BASELINE_SCHEMA_MIGRATION,
+)
+from app.backend.persistence.sqlite import SCHEMA_VERSION, list_schema_versions
+
 
 @dataclass(frozen=True, slots=True)
 class ReadinessComponent:
@@ -52,6 +59,7 @@ def check_runtime_readiness(
     """Check required runtime dependencies without exposing local paths."""
     components = (
         _database_readiness(connection_scope),
+        _schema_readiness(connection_scope),
         _artifact_storage_readiness(artifact_directory),
     )
     status = "ready" if all(component.ready for component in components) else "not_ready"
@@ -74,6 +82,52 @@ def _database_readiness(
         name="database",
         status="ok",
         detail="SQLite connection check passed.",
+    )
+
+
+def _schema_readiness(
+    connection_scope: Callable[[], AbstractContextManager[sqlite3.Connection]],
+) -> ReadinessComponent:
+    try:
+        with connection_scope() as connection:
+            schema_versions = list_schema_versions(connection)
+            applied_migrations = list_applied_migrations(connection)
+    except Exception:
+        return ReadinessComponent(
+            name="schema",
+            status="error",
+            detail="SQLite controlled schema check failed.",
+        )
+    if schema_versions != (SCHEMA_VERSION,):
+        return ReadinessComponent(
+            name="schema",
+            status="error",
+            detail="SQLite schema version marker is not the expected version.",
+        )
+    baseline = next(
+        (
+            migration
+            for migration in applied_migrations
+            if migration.version == BASELINE_SCHEMA_VERSION
+        ),
+        None,
+    )
+    if baseline is None:
+        return ReadinessComponent(
+            name="schema",
+            status="error",
+            detail="SQLite controlled baseline migration is missing.",
+        )
+    if baseline.checksum_sha256 != SQLITE_BASELINE_SCHEMA_MIGRATION.checksum_sha256:
+        return ReadinessComponent(
+            name="schema",
+            status="error",
+            detail="SQLite controlled baseline migration checksum is invalid.",
+        )
+    return ReadinessComponent(
+        name="schema",
+        status="ok",
+        detail="SQLite controlled schema baseline check passed.",
     )
 
 
@@ -108,4 +162,3 @@ def _artifact_storage_readiness(
         status="ok",
         detail="Artifact storage write/delete probe passed.",
     )
-

@@ -11,7 +11,7 @@ from app.backend.api.app import create_app
 from app.backend.audit.events import AuditAction
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
-from app.backend.domain.entities import Discipline
+from app.backend.domain.entities import Discipline, UploadedFileKind
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
@@ -28,6 +28,7 @@ from app.backend.persistence.sqlite import (
     SQLiteUserSessionRepository,
     initialize_schema,
 )
+from app.backend.services.source_file_uploads import MAX_UPLOAD_SIZE_BYTES
 
 
 def test_api_create_calibration_job_records_job_and_audit_event():
@@ -119,6 +120,7 @@ def test_api_upload_calibration_xlsx_stores_raw_file_and_parser_evidence(tmp_pat
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: "001",
+        allow_provisional_valprobe_parser=True,
     )
 
     response = _api_request(
@@ -165,6 +167,14 @@ def test_api_upload_calibration_xlsx_stores_raw_file_and_parser_evidence(tmp_pat
         AuditAction.FILE_UPLOADED,
         AuditAction.PARSER_RESULT_RECORDED,
     ]
+    job_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "job-001",
+    )
+    assert [event.action for event in job_events][-2:] == [
+        AuditAction.FILE_UPLOADED,
+        AuditAction.PARSER_RESULT_RECORDED,
+    ]
 
 
 def test_api_upload_verification_pdf_stores_raw_file_without_parser(tmp_path):
@@ -203,6 +213,188 @@ def test_api_upload_verification_pdf_stores_raw_file_without_parser(tmp_path):
     assert (tmp_path / "artifacts" / "uploads" / "job-001" / "file-002-verification.pdf").exists()
 
 
+def test_api_upload_other_csv_stores_controlled_raw_evidence_without_parser(tmp_path):
+    connection = _connection_with_user_and_job()
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "pressure-raw-001",
+    )
+
+    response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=pressure-readings.csv&"
+            "file_kind=other&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "text/csv",
+        },
+        content=b"timestamp,reference,indication\n2026-06-01T14:20:00Z,10.000,10.004\n",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["uploaded_file_id"] == "file-pressure-raw-001"
+    assert payload["file_kind"] == "other"
+    assert payload["parser_status"] == "not_run"
+    assert payload["parser_audit_event_id"] is None
+    assert payload["reading_count"] == 0
+    assert payload["warning_count"] == 0
+    uploaded = SQLiteUploadedFileRepository(connection).get("file-pressure-raw-001")
+    assert uploaded.original_filename == "pressure-readings.csv"
+    assert uploaded.file_kind is UploadedFileKind.OTHER
+    assert (
+        tmp_path
+        / "artifacts"
+        / "uploads"
+        / "job-001"
+        / "file-pressure-raw-001-pressure-readings.csv"
+    ).exists()
+
+
+def test_api_upload_calibration_xlsx_stores_only_when_provisional_parser_disabled(
+    tmp_path,
+):
+    connection = _connection_with_user_and_job()
+    workbook = tmp_path / "sanitized-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": _temperature_sheet_xml(
+                data_rows=[("2026-04-08T15:45:00+00:00", "-80.036")]
+            )
+        },
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+
+    response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=sanitized-valprobe.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=workbook.read_bytes(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["parser_status"] == "stored_only"
+    assert payload["reading_count"] == 0
+    assert payload["warning_count"] == 1
+    assert "provisional" in payload["warnings"][0]
+    assert SQLiteParsedReadingRepository(connection).list_for_uploaded_file(
+        "file-001"
+    ) == ()
+
+
+def test_api_upload_rejects_calibration_xlsx_with_wrong_extension(tmp_path):
+    connection = _connection_with_user_and_job()
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+
+    response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=calibration.csv&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=b"not an xlsx",
+    )
+
+    assert response.status_code == 409
+    assert ".xlsx" in response.json()["detail"]
+    assert SQLiteUploadedFileRepository(connection).list_for_job("job-001") == ()
+
+
+def test_api_upload_rejects_malformed_calibration_xlsx_before_persistence(tmp_path):
+    connection = _connection_with_user_and_job()
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+
+    response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=calibration.xlsx&"
+            "file_kind=calibration_xlsx&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+        },
+        content=b"not an xlsx",
+    )
+
+    assert response.status_code == 409
+    assert "valid ZIP archive" in response.json()["detail"]
+    assert SQLiteUploadedFileRepository(connection).list_for_job("job-001") == ()
+
+
+def test_api_upload_rejects_declared_oversize_before_read(tmp_path):
+    connection = _connection_with_user_and_job()
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "001",
+    )
+
+    response = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/job-001/files?"
+            "original_filename=verification.pdf&"
+            "file_kind=verification_pdf&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(MAX_UPLOAD_SIZE_BYTES + 1),
+        },
+        content=b"%PDF-1.4 small fixture",
+    )
+
+    assert response.status_code == 413
+    assert SQLiteUploadedFileRepository(connection).list_for_job("job-001") == ()
+
+
 def test_api_import_review_returns_uploaded_file_and_parser_evidence(tmp_path):
     connection = _connection_with_user_and_job()
     workbook = tmp_path / "sanitized-valprobe.xlsx"
@@ -219,6 +411,7 @@ def test_api_import_review_returns_uploaded_file_and_parser_evidence(tmp_path):
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: "001",
+        allow_provisional_valprobe_parser=True,
     )
     upload_response = _api_request(
         app,
@@ -298,6 +491,7 @@ def test_api_prepare_temperature_data_entry_creates_duts_setpoints_and_state(
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: "001",
+        allow_provisional_valprobe_parser=True,
     )
     upload_response = _api_request(
         app,
@@ -377,6 +571,7 @@ def test_api_prepare_temperature_data_entry_rejects_before_equipment_selected(
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: "001",
+        allow_provisional_valprobe_parser=True,
     )
     upload_response = _api_request(
         app,
@@ -435,6 +630,7 @@ def test_api_prepare_temperature_data_entry_rejects_duplicate_generated_dut_ids(
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: "001",
+        allow_provisional_valprobe_parser=True,
     )
     upload_response = _api_request(
         app,
@@ -502,6 +698,7 @@ def test_api_record_manual_irtd_rows_persists_reference_links_and_audit(tmp_path
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: next(generated_ids),
+        allow_provisional_valprobe_parser=True,
     )
     calibration_upload = _api_request(
         app,
@@ -676,6 +873,7 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: next(generated_ids),
+        allow_provisional_valprobe_parser=True,
     )
     calibration_upload = _api_request(
         app,
@@ -951,6 +1149,285 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
     )
 
 
+def test_api_end_to_end_manual_pressure_certificate_uses_persisted_workflow(
+    tmp_path,
+):
+    connection = _connection_with_user(user_roles=(Role.ADMIN,))
+    _add_user_session(
+        connection,
+        user_id="reviewer-001",
+        session_id="reviewer-session",
+        roles=(Role.TECHNICAL_REVIEWER,),
+    )
+    _add_user_session(
+        connection,
+        user_id="qa-001",
+        session_id="qa-session",
+        roles=(Role.QA_APPROVER,),
+    )
+    _add_user_session(
+        connection,
+        user_id="release-001",
+        session_id="release-session",
+        roles=(Role.QA_APPROVER,),
+    )
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "pressure-raw-001",
+        enabled_disciplines=frozenset({Discipline.TEMPERATURE, Discipline.PRESSURE}),
+    )
+
+    create_job = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "pressure-job-001",
+            "client_name": "SIMVal pressure customer",
+            "client_address": "Pressure Road 1",
+            "discipline": "pressure",
+            "measurement_mode": "manual",
+            "method": "SIMVal manual pressure method",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert create_job.status_code == 200
+
+    metadata = _api_request(
+        app,
+        "POST",
+        "/certificate-metadata",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "pressure-job-001",
+            "certificate_date": "2026-06-03",
+            "calibration_date": "2026-06-01",
+            "receipt_date": "2026-05-31",
+            "task_number": "TASK-P-2026-001",
+            "purchase_order": "PO-P-12345",
+            "client_name": "SIMVal pressure customer",
+            "client_address": "Pressure Road 1",
+            "procedure": "SIMVal SOP-PRESS-001",
+            "place": "SIMVal Pressure Laboratory, Lyngby",
+            "approved_by_label": "QA User",
+            "remarks": "Manual pressure readings transcribed from controlled source.",
+            "traceability_statement": "Pressure measurements are metrologically traceable.",
+            "uncertainty_statement": "Expanded uncertainty uses k=2.",
+            "ambient_conditions": "Room temperature 23 +/- 2 deg C.",
+            "temperature_scale": "bar",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert metadata.status_code == 200
+
+    reference_equipment = _api_request(
+        app,
+        "POST",
+        "/reference-equipment-selections",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "pressure-job-001",
+            "equipment_id": "ref-pressure-001",
+            "simval_id": "SIM-P-001",
+            "equipment_type": "Pressure reference",
+            "serial_number": "PRESS-REF-001",
+            "discipline": "pressure",
+            "calibration_certificate_reference": "DANAK-P-12345",
+            "calibration_due_date": "2027-04-30",
+            "status": "active",
+            "range_minimum": 0.0,
+            "range_maximum": 20.0,
+            "range_unit": "bar",
+            "traceability_statement": "Accredited pressure calibration with SI traceability.",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert reference_equipment.status_code == 200
+
+    upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/pressure-job-001/files?"
+            "original_filename=pressure-readings.csv&"
+            "file_kind=other&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "text/csv",
+        },
+        content=(
+            b"timestamp,reference,indication\n"
+            b"2026-06-01T14:20:00Z,10.000,10.004\n"
+            b"2026-06-01T14:21:00Z,10.000,10.006\n"
+        ),
+    )
+    assert upload.status_code == 200
+    assert upload.json()["uploaded_file_id"] == "file-pressure-raw-001"
+
+    manual_entry = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-manual-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "uploaded_file_id": "file-pressure-raw-001",
+            "dut_id": "pressure-dut-001",
+            "dut_make": "PressureCo",
+            "dut_model": "Gauge",
+            "dut_serial_number": "PG-001",
+            "dut_channel_id": "PG-001",
+            "window_id": "pressure-window-001",
+            "setpoint": 10.0,
+            "unit": "bar",
+            "readings": [
+                {
+                    "timestamp": "2026-06-01T14:20:00+00:00",
+                    "value": 10.004,
+                    "source_label": "Pressure",
+                    "row_number": 2,
+                    "column_label": "indication",
+                },
+                {
+                    "timestamp": "2026-06-01T14:21:00+00:00",
+                    "value": 10.006,
+                    "source_label": "Pressure",
+                    "row_number": 3,
+                    "column_label": "indication",
+                },
+            ],
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert manual_entry.status_code == 200
+    assert manual_entry.json()["state"] == "windows_selected"
+
+    constant_set = _api_request(
+        app,
+        "POST",
+        "/constant-sets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "version": "constants-pressure-001",
+            "discipline": "pressure",
+            "effective_from": "2026-01-01T00:00:00+00:00",
+            "software_version": "app-0.1.0",
+        },
+    )
+    budget = _api_request(
+        app,
+        "POST",
+        "/uncertainty-budgets/approved",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "version": "budget-pressure-001",
+            "budget_type": "pressure",
+            "method": "SIMVal manual pressure method",
+            "discipline": "pressure",
+            "linked_constant_set_version": "constants-pressure-001",
+            "software_version": "app-0.1.0",
+        },
+    )
+    assert constant_set.status_code == 200
+    assert budget.status_code == 200
+
+    calculation = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "manual_points": [
+                {
+                    "point_id": "pressure-point-001",
+                    "dut_id": "pressure-dut-001",
+                    "measurement_window_id": "pressure-window-001",
+                    "reference_pressure": 10.0,
+                    "indication_values": [10.004, 10.006],
+                    "setpoint": 10.0,
+                    "unit": "bar",
+                    "pressure_kind": "gauge",
+                    "cmc_floor": "0.001",
+                    "reference_expanded_uncertainty": 0.004,
+                    "dut_resolution": 0.002,
+                }
+            ],
+            "automatic_points": [],
+            "software_version": "app-0.1.0",
+            "calculation_engine_version": "calc-engine-0.1.0",
+            "constant_set_version": "constants-pressure-001",
+            "budget_version": "budget-pressure-001",
+        },
+    )
+    assert calculation.status_code == 200
+    assert calculation.json()["summary_ids"] == ["pressure-point-001"]
+    assert calculation.json()["summaries"][0]["reported_expanded_uncertainty"] == "0.0042"
+
+    assert _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/pressure-job-001/technical-review-submissions",
+        headers={"X-Session-Id": "session-001"},
+        json={"software_version": "app-0.1.0"},
+    ).status_code == 200
+    assert _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/pressure-job-001/technical-review-approvals",
+        headers={"X-Session-Id": "reviewer-session"},
+        json={"software_version": "app-0.1.0"},
+    ).status_code == 200
+    assert _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/pressure-job-001/qa-release-approvals",
+        headers={"X-Session-Id": "qa-session"},
+        json={"software_version": "app-0.1.0"},
+    ).status_code == 200
+
+    preview = _api_request(
+        app,
+        "POST",
+        "/certificate-previews",
+        headers={"X-Session-Id": "release-session"},
+        json={
+            "job_id": "pressure-job-001",
+            "template_version": "template-pressure-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    assert preview.status_code == 200
+    assert preview.json()["summary_ids"] == ["pressure-point-001"]
+    assert preview.json()["reference_equipment"][0]["equipment_id"] == "ref-pressure-001"
+
+    release = _api_request(
+        app,
+        "POST",
+        "/certificate-rendered-releases",
+        headers={"X-Session-Id": "release-session"},
+        json={
+            "job_id": "pressure-job-001",
+            "certificate_id": "pressure-cert-001",
+            "certificate_number": "SIMVAL-P-0001",
+            "artifact_id": "pressure-artifact-001",
+            "template_version": "template-pressure-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": True,
+        },
+    )
+    assert release.status_code == 200
+    assert release.json()["status"] == "released"
+    assert (tmp_path / "artifacts" / "SIMVAL-P-0001.pdf").exists()
+    assert SQLiteCalibrationJobRepository(connection).get("pressure-job-001").state is (
+        WorkflowState.RELEASED
+    )
+
+
 def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path):
     connection = _connection_with_user_and_job(user_roles=(Role.ADMIN,))
     _add_user_session(
@@ -990,6 +1467,7 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
         clock=_fixed_now,
         artifact_directory=tmp_path / "artifacts",
         id_factory=lambda: next(generated_ids),
+        allow_provisional_valprobe_parser=True,
     )
 
     calibration_upload = _api_request(

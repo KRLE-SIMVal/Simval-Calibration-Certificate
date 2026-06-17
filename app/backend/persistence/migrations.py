@@ -44,6 +44,7 @@ def apply_sqlite_migrations(
     connection.row_factory = sqlite3.Row
     _validate_migration_plan(migrations)
     _initialize_migration_history(connection)
+    _reject_unknown_applied_migrations(connection, migrations)
 
     for migration in migrations:
         applied = _get_applied_migration(connection, migration.version)
@@ -172,6 +173,23 @@ def _validate_migration_plan(migrations: tuple[SQLiteMigration, ...]) -> None:
     versions = [migration.version for migration in migrations]
     if len(set(versions)) != len(versions):
         raise MigrationError("Migration plan contains duplicate versions.")
+
+
+def _reject_unknown_applied_migrations(
+    connection: sqlite3.Connection,
+    migrations: tuple[SQLiteMigration, ...],
+) -> None:
+    expected_versions = {migration.version for migration in migrations}
+    applied_versions = {
+        migration.version for migration in list_applied_migrations(connection)
+    }
+    unknown_versions = sorted(applied_versions - expected_versions)
+    if unknown_versions:
+        raise MigrationError(
+            "Database contains applied migrations outside the controlled plan: "
+            + ", ".join(unknown_versions)
+            + "."
+        )
 
 
 def _datetime_from_text(value: str) -> datetime:

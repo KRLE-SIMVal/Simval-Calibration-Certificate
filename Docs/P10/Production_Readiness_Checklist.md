@@ -21,9 +21,12 @@ Use this checklist before routine production use.
 | Database path | `SIMVAL_DATABASE_PATH` points to controlled SQLite database. | Pending |
 | Artifact path | `SIMVAL_ARTIFACT_STORAGE_PATH` points to controlled artifact directory. | Pending |
 | Enabled scope | `SIMVAL_ENABLED_DISCIPLINES=temperature` for production v1. | Pending |
+| Production profile | `SIMVAL_RUNTIME_PROFILE=production` set; implicit or local-session auth rejected. | Pending |
 | Hosting model | Existing SIMVal-controlled internal host/VM approved; no paid cloud service required. | Decision approved |
 | Liveness | `GET /health` returns HTTP 200. | Pending |
-| Readiness | `GET /readiness` returns HTTP 200 with database and artifact storage `ok`. | Pending |
+| Readiness | `GET /readiness` returns HTTP 200 with database, controlled SQLite schema baseline, and artifact storage `ok`. | Pending |
+| Migration history | Database has no applied schema migrations outside the controlled application migration plan. | Pending |
+| Smoke evidence | `generate_production_smoke_evidence.py` retained for `/health`, `/readiness`, `/app`, and `/app/workflow`. | Pending |
 | Logs | Logs do not expose secrets or uncontrolled customer data. | Pending |
 
 ## Certificate Workflow
@@ -33,7 +36,12 @@ Use this checklist before routine production use.
 | Metadata capture | Certificate metadata is stored with user and timestamp evidence. | Pending |
 | Reference equipment | Selected equipment snapshots are stored and checked for suitability. | Pending |
 | Preview gate | Release is blocked until a matching preview exists. | Pending |
+| Upload controls | Calibration XLSX/PDF uploads reject wrong extension, oversize files, and malformed XLSX ZIP structures. | Pending |
+| Parser XML safety | ValProbe workbook parser rejects oversized XML members, unsafe XML declarations, and malformed XML before parsing. | Pending |
+| Parser validation | ValProbe XLSX parser validation evidence retained for approved workbook variants, malformed workbook rejection, and raw-file traceability before routine production use. | Pending |
+| Parser gate | Provisional ValProbe XLSX parser disabled for routine production until validation evidence is approved and referenced in the production readiness report. | Pending |
 | PDF contract | Rendered certificate validates structure, logos, version evidence, and no placeholders. | Pending |
+| Manual release artifact | Any manual release verifies existing local artifact path and SHA-256 before database release record creation. | Pending |
 | Single DUT | Single-equipment certificate can be generated. | Pending |
 | Batch DUT | Multi-equipment certificate can be generated. | Pending |
 | History | Released artifacts and revisions are retrievable. | Pending |
@@ -73,9 +81,16 @@ Production use is blocked if any of the following are unresolved:
 - Failed backup or restore drill.
 - Failed `/readiness` check.
 - Production readiness report contains blockers.
+- Missing ValProbe parser validation evidence for routine production source-data
+  import.
 - Missing Microsoft Entra ID Free live tenant/app registration, token exchange,
   or user lifecycle verification.
+- Production runtime profile is not set or local-session authentication is
+  enabled for routine production.
 - Production scope not restricted to temperature certificates.
+- Provisional XLSX parser enabled for routine production without approved parser
+  validation evidence.
+- Manual release artifact verification failure.
 - Missing reviewer independence production verification evidence or approved
   deviation.
 - Unapproved calculation, uncertainty, CMC, rounding, or certificate-template

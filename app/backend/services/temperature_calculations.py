@@ -393,10 +393,12 @@ def _calculation_to_audit_value(
     calculation: AutomaticTemperaturePointCalculation,
 ) -> dict[str, object]:
     summary = calculation.summary
+    type_a_method = _type_a_method_from_contributions(calculation)
     return {
         "point_id": summary.point_id,
         "dut_id": summary.dut_id,
         "measurement_window_id": summary.measurement_window_id,
+        "type_a_method": type_a_method,
         "reference": summary.reference,
         "indication": summary.indication,
         "error_of_indication": summary.error_of_indication,
@@ -423,6 +425,15 @@ def _calculation_to_audit_value(
             for contribution in calculation.contributions
         ],
     }
+
+
+def _type_a_method_from_contributions(
+    calculation: AutomaticTemperaturePointCalculation,
+) -> str:
+    contribution_names = {contribution.name for contribution in calculation.contributions}
+    if "paired_error_repeatability" in contribution_names:
+        return "paired_error_differences"
+    return "independent_reference_and_dut"
 
 
 def _validate_service_inputs(

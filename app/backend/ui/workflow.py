@@ -395,6 +395,34 @@ def browser_workflow_html() -> str:
         unit: "deg C",
         software_version: "app-0.1.0"
       },
+      "/calibration-jobs/pressure-job-001/pressure-manual-entry": {
+        uploaded_file_id: "pressure-file-001",
+        dut_id: "pressure-dut-001",
+        dut_make: "PressureCo",
+        dut_model: "Gauge",
+        dut_serial_number: "PG-001",
+        dut_channel_id: "PG-001",
+        window_id: "pressure-window-001",
+        setpoint: 10.0,
+        unit: "bar",
+        readings: [
+          {
+            timestamp: "2026-06-01T14:20:00+00:00",
+            value: 10.004,
+            source_label: "Pressure",
+            row_number: 2,
+            column_label: "indication"
+          },
+          {
+            timestamp: "2026-06-01T14:21:00+00:00",
+            value: 10.006,
+            source_label: "Pressure",
+            row_number: 3,
+            column_label: "indication"
+          }
+        ],
+        software_version: "app-0.1.0"
+      },
       "/calibration-jobs/job-001/temperature-windows": {
         window_id: "window-001",
         dut_id: "dut-MJT1-A",
@@ -423,6 +451,79 @@ def browser_workflow_html() -> str:
         calculation_engine_version: "calc-engine-0.1.0",
         constant_set_version: "constants-2026-001",
         budget_version: "budget-temp-001"
+      },
+      "/pressure/manual-calculations": {
+        point_id: "pressure-point-001",
+        job_id: "pressure-job-001",
+        dut_id: "pressure-dut-001",
+        measurement_window_id: "pressure-window-001",
+        reference_pressure: 10.0,
+        indication_values: [10.004, 10.006],
+        setpoint: 10.0,
+        unit: "bar",
+        pressure_kind: "gauge",
+        cmc_floor: "0.001",
+        reference_expanded_uncertainty: 0.004,
+        reference_coverage_factor: 2.0,
+        dut_resolution: 0.002,
+        barometer_expanded_uncertainty: 0.0,
+        barometer_coverage_factor: 2.0,
+        coverage_factor: 2.0,
+        additional_standard_uncertainties: [],
+        software_version: "app-0.1.0",
+        calculation_engine_version: "calc-engine-0.1.0",
+        constant_set_version: "constants-pressure-001",
+        budget_version: "budget-pressure-001"
+      },
+      "/pressure/automatic-calculations": {
+        point_id: "pressure-auto-point-001",
+        job_id: "pressure-job-001",
+        dut_id: "pressure-dut-001",
+        measurement_window_id: "pressure-auto-window-001",
+        reference_values: [100.000, 100.002, 100.001],
+        indication_values: [100.004, 100.006, 100.005],
+        setpoint: 100.0,
+        unit: "bar",
+        pressure_kind: "gauge",
+        cmc_floor: "0.001",
+        reference_expanded_uncertainty: 0.004,
+        reference_coverage_factor: 2.0,
+        dut_resolution: 0.002,
+        barometer_expanded_uncertainty: 0.0,
+        barometer_coverage_factor: 2.0,
+        coverage_factor: 2.0,
+        additional_standard_uncertainties: [],
+        software_version: "app-0.1.0",
+        calculation_engine_version: "calc-engine-0.1.0",
+        constant_set_version: "constants-pressure-001",
+        budget_version: "budget-pressure-001"
+      },
+      "/calibration-jobs/pressure-job-001/pressure-calculations": {
+        manual_points: [
+          {
+            point_id: "pressure-point-001",
+            dut_id: "pressure-dut-001",
+            measurement_window_id: "pressure-window-001",
+            reference_pressure: 10.0,
+            indication_values: [10.004, 10.006],
+            setpoint: 10.0,
+            unit: "bar",
+            pressure_kind: "gauge",
+            cmc_floor: "0.001",
+            reference_expanded_uncertainty: 0.004,
+            reference_coverage_factor: 2.0,
+            dut_resolution: 0.002,
+            barometer_expanded_uncertainty: 0.0,
+            barometer_coverage_factor: 2.0,
+            coverage_factor: 2.0,
+            additional_standard_uncertainties: []
+          }
+        ],
+        automatic_points: [],
+        software_version: "app-0.1.0",
+        calculation_engine_version: "calc-engine-0.1.0",
+        constant_set_version: "constants-pressure-001",
+        budget_version: "budget-pressure-001"
       },
       "/calibration-jobs/job-001/technical-review-submissions": {
         software_version: "app-0.1.0"
@@ -1009,6 +1110,18 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
                 WorkflowAction(
+                    label="Record manual pressure entry",
+                    method="POST",
+                    path="/calibration-jobs/pressure-job-001/pressure-manual-entry",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Record automatic pressure entry",
+                    method="POST",
+                    path="/calibration-jobs/pressure-job-001/pressure-automatic-entry",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
                     label="Select temperature window",
                     method="POST",
                     path="/calibration-jobs/job-001/temperature-windows",
@@ -1024,6 +1137,24 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     label="Run temperature calculation",
                     method="POST",
                     path="/calibration-jobs/job-001/temperature-calculations",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Run manual pressure calculation",
+                    method="POST",
+                    path="/pressure/manual-calculations",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Run automatic pressure calculation",
+                    method="POST",
+                    path="/pressure/automatic-calculations",
+                    required_roles=("operator", "technical_reviewer", "admin"),
+                ),
+                WorkflowAction(
+                    label="Run pressure job calculation",
+                    method="POST",
+                    path="/calibration-jobs/pressure-job-001/pressure-calculations",
                     required_roles=("operator", "technical_reviewer", "admin"),
                 ),
                 WorkflowAction(

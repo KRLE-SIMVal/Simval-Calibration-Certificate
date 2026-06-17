@@ -2,7 +2,6 @@ name: CI
 
 permissions:
   contents: read
-  issues: write
 
 on:
   push:
@@ -16,12 +15,14 @@ jobs:
   test:
     name: Python tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -133,27 +134,49 @@ jobs:
             --json-output "$evidence_dir/quarterly-regression-deviation.json" \
             --markdown-output "$evidence_dir/quarterly-regression-deviation.md"
 
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validation-evidence-${{ github.run_id }}
+          path: Docs/Validation/evidence
+          if-no-files-found: ignore
+
+  scheduled-regression-issue:
+    name: Open scheduled regression deviation issue
+    needs: test
+    if: ${{ github.event_name == 'schedule' && needs.test.result == 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Download retained validation evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: validation-evidence-${{ github.run_id }}
+          path: downloaded-validation-evidence
+
+      - name: Select scheduled evidence directory
+        shell: bash
+        run: |
+          year="$(date -u +%Y)"
+          month="$(date -u +%m)"
+          quarter=$(( (10#$month - 1) / 3 + 1 ))
+          echo "SIMVAL_EVIDENCE_DIR=downloaded-validation-evidence/${year}/Q${quarter}" >> "$GITHUB_ENV"
+
       - name: Open scheduled regression deviation issue
-        if: ${{ failure() && github.event_name == 'schedule' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require("fs");
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const evidenceDir =
-              process.env.SIMVAL_EVIDENCE_DIR || "Docs/Validation/evidence/latest";
+            const evidenceDir = process.env.SIMVAL_EVIDENCE_DIR;
             const body = fs.readFileSync(
               `${evidenceDir}/quarterly-regression-deviation.md`,
               "utf8",
             );
             const title = `Quarterly regression deviation: run ${context.runId}`;
             await github.rest.issues.create({ owner, repo, title, body });
-
-      - name: Upload test evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: validation-evidence-${{ github.run_id }}
-          path: Docs/Validation/evidence
-          if-no-files-found: ignore

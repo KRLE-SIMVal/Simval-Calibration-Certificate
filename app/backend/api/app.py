@@ -14,12 +14,16 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
 
+from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.api.database import sqlite_connection_scope
 from app.backend.api.settings import AuthProvider, ApiSettings
 from app.backend.auth.entra import EntraTokenVerifier, PyJwtEntraTokenVerifier
 from app.backend.auth.permissions import Action, Role
 from app.backend.auth.users import UserAccount, UserIdentityError
-from app.backend.certificates.storage import CertificateArtifactStorageError
+from app.backend.certificates.storage import (
+    CertificateArtifactStorageError,
+    verified_stored_artifact_path,
+)
 from app.backend.certificates.records import ArtifactType
 from app.backend.domain.entities import (
     Discipline,
@@ -33,7 +37,11 @@ from app.backend.domain.equipment import (
     ReferenceEquipment,
 )
 from app.backend.operations.readiness import check_runtime_readiness
-from app.backend.persistence.sqlite import PersistenceError, SQLiteUserAccountRepository
+from app.backend.persistence.sqlite import (
+    PersistenceError,
+    SQLiteAuditEventRepository,
+    SQLiteUserAccountRepository,
+)
 from app.backend.services.authentication import (
     AuthenticationFailureError,
     AuthenticationServiceError,
@@ -107,7 +115,27 @@ from app.backend.services.import_review import (
     ImportReviewServiceError,
     build_import_review_for_session,
 )
+from app.backend.services.pressure_calculations import (
+    AutomaticPressurePointInput,
+    ManualPressurePointInput,
+    PressureCalculationRun,
+    PressureCalculationServiceError,
+    calculate_pressure_measurement_points,
+    calculate_pressure_measurement_points_for_session,
+)
+from app.backend.services.pressure_automatic_entry import (
+    AutomaticPressureEntry,
+    PressureAutomaticEntryServiceError,
+    record_automatic_pressure_entry_for_session,
+)
+from app.backend.services.pressure_manual_entry import (
+    ManualPressureEntry,
+    ManualPressureReadingInput,
+    PressureManualEntryServiceError,
+    record_manual_pressure_entry_for_session,
+)
 from app.backend.services.source_file_uploads import (
+    MAX_UPLOAD_SIZE_BYTES,
     SourceFileUploadResult,
     SourceFileUploadServiceError,
     upload_source_file_for_session,
@@ -138,10 +166,20 @@ from app.backend.services.version_management import (
     record_approved_constant_set_for_session,
     record_approved_uncertainty_budget_for_session,
 )
+from app.calculation_engine.pressure.results import (
+    AdditionalStandardUncertainty as PressureAdditionalStandardUncertainty,
+    PressureCalculationError,
+    PressureKind,
+    PressurePointCalculation,
+    PressurePointUncertaintyInput,
+    calculate_automatic_pressure_point,
+    calculate_manual_pressure_point,
+)
 from app.calculation_engine.temperature.results import (
     AdditionalStandardUncertainty,
     TemperatureCalculationError,
     TemperaturePointUncertaintyInput,
+    TemperatureTypeAMethod,
 )
 from app.backend.ui.workflow import browser_workflow_contract, browser_workflow_html
 
@@ -388,6 +426,80 @@ class ManualIrtdRowsResponse(BaseModel):
     alignment_audit_event_id: int
 
 
+class ManualPressureReadingRequest(BaseModel):
+    timestamp: datetime
+    value: float
+    source_label: str
+    row_number: int | None = None
+    column_label: str | None = None
+
+
+class ManualPressureEntryRequest(BaseModel):
+    uploaded_file_id: str
+    dut_id: str
+    dut_make: str
+    dut_model: str
+    dut_serial_number: str
+    dut_channel_id: str
+    window_id: str
+    setpoint: float
+    unit: str
+    readings: tuple[ManualPressureReadingRequest, ...]
+    software_version: str
+
+
+class ManualPressureEntryResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
+    dut_id: str
+    window_id: str
+    reading_count: int
+    data_entry_audit_event_id: int
+    data_entry_workflow_audit_event_id: int
+    manual_reading_audit_event_id: int
+    window_audit_event_id: int
+    window_workflow_audit_event_id: int
+
+
+class AutomaticPressureEntryRequest(BaseModel):
+    uploaded_file_id: str
+    dut_id: str
+    dut_make: str
+    dut_model: str
+    dut_serial_number: str
+    dut_channel_id: str
+    window_id: str
+    setpoint: float
+    unit: str
+    parser_version: str = "pressure-csv-parser-v1"
+    software_version: str
+
+
+class AutomaticPressureEntryResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
+    dut_id: str
+    window_id: str
+    parser_version: str
+    reference_values: tuple[float, ...]
+    indication_values: tuple[float, ...]
+    reference_reading_count: int
+    indication_reading_count: int
+    warning_count: int
+    warnings: tuple[str, ...]
+    parser_audit_event_id: int
+    job_parser_audit_event_id: int
+    data_entry_audit_event_id: int
+    data_entry_workflow_audit_event_id: int
+    alignment_audit_event_id: int
+    window_audit_event_id: int
+    window_workflow_audit_event_id: int
+
+
 class TemperatureWindowSelectionRequest(BaseModel):
     window_id: str
     dut_id: str
@@ -443,6 +555,9 @@ class TemperatureUncertaintyInputRequest(BaseModel):
     bath_coverage_factor: float = 2.0
     dut_resolution: float = 0.0
     coverage_factor: float = 2.0
+    type_a_method: TemperatureTypeAMethod = (
+        TemperatureTypeAMethod.INDEPENDENT_REFERENCE_AND_DUT
+    )
     additional_standard_uncertainties: tuple[
         AdditionalStandardUncertaintyRequest,
         ...,
@@ -476,6 +591,134 @@ class TemperatureCalculationResponse(BaseModel):
     state: str
     summary_ids: tuple[str, ...]
     summaries: tuple[TemperatureCalculationSummaryResponse, ...]
+    calculation_audit_event_id: int
+    workflow_audit_event_id: int
+
+
+class PressureAdditionalStandardUncertaintyRequest(BaseModel):
+    name: str
+    standard_uncertainty: float
+    sensitivity_coefficient: float = 1.0
+
+
+class PressurePointBaseRequest(BaseModel):
+    point_id: str
+    dut_id: str
+    measurement_window_id: str
+    setpoint: float
+    unit: str
+    pressure_kind: PressureKind
+    cmc_floor: Decimal
+    reference_expanded_uncertainty: float
+    reference_coverage_factor: float = 2.0
+    dut_resolution: float = 0.0
+    barometer_expanded_uncertainty: float = 0.0
+    barometer_coverage_factor: float = 2.0
+    coverage_factor: float = 2.0
+    additional_standard_uncertainties: tuple[
+        PressureAdditionalStandardUncertaintyRequest,
+        ...,
+    ] = ()
+
+
+class PressureCalculationBaseRequest(PressurePointBaseRequest):
+    job_id: str
+    software_version: str
+    calculation_engine_version: str
+    constant_set_version: str
+    budget_version: str
+
+
+class ManualPressureCalculationRequest(PressureCalculationBaseRequest):
+    reference_pressure: float
+    indication_values: tuple[float, ...]
+
+
+class AutomaticPressureCalculationRequest(PressureCalculationBaseRequest):
+    reference_values: tuple[float, ...]
+    indication_values: tuple[float, ...]
+
+
+class ManualPressureCalculationPointRequest(PressurePointBaseRequest):
+    reference_pressure: float
+    indication_values: tuple[float, ...]
+
+
+class AutomaticPressureCalculationPointRequest(PressurePointBaseRequest):
+    reference_values: tuple[float, ...]
+    indication_values: tuple[float, ...]
+
+
+class PressureCalculationRunRequest(BaseModel):
+    manual_points: tuple[ManualPressureCalculationPointRequest, ...] = ()
+    automatic_points: tuple[AutomaticPressureCalculationPointRequest, ...] = ()
+    software_version: str
+    calculation_engine_version: str
+    constant_set_version: str
+    budget_version: str
+
+
+class PressureContributionResponse(BaseModel):
+    name: str
+    standard_uncertainty: float
+    sensitivity_coefficient: float
+    effective_standard_uncertainty: float
+
+
+class PressureCalculationResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    point_id: str
+    job_id: str
+    dut_id: str
+    measurement_window_id: str
+    pressure_kind: str
+    reference: float
+    indication: float
+    error_of_indication: float
+    display_error_of_indication: str
+    reported_expanded_uncertainty: str
+    calculated_expanded_uncertainty: str
+    cmc_floor_applied: bool
+    unit: str
+    contributions: tuple[PressureContributionResponse, ...]
+    calculated_by: str
+    calculated_at: str
+    calculation_audit_event_id: int
+
+
+class ManualPressureCalculationResponse(PressureCalculationResponse):
+    pass
+
+
+class AutomaticPressureCalculationResponse(PressureCalculationResponse):
+    pass
+
+
+class PressureCalculationSummaryResponse(BaseModel):
+    point_id: str
+    dut_id: str
+    measurement_window_id: str
+    calculation_type: str
+    pressure_kind: str
+    reference: float
+    indication: float
+    error_of_indication: float
+    display_error_of_indication: str
+    reported_expanded_uncertainty: str
+    calculated_expanded_uncertainty: str
+    cmc_floor_applied: bool
+    unit: str
+    contributions: tuple[PressureContributionResponse, ...]
+
+
+class PressureCalculationRunResponse(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"regulated_response": True})
+
+    job_id: str
+    state: str
+    summary_ids: tuple[str, ...]
+    summaries: tuple[PressureCalculationSummaryResponse, ...]
     calculation_audit_event_id: int
     workflow_audit_event_id: int
 
@@ -805,6 +1048,7 @@ def create_app(
     enabled_disciplines: frozenset[Discipline] | None = None,
     entra_token_verifier: EntraTokenVerifier | None = None,
     entra_session_duration: timedelta = timedelta(hours=8),
+    allow_provisional_valprobe_parser: bool = False,
 ) -> FastAPI:
     """Create the backend API with an injected connection or connection scope."""
     if connection is None and connection_provider is None:
@@ -1307,8 +1551,22 @@ def create_app(
                 status_code=409,
                 detail="Artifact storage path is not configured.",
             )
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                declared_size = int(content_length)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Upload Content-Length header is invalid.",
+                ) from exc
+            if declared_size > MAX_UPLOAD_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Uploaded file exceeds {MAX_UPLOAD_SIZE_BYTES} byte limit.",
+                )
         try:
-            content_bytes = await request.body()
+            content_bytes = await _read_limited_request_body(request)
             with connection_scope() as scoped_connection:
                 result = upload_source_file_for_session(
                     connection=scoped_connection,
@@ -1322,6 +1580,9 @@ def create_app(
                     software_version=software_version,
                     timestamp=clock_fn(),
                     parser_version=parser_version,
+                    allow_provisional_valprobe_parser=(
+                        allow_provisional_valprobe_parser
+                    ),
                 )
         except AuthenticationFailureError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
@@ -1438,6 +1699,107 @@ def create_app(
         return _manual_irtd_rows_response(result)
 
     @app.post(
+        "/calibration-jobs/{job_id}/pressure-manual-entry",
+        response_model=ManualPressureEntryResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def manual_pressure_entry(
+        job_id: str,
+        request: ManualPressureEntryRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ManualPressureEntryResponse:
+        try:
+            with connection_scope() as scoped_connection:
+                result = record_manual_pressure_entry_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    uploaded_file_id=request.uploaded_file_id,
+                    dut_id=request.dut_id,
+                    dut_make=request.dut_make,
+                    dut_model=request.dut_model,
+                    dut_serial_number=request.dut_serial_number,
+                    dut_channel_id=request.dut_channel_id,
+                    window_id=request.window_id,
+                    setpoint=request.setpoint,
+                    unit=request.unit,
+                    readings=tuple(
+                        ManualPressureReadingInput(
+                            timestamp=reading.timestamp,
+                            value=reading.value,
+                            source_label=reading.source_label,
+                            row_number=reading.row_number,
+                            column_label=reading.column_label,
+                        )
+                        for reading in request.readings
+                    ),
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PressureManualEntryServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _manual_pressure_entry_response(result)
+
+    @app.post(
+        "/calibration-jobs/{job_id}/pressure-automatic-entry",
+        response_model=AutomaticPressureEntryResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def automatic_pressure_entry(
+        job_id: str,
+        request: AutomaticPressureEntryRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> AutomaticPressureEntryResponse:
+        if artifact_directory is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact storage path is not configured.",
+            )
+        try:
+            with connection_scope() as scoped_connection:
+                result = record_automatic_pressure_entry_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=job_id,
+                    uploaded_file_id=request.uploaded_file_id,
+                    dut_id=request.dut_id,
+                    dut_make=request.dut_make,
+                    dut_model=request.dut_model,
+                    dut_serial_number=request.dut_serial_number,
+                    dut_channel_id=request.dut_channel_id,
+                    window_id=request.window_id,
+                    setpoint=request.setpoint,
+                    unit=request.unit,
+                    parser_version=request.parser_version,
+                    artifact_directory=artifact_directory,
+                    software_version=request.software_version,
+                    timestamp=clock_fn(),
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PressureAutomaticEntryServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _automatic_pressure_entry_response(result)
+
+    @app.post(
         "/calibration-jobs/{job_id}/temperature-windows",
         response_model=TemperatureWindowSelectionResponse,
         responses={
@@ -1550,6 +1912,200 @@ def create_app(
         except (TemperatureCalculationServiceError, TemperatureCalculationError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _temperature_calculation_response(job_id=job_id, result=result)
+
+    @app.post(
+        "/pressure/manual-calculations",
+        response_model=ManualPressureCalculationResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def manual_pressure_calculation(
+        request: ManualPressureCalculationRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> ManualPressureCalculationResponse:
+        timestamp = clock_fn()
+        try:
+            with connection_scope() as scoped_connection:
+                actor = resolve_actor_for_action(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    action=Action.RUN_CALCULATION,
+                    timestamp=timestamp,
+                )
+                uncertainty_input = _pressure_uncertainty_input(request)
+                result = calculate_manual_pressure_point(
+                    point_id=request.point_id,
+                    job_id=request.job_id,
+                    dut_id=request.dut_id,
+                    measurement_window_id=request.measurement_window_id,
+                    reference_pressure=request.reference_pressure,
+                    indication_values=request.indication_values,
+                    uncertainty_input=uncertainty_input,
+                    calculation_engine_version=request.calculation_engine_version,
+                    constant_set_version=request.constant_set_version,
+                    budget_version=request.budget_version,
+                )
+                audit_event_id = SQLiteAuditEventRepository(
+                    scoped_connection,
+                ).append(
+                    _pressure_calculation_audit_event(
+                        calculation_type="manual",
+                        request=request,
+                        result=result,
+                        user_id=actor.user_id,
+                        timestamp=timestamp,
+                    )
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PressureCalculationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _pressure_calculation_response(
+            result=result,
+            pressure_kind=request.pressure_kind,
+            calculated_by=actor.user_id,
+            calculated_at=timestamp,
+            audit_event_id=audit_event_id,
+        )
+
+    @app.post(
+        "/pressure/automatic-calculations",
+        response_model=AutomaticPressureCalculationResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def automatic_pressure_calculation(
+        request: AutomaticPressureCalculationRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> AutomaticPressureCalculationResponse:
+        timestamp = clock_fn()
+        try:
+            with connection_scope() as scoped_connection:
+                actor = resolve_actor_for_action(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    action=Action.RUN_CALCULATION,
+                    timestamp=timestamp,
+                )
+                result = calculate_automatic_pressure_point(
+                    point_id=request.point_id,
+                    job_id=request.job_id,
+                    dut_id=request.dut_id,
+                    measurement_window_id=request.measurement_window_id,
+                    reference_values=request.reference_values,
+                    indication_values=request.indication_values,
+                    uncertainty_input=_pressure_uncertainty_input(request),
+                    calculation_engine_version=request.calculation_engine_version,
+                    constant_set_version=request.constant_set_version,
+                    budget_version=request.budget_version,
+                )
+                audit_event_id = SQLiteAuditEventRepository(
+                    scoped_connection,
+                ).append(
+                    _pressure_calculation_audit_event(
+                        calculation_type="automatic",
+                        request=request,
+                        result=result,
+                        user_id=actor.user_id,
+                        timestamp=timestamp,
+                    )
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PressureCalculationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return AutomaticPressureCalculationResponse(
+            **_pressure_calculation_response(
+                result=result,
+                pressure_kind=request.pressure_kind,
+                calculated_by=actor.user_id,
+                calculated_at=timestamp,
+                audit_event_id=audit_event_id,
+            ).model_dump()
+        )
+
+    @app.post(
+        "/calibration-jobs/{job_id}/pressure-calculations",
+        response_model=PressureCalculationRunResponse,
+        responses={
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def pressure_calculation_run(
+        job_id: str,
+        request: PressureCalculationRunRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> PressureCalculationRunResponse:
+        timestamp = clock_fn()
+        try:
+            with connection_scope() as scoped_connection:
+                actor = resolve_actor_for_action(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    action=Action.RUN_CALCULATION,
+                    timestamp=timestamp,
+                )
+                result = calculate_pressure_measurement_points(
+                    connection=scoped_connection,
+                    job_id=job_id,
+                    manual_points=tuple(
+                        ManualPressurePointInput(
+                            point_id=point.point_id,
+                            dut_id=point.dut_id,
+                            measurement_window_id=point.measurement_window_id,
+                            pressure_kind=point.pressure_kind,
+                            reference_pressure=point.reference_pressure,
+                            indication_values=point.indication_values,
+                            uncertainty_input=_pressure_uncertainty_input(point),
+                        )
+                        for point in request.manual_points
+                    ),
+                    automatic_points=tuple(
+                        AutomaticPressurePointInput(
+                            point_id=point.point_id,
+                            dut_id=point.dut_id,
+                            measurement_window_id=point.measurement_window_id,
+                            pressure_kind=point.pressure_kind,
+                            reference_values=point.reference_values,
+                            indication_values=point.indication_values,
+                            uncertainty_input=_pressure_uncertainty_input(point),
+                        )
+                        for point in request.automatic_points
+                    ),
+                    software_version=request.software_version,
+                    calculation_engine_version=request.calculation_engine_version,
+                    constant_set_version=request.constant_set_version,
+                    budget_version=request.budget_version,
+                    user_id=actor.user_id,
+                    timestamp=timestamp,
+                )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PressureCalculationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except PressureCalculationServiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _pressure_calculation_run_response(job_id=job_id, result=result)
 
     @app.post(
         "/calibration-jobs/{job_id}/technical-review-submissions",
@@ -1898,7 +2454,22 @@ def create_app(
         request: CertificateReleaseRequest,
         x_session_id: str = Header(alias="X-Session-Id"),
     ) -> CertificateReleaseResponse:
+        if artifact_directory is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Artifact storage path is not configured.",
+            )
         try:
+            expected_storage_uri = f"controlled-local://{request.filename}"
+            if request.storage_uri != expected_storage_uri:
+                raise CertificateReleaseServiceError(
+                    "Manual release artifact storage URI must match verified local artifact."
+                )
+            verified_stored_artifact_path(
+                base_path=artifact_directory,
+                filename=request.filename,
+                checksum_sha256=request.checksum_sha256,
+            )
             with connection_scope() as scoped_connection:
                 result = release_certificate_for_session(
                     connection=scoped_connection,
@@ -1924,7 +2495,10 @@ def create_app(
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except AuthenticationServiceError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except CertificateReleaseServiceError as exc:
+        except (
+            CertificateArtifactStorageError,
+            CertificateReleaseServiceError,
+        ) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _release_response(result)
 
@@ -2331,6 +2905,52 @@ def _manual_irtd_rows_response(result: ManualIrtdAlignment) -> ManualIrtdRowsRes
     )
 
 
+def _manual_pressure_entry_response(
+    result: ManualPressureEntry,
+) -> ManualPressureEntryResponse:
+    return ManualPressureEntryResponse(
+        job_id=result.job_id,
+        state=result.state.value,
+        dut_id=result.dut_id,
+        window_id=result.window_id,
+        reading_count=result.reading_count,
+        data_entry_audit_event_id=result.data_entry_audit_event_id,
+        data_entry_workflow_audit_event_id=(
+            result.data_entry_workflow_audit_event_id
+        ),
+        manual_reading_audit_event_id=result.manual_reading_audit_event_id,
+        window_audit_event_id=result.window_audit_event_id,
+        window_workflow_audit_event_id=result.window_workflow_audit_event_id,
+    )
+
+
+def _automatic_pressure_entry_response(
+    result: AutomaticPressureEntry,
+) -> AutomaticPressureEntryResponse:
+    return AutomaticPressureEntryResponse(
+        job_id=result.job_id,
+        state=result.state.value,
+        dut_id=result.dut_id,
+        window_id=result.window_id,
+        parser_version=result.parser_version,
+        reference_values=result.reference_values,
+        indication_values=result.indication_values,
+        reference_reading_count=result.reference_reading_count,
+        indication_reading_count=result.indication_reading_count,
+        warning_count=len(result.warnings),
+        warnings=result.warnings,
+        parser_audit_event_id=result.parser_audit_event_id,
+        job_parser_audit_event_id=result.job_parser_audit_event_id,
+        data_entry_audit_event_id=result.data_entry_audit_event_id,
+        data_entry_workflow_audit_event_id=(
+            result.data_entry_workflow_audit_event_id
+        ),
+        alignment_audit_event_id=result.alignment_audit_event_id,
+        window_audit_event_id=result.window_audit_event_id,
+        window_workflow_audit_event_id=result.window_workflow_audit_event_id,
+    )
+
+
 def _temperature_window_selection_response(
     result: TemperatureMeasurementWindowSelection,
 ) -> TemperatureWindowSelectionResponse:
@@ -2373,6 +2993,7 @@ def _temperature_uncertainty_input(
         bath_coverage_factor=request.bath_coverage_factor,
         dut_resolution=request.dut_resolution,
         coverage_factor=request.coverage_factor,
+        type_a_method=request.type_a_method,
         additional_standard_uncertainties=tuple(
             AdditionalStandardUncertainty(
                 name=value.name,
@@ -2411,6 +3032,178 @@ def _temperature_calculation_response(
         ),
         calculation_audit_event_id=result.calculation_audit_event_id,
         workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _pressure_uncertainty_input(
+    request: PressurePointBaseRequest,
+) -> PressurePointUncertaintyInput:
+    return PressurePointUncertaintyInput(
+        setpoint=request.setpoint,
+        unit=request.unit,
+        pressure_kind=request.pressure_kind,
+        cmc_floor=request.cmc_floor,
+        reference_expanded_uncertainty=request.reference_expanded_uncertainty,
+        reference_coverage_factor=request.reference_coverage_factor,
+        dut_resolution=request.dut_resolution,
+        barometer_expanded_uncertainty=request.barometer_expanded_uncertainty,
+        barometer_coverage_factor=request.barometer_coverage_factor,
+        coverage_factor=request.coverage_factor,
+        additional_standard_uncertainties=tuple(
+            PressureAdditionalStandardUncertainty(
+                name=value.name,
+                standard_uncertainty=value.standard_uncertainty,
+                sensitivity_coefficient=value.sensitivity_coefficient,
+            )
+            for value in request.additional_standard_uncertainties
+        ),
+    )
+
+
+def _pressure_calculation_response(
+    *,
+    result: PressurePointCalculation,
+    pressure_kind: PressureKind,
+    calculated_by: str,
+    calculated_at: datetime,
+    audit_event_id: int,
+) -> ManualPressureCalculationResponse:
+    summary = result.summary
+    return ManualPressureCalculationResponse(
+        point_id=summary.point_id,
+        job_id=summary.job_id,
+        dut_id=summary.dut_id,
+        measurement_window_id=summary.measurement_window_id,
+        pressure_kind=pressure_kind.value,
+        reference=summary.reference,
+        indication=summary.indication,
+        error_of_indication=summary.error_of_indication,
+        display_error_of_indication=str(summary.display_error_of_indication),
+        reported_expanded_uncertainty=str(summary.reported_expanded_uncertainty),
+        calculated_expanded_uncertainty=str(result.calculated_expanded_uncertainty),
+        cmc_floor_applied=summary.cmc_floor_applied,
+        unit=summary.unit,
+        contributions=tuple(
+            PressureContributionResponse(
+                name=contribution.name,
+                standard_uncertainty=contribution.standard_uncertainty,
+                sensitivity_coefficient=contribution.sensitivity_coefficient,
+                effective_standard_uncertainty=(
+                    contribution.effective_standard_uncertainty
+                ),
+            )
+            for contribution in result.contributions
+        ),
+        calculated_by=calculated_by,
+        calculated_at=calculated_at.isoformat(),
+        calculation_audit_event_id=audit_event_id,
+    )
+
+
+def _pressure_calculation_run_response(
+    *,
+    job_id: str,
+    result: PressureCalculationRun,
+) -> PressureCalculationRunResponse:
+    return PressureCalculationRunResponse(
+        job_id=job_id,
+        state="calculated",
+        summary_ids=tuple(
+            point.calculation.summary.point_id for point in result.points
+        ),
+        summaries=tuple(
+            _pressure_calculation_summary_response(point)
+            for point in result.points
+        ),
+        calculation_audit_event_id=result.calculation_audit_event_id,
+        workflow_audit_event_id=result.workflow_audit_event_id,
+    )
+
+
+def _pressure_calculation_summary_response(
+    point,
+) -> PressureCalculationSummaryResponse:
+    summary = point.calculation.summary
+    return PressureCalculationSummaryResponse(
+        point_id=summary.point_id,
+        dut_id=summary.dut_id,
+        measurement_window_id=summary.measurement_window_id,
+        calculation_type=point.calculation_type,
+        pressure_kind=point.pressure_kind.value,
+        reference=summary.reference,
+        indication=summary.indication,
+        error_of_indication=summary.error_of_indication,
+        display_error_of_indication=str(summary.display_error_of_indication),
+        reported_expanded_uncertainty=str(summary.reported_expanded_uncertainty),
+        calculated_expanded_uncertainty=str(
+            point.calculation.calculated_expanded_uncertainty
+        ),
+        cmc_floor_applied=summary.cmc_floor_applied,
+        unit=summary.unit,
+        contributions=tuple(
+            PressureContributionResponse(
+                name=contribution.name,
+                standard_uncertainty=contribution.standard_uncertainty,
+                sensitivity_coefficient=contribution.sensitivity_coefficient,
+                effective_standard_uncertainty=(
+                    contribution.effective_standard_uncertainty
+                ),
+            )
+            for contribution in point.calculation.contributions
+        ),
+    )
+
+
+def _pressure_calculation_audit_event(
+    *,
+    calculation_type: str,
+    request: PressureCalculationBaseRequest,
+    result: PressurePointCalculation,
+    user_id: str,
+    timestamp: datetime,
+) -> AuditEvent:
+    summary = result.summary
+    return AuditEvent(
+        entity_type="pressure_calculation",
+        entity_id=request.point_id,
+        action=AuditAction.CALCULATION_RUN,
+        user_id=user_id,
+        timestamp=timestamp,
+        new_value={
+            "calculation_type": calculation_type,
+            "job_id": request.job_id,
+            "dut_id": request.dut_id,
+            "measurement_window_id": request.measurement_window_id,
+            "pressure_kind": request.pressure_kind.value,
+            "reference": summary.reference,
+            "indication": summary.indication,
+            "error_of_indication": summary.error_of_indication,
+            "reported_expanded_uncertainty": str(
+                summary.reported_expanded_uncertainty
+            ),
+            "calculated_expanded_uncertainty": str(
+                result.calculated_expanded_uncertainty
+            ),
+            "cmc_floor_applied": summary.cmc_floor_applied,
+            "unit": summary.unit,
+            "contributions": tuple(
+                {
+                    "name": contribution.name,
+                    "standard_uncertainty": contribution.standard_uncertainty,
+                    "sensitivity_coefficient": (
+                        contribution.sensitivity_coefficient
+                    ),
+                    "effective_standard_uncertainty": (
+                        contribution.effective_standard_uncertainty
+                    ),
+                }
+                for contribution in result.contributions
+            ),
+        },
+        software_version=request.software_version,
+        calculation_engine_version=request.calculation_engine_version,
+        constant_set_version=request.constant_set_version,
+        budget_version=request.budget_version,
     )
 
 
@@ -2642,6 +3435,17 @@ def _artifact_media_type(artifact_type: ArtifactType) -> str:
     if artifact_type is ArtifactType.XLSX:
         return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return "application/octet-stream"
+
+
+async def _read_limited_request_body(request: Request) -> bytes:
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > MAX_UPLOAD_SIZE_BYTES:
+            raise SourceFileUploadServiceError(
+                f"Uploaded file exceeds {MAX_UPLOAD_SIZE_BYTES} byte limit."
+            )
+    return bytes(content)
 
 
 def _decimal_to_text(value: Decimal) -> str:

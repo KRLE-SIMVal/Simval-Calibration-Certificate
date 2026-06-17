@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 import hashlib
 import re
 import sqlite3
+from zipfile import BadZipFile, ZipFile
 
 from app.backend.audit.events import AuditAction, AuditEvent
 from app.backend.auth.permissions import Action
@@ -28,6 +30,18 @@ from app.backend.services.authentication import resolve_actor_for_action
 
 class SourceFileUploadServiceError(ValueError):
     """Raised when source-file upload inputs or storage are unsafe."""
+
+
+MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
+MAX_XLSX_MEMBER_COUNT = 200
+MAX_XLSX_MEMBER_SIZE_BYTES = 10 * 1024 * 1024
+MAX_XLSX_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+ALLOWED_EXTENSIONS_BY_KIND: dict[UploadedFileKind, frozenset[str]] = {
+    UploadedFileKind.CALIBRATION_XLSX: frozenset({".xlsx"}),
+    UploadedFileKind.VERIFICATION_PDF: frozenset({".pdf"}),
+    UploadedFileKind.CERTIFICATE_REFERENCE_PDF: frozenset({".pdf"}),
+    UploadedFileKind.OTHER: frozenset({".csv", ".json", ".txt"}),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +72,7 @@ def upload_source_file_for_session(
     software_version: str,
     timestamp: datetime,
     parser_version: str | None = None,
+    allow_provisional_valprobe_parser: bool = False,
 ) -> SourceFileUploadResult:
     """Store raw uploaded bytes and parse known calibration workbook files."""
     actor = resolve_actor_for_action(
@@ -75,6 +90,11 @@ def upload_source_file_for_session(
         raise SourceFileUploadServiceError("File kind is invalid.")
     if len(content_bytes) == 0:
         raise SourceFileUploadServiceError("Uploaded file content is required.")
+    _validate_upload_controls(
+        original_filename=original_filename,
+        file_kind=file_kind,
+        content_bytes=content_bytes,
+    )
 
     try:
         SQLiteCalibrationJobRepository(connection).get(job_id)
@@ -136,6 +156,15 @@ def upload_source_file_for_session(
                 software_version=software_version,
             )
             upload_event_id = audit_repository.append(upload_event)
+            audit_repository.append(
+                _job_scoped_upload_audit_event(
+                    uploaded_file=uploaded_file,
+                    size_bytes=len(content_bytes),
+                    user_id=actor.user_id,
+                    software_version=software_version,
+                    timestamp=timestamp,
+                )
+            )
 
             parser_status = "not_run"
             reading_count = 0
@@ -144,19 +173,26 @@ def upload_source_file_for_session(
             parser_event: AuditEvent | None = None
             if file_kind is UploadedFileKind.CALIBRATION_XLSX:
                 assert effective_parser_version is not None
-                try:
-                    parsed = parse_valprobe_temperature_workbook(
-                        storage.path,
-                        uploaded_file_id=uploaded_file.id,
-                        parser_version=effective_parser_version,
+                if not allow_provisional_valprobe_parser:
+                    parser_status = "stored_only"
+                    warnings = (
+                        "ValProbe XLSX parser is provisional and disabled for "
+                        "production upload workflows until validated.",
                     )
-                    reading_repository.add_many(parsed.readings)
-                    parser_status = "parsed"
-                    reading_count = len(parsed.readings)
-                    warnings = parsed.warnings
-                except ValProbeWorkbookParseError as exc:
-                    parser_status = "failed"
-                    warnings = (str(exc),)
+                else:
+                    try:
+                        parsed = parse_valprobe_temperature_workbook(
+                            storage.path,
+                            uploaded_file_id=uploaded_file.id,
+                            parser_version=effective_parser_version,
+                        )
+                        reading_repository.add_many(parsed.readings)
+                        parser_status = "parsed"
+                        reading_count = len(parsed.readings)
+                        warnings = parsed.warnings
+                    except ValProbeWorkbookParseError as exc:
+                        parser_status = "failed"
+                        warnings = (str(exc),)
                 parser_event = _parser_audit_event(
                     uploaded_file=uploaded_file,
                     parser_status=parser_status,
@@ -168,6 +204,18 @@ def upload_source_file_for_session(
                     timestamp=timestamp,
                 )
                 parser_event_id = audit_repository.append(parser_event)
+                audit_repository.append(
+                    _job_scoped_parser_audit_event(
+                        uploaded_file=uploaded_file,
+                        parser_status=parser_status,
+                        parser_version=effective_parser_version,
+                        reading_count=reading_count,
+                        warning_count=len(warnings),
+                        user_id=actor.user_id,
+                        software_version=software_version,
+                        timestamp=timestamp,
+                    )
+                )
             elif file_kind is UploadedFileKind.VERIFICATION_PDF:
                 parser_status = "stored_only"
                 warnings = (
@@ -235,6 +283,55 @@ def _write_uploaded_bytes(
     )
 
 
+def _validate_upload_controls(
+    *,
+    original_filename: str,
+    file_kind: UploadedFileKind,
+    content_bytes: bytes,
+) -> None:
+    if len(content_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        raise SourceFileUploadServiceError(
+            f"Uploaded file exceeds {MAX_UPLOAD_SIZE_BYTES} byte limit."
+        )
+    allowed_extensions = ALLOWED_EXTENSIONS_BY_KIND[file_kind]
+    suffix = Path(original_filename).suffix.lower()
+    if suffix not in allowed_extensions:
+        allowed_text = ", ".join(sorted(allowed_extensions))
+        raise SourceFileUploadServiceError(
+            f"Uploaded {file_kind.value} file must use extension: {allowed_text}."
+        )
+    if file_kind is UploadedFileKind.CALIBRATION_XLSX:
+        _validate_xlsx_archive(content_bytes)
+
+
+def _validate_xlsx_archive(content_bytes: bytes) -> None:
+    try:
+        with ZipFile(BytesIO(content_bytes)) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_XLSX_MEMBER_COUNT:
+                raise SourceFileUploadServiceError("XLSX archive has too many members.")
+            total_uncompressed = 0
+            for member in members:
+                member_path = Path(member.filename)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise SourceFileUploadServiceError(
+                        "XLSX archive contains unsafe member paths."
+                    )
+                if member.file_size > MAX_XLSX_MEMBER_SIZE_BYTES:
+                    raise SourceFileUploadServiceError(
+                        "XLSX archive member exceeds size limit."
+                    )
+                total_uncompressed += member.file_size
+                if total_uncompressed > MAX_XLSX_TOTAL_UNCOMPRESSED_BYTES:
+                    raise SourceFileUploadServiceError(
+                        "XLSX archive uncompressed size exceeds limit."
+                    )
+    except BadZipFile as exc:
+        raise SourceFileUploadServiceError(
+            "Uploaded XLSX file is not a valid ZIP archive."
+        ) from exc
+
+
 def _parser_version_for_kind(
     *,
     file_kind: UploadedFileKind,
@@ -274,6 +371,60 @@ def _parser_audit_event(
     )
 
 
+def _job_scoped_upload_audit_event(
+    *,
+    uploaded_file: UploadedFile,
+    size_bytes: int,
+    user_id: str,
+    software_version: str,
+    timestamp: datetime,
+) -> AuditEvent:
+    return AuditEvent(
+        entity_type="calibration_job",
+        entity_id=uploaded_file.job_id,
+        action=AuditAction.FILE_UPLOADED,
+        user_id=user_id,
+        timestamp=timestamp,
+        new_value={
+            "uploaded_file_id": uploaded_file.id,
+            "checksum_sha256": uploaded_file.checksum_sha256,
+            "file_kind": uploaded_file.file_kind.value,
+            "original_filename": uploaded_file.original_filename,
+            "size_bytes": size_bytes,
+            "storage_uri": uploaded_file.storage_uri,
+        },
+        software_version=software_version,
+    )
+
+
+def _job_scoped_parser_audit_event(
+    *,
+    uploaded_file: UploadedFile,
+    parser_status: str,
+    parser_version: str,
+    reading_count: int,
+    warning_count: int,
+    user_id: str,
+    software_version: str,
+    timestamp: datetime,
+) -> AuditEvent:
+    return AuditEvent(
+        entity_type="calibration_job",
+        entity_id=uploaded_file.job_id,
+        action=AuditAction.PARSER_RESULT_RECORDED,
+        user_id=user_id,
+        timestamp=timestamp,
+        new_value={
+            "uploaded_file_id": uploaded_file.id,
+            "parser_status": parser_status,
+            "parser_version": parser_version,
+            "reading_count": reading_count,
+            "warning_count": warning_count,
+        },
+        software_version=software_version,
+    )
+
+
 def _safe_filename(value: str) -> str:
     candidate = re.sub(r"[^A-Za-z0-9._ -]", "_", value).strip()
     if candidate in {"", ".", ".."}:
@@ -303,4 +454,3 @@ def _require_text(value: str, field_name: str) -> None:
 def _require_timezone_aware(value: datetime, field_name: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise SourceFileUploadServiceError(f"{field_name} must be timezone-aware.")
-

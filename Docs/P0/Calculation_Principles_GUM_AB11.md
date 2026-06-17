@@ -132,10 +132,39 @@ Expected contribution families:
 - Reference sensor uncertainty.
 - Reference sensor repeatability.
 - DUT indication repeatability, when applicable.
+- Paired error repeatability, when the approved method treats linked
+  reference/DUT observations as paired differences.
 - Bath/thermostat contribution, when applicable.
 - DUT resolution.
 - CMC floor.
 - Method-specific stability or homogeneity contributions where required.
+
+### Temperature Type A Repeatability Method
+
+The default automatic temperature Type A method is
+`independent_reference_and_dut`. It preserves the initial approved model from
+the design brief:
+
+```text
+u_ref = stdev.s(R_i) / sqrt(n)
+u_ind = stdev.s(I_i) / sqrt(n)
+```
+
+The engine also supports `paired_error_differences` for linked simultaneous
+reference/DUT observations when the approved uncertainty budget treats the
+repeatability term as the standard uncertainty of the mean error series:
+
+```text
+E_i = I_i - R_i
+u_error_repeatability = stdev.s(E_i) / sqrt(n)
+```
+
+Metrology impact: the paired method accounts for correlation common to the
+simultaneous reference and indication readings by evaluating the observed error
+series directly. It must not be selected for routine certificates unless the
+SIMVal-approved method, budget version, and validation examples explicitly use
+that model. The selected Type A method must be retained in calculation audit
+evidence.
 
 ## Pressure Calculation Scope
 
