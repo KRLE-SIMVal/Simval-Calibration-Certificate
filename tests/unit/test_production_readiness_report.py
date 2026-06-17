@@ -140,6 +140,8 @@ def test_generate_production_readiness_report_cli_writes_blocked_report(
     with sqlite3.connect(database_path) as connection:
         connection.execute("CREATE TABLE notes (id TEXT PRIMARY KEY)")
     output_path = tmp_path / "production-readiness.json"
+    evidence_path = tmp_path / "pytest.xml"
+    evidence_path.write_text("<testsuite></testsuite>\n", encoding="utf-8")
     monkeypatch.setenv("SIMVAL_DATABASE_PATH", str(database_path))
     monkeypatch.setenv("SIMVAL_ARTIFACT_STORAGE_PATH", str(artifact_path))
     monkeypatch.setenv("SIMVAL_ENABLED_DISCIPLINES", "temperature")
@@ -154,7 +156,7 @@ def test_generate_production_readiness_report_cli_writes_blocked_report(
             "--generated-at",
             "2026-06-09T08:00:00Z",
             "--evidence",
-            "pytest=Docs/Validation/evidence/latest/pytest.xml",
+            f"pytest={evidence_path}",
             "--output",
             str(output_path),
         ]
@@ -165,9 +167,7 @@ def test_generate_production_readiness_report_cli_writes_blocked_report(
     assert result == 2
     assert payload["status"] == "blocked"
     assert payload["runtime_readiness"]["status"] == "ready"
-    assert payload["evidence"]["references"] == {
-        "pytest": "Docs/Validation/evidence/latest/pytest.xml"
-    }
+    assert payload["evidence"]["references"] == {"pytest": str(evidence_path)}
     assert "runtime_profile_not_production" in payload["blockers"]
     assert "final_human_approval_missing" in payload["blockers"]
     assert "production_smoke_evidence_missing" in payload["blockers"]
