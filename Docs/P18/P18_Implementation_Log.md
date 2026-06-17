@@ -16,6 +16,8 @@ System Owner and QA/Laboratory review.
   when all configured evidence flags and runtime checks are complete.
 - The report avoids exposing production database or artifact paths in the
   payload.
+- P20 later tightened this behavior so verified go-live flags also require
+  matching retained evidence references.
 
 ## Compliance Notes
 

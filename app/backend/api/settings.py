@@ -22,10 +22,16 @@ class AuthProvider(StrEnum):
     ENTRA_ID_FREE = "entra_id_free"
 
 
+class RuntimeProfile(StrEnum):
+    DEVELOPMENT = "development"
+    PRODUCTION = "production"
+
+
 @dataclass(frozen=True, slots=True)
 class ApiSettings:
     database_path: Path
     artifact_storage_path: Path
+    runtime_profile: RuntimeProfile
     enabled_disciplines: frozenset[Discipline]
     auth_provider: AuthProvider
     entra_id: EntraIdConfiguration | None
@@ -45,10 +51,12 @@ class ApiSettings:
             env,
             "SIMVAL_ARTIFACT_STORAGE_PATH",
         )
-        auth_provider = _auth_provider(env)
+        runtime_profile = _runtime_profile(env)
+        auth_provider = _auth_provider(env, runtime_profile)
         return cls(
             database_path=Path(raw_database_path),
             artifact_storage_path=Path(raw_artifact_storage_path),
+            runtime_profile=runtime_profile,
             enabled_disciplines=_enabled_disciplines(env),
             auth_provider=auth_provider,
             entra_id=_entra_configuration(env, auth_provider),
@@ -79,12 +87,42 @@ def _enabled_disciplines(environment: Mapping[str, str]) -> frozenset[Discipline
         ) from exc
 
 
-def _auth_provider(environment: Mapping[str, str]) -> AuthProvider:
-    raw_value = environment.get("SIMVAL_AUTH_PROVIDER", AuthProvider.LOCAL_SESSION.value)
+def _runtime_profile(environment: Mapping[str, str]) -> RuntimeProfile:
+    raw_value = environment.get(
+        "SIMVAL_RUNTIME_PROFILE",
+        RuntimeProfile.DEVELOPMENT.value,
+    )
     try:
-        return AuthProvider(raw_value.strip())
+        return RuntimeProfile(raw_value.strip())
+    except ValueError as exc:
+        raise ApiSettingsError(
+            "SIMVAL_RUNTIME_PROFILE must be development or production."
+        ) from exc
+
+
+def _auth_provider(
+    environment: Mapping[str, str],
+    runtime_profile: RuntimeProfile,
+) -> AuthProvider:
+    raw_value = environment.get("SIMVAL_AUTH_PROVIDER")
+    if raw_value is None or raw_value.strip() == "":
+        if runtime_profile is RuntimeProfile.PRODUCTION:
+            raise ApiSettingsError(
+                "SIMVAL_AUTH_PROVIDER must be explicitly set in production."
+            )
+        raw_value = AuthProvider.LOCAL_SESSION.value
+    try:
+        auth_provider = AuthProvider(raw_value.strip())
     except ValueError as exc:
         raise ApiSettingsError("SIMVAL_AUTH_PROVIDER contains an invalid value.") from exc
+    if (
+        runtime_profile is RuntimeProfile.PRODUCTION
+        and auth_provider is not AuthProvider.ENTRA_ID_FREE
+    ):
+        raise ApiSettingsError(
+            "Production runtime requires SIMVAL_AUTH_PROVIDER=entra_id_free."
+        )
+    return auth_provider
 
 
 def _entra_configuration(

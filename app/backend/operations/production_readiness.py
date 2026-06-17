@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Mapping
 
-from app.backend.api.settings import AuthProvider, ApiSettings
+from app.backend.api.settings import AuthProvider, ApiSettings, RuntimeProfile
 from app.backend.domain.entities import Discipline
 from app.backend.operations.readiness import RuntimeReadiness
 
@@ -16,20 +16,68 @@ class ProductionReadinessError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class EvidenceReferenceRecord:
+    key: str
+    reference: str
+    kind: str
+    sha256: str | None = None
+    size_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        _require_text(self.key, "Evidence reference key")
+        _require_text(self.reference, "Evidence reference value")
+        if self.kind not in {"file", "directory"}:
+            raise ProductionReadinessError("Evidence reference kind is invalid.")
+        if self.kind == "file":
+            _require_text(self.sha256 or "", "Evidence file SHA-256")
+            if self.size_bytes is None or self.size_bytes < 0:
+                raise ProductionReadinessError(
+                    "Evidence file size must be non-negative."
+                )
+
+    def to_payload(self) -> dict:
+        payload = {
+            "key": self.key,
+            "reference": self.reference,
+            "kind": self.kind,
+        }
+        if self.sha256 is not None:
+            payload["sha256"] = self.sha256
+        if self.size_bytes is not None:
+            payload["size_bytes"] = self.size_bytes
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
 class ProductionReadinessEvidence:
     live_entra_verified: bool = False
     tls_host_verified: bool = False
     backup_restore_verified: bool = False
     reviewer_independence_verified: bool = False
+    valprobe_parser_validated: bool = False
     retention_policy_approved: bool = False
     final_human_approval_recorded: bool = False
     references: Mapping[str, str] | None = None
+    reference_manifest: tuple[EvidenceReferenceRecord, ...] = ()
+    unavailable_references: tuple[str, ...] = ()
+    evidence_content_blockers: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.references is not None:
             for key, value in self.references.items():
                 _require_text(key, "Evidence reference key")
                 _require_text(value, "Evidence reference value")
+        seen_manifest_keys: set[str] = set()
+        for record in self.reference_manifest:
+            if record.key in seen_manifest_keys:
+                raise ProductionReadinessError(
+                    "Evidence reference manifest contains duplicate keys."
+                )
+            seen_manifest_keys.add(record.key)
+        for key in self.unavailable_references:
+            _require_text(key, "Unavailable evidence reference key")
+        for blocker in self.evidence_content_blockers:
+            _require_text(blocker, "Evidence content blocker")
 
     def to_payload(self) -> dict:
         return {
@@ -37,9 +85,15 @@ class ProductionReadinessEvidence:
             "tls_host_verified": self.tls_host_verified,
             "backup_restore_verified": self.backup_restore_verified,
             "reviewer_independence_verified": self.reviewer_independence_verified,
+            "valprobe_parser_validated": self.valprobe_parser_validated,
             "retention_policy_approved": self.retention_policy_approved,
             "final_human_approval_recorded": self.final_human_approval_recorded,
             "references": dict(self.references or {}),
+            "reference_manifest": [
+                record.to_payload() for record in self.reference_manifest
+            ],
+            "unavailable_references": list(self.unavailable_references),
+            "evidence_content_blockers": list(self.evidence_content_blockers),
         }
 
 
@@ -108,6 +162,8 @@ def _blockers(
         blockers.append("runtime_readiness_not_ready")
     if settings.enabled_disciplines != frozenset({Discipline.TEMPERATURE}):
         blockers.append("production_scope_not_temperature_only")
+    if settings.runtime_profile is not RuntimeProfile.PRODUCTION:
+        blockers.append("runtime_profile_not_production")
     if settings.auth_provider is not AuthProvider.ENTRA_ID_FREE:
         blockers.append("auth_provider_not_entra_id_free")
     if settings.entra_id is None:
@@ -120,11 +176,39 @@ def _blockers(
         blockers.append("backup_restore_verification_missing")
     if not evidence.reviewer_independence_verified:
         blockers.append("reviewer_independence_evidence_missing")
+    if not evidence.valprobe_parser_validated:
+        blockers.append("valprobe_parser_validation_missing")
     if not evidence.retention_policy_approved:
         blockers.append("retention_policy_approval_missing")
     if not evidence.final_human_approval_recorded:
         blockers.append("final_human_approval_missing")
+    blockers.extend(_evidence_reference_blockers(evidence))
+    blockers.extend(
+        f"{key}_evidence_reference_unavailable"
+        for key in evidence.unavailable_references
+    )
+    blockers.extend(evidence.evidence_content_blockers)
     return tuple(blockers)
+
+
+def _evidence_reference_blockers(
+    evidence: ProductionReadinessEvidence,
+) -> tuple[str, ...]:
+    references = evidence.references or {}
+    required_when_verified = (
+        (evidence.live_entra_verified, "live_entra"),
+        (evidence.tls_host_verified, "tls_host"),
+        (evidence.backup_restore_verified, "backup_restore"),
+        (evidence.reviewer_independence_verified, "reviewer_independence"),
+        (evidence.valprobe_parser_validated, "valprobe_parser_validation"),
+        (evidence.retention_policy_approved, "retention_policy"),
+        (evidence.final_human_approval_recorded, "human_approval"),
+    )
+    return tuple(
+        f"{key}_evidence_reference_missing"
+        for verified, key in required_when_verified
+        if verified and key not in references
+    )
 
 
 def _scope_payload(settings: ApiSettings) -> dict:
@@ -132,6 +216,7 @@ def _scope_payload(settings: ApiSettings) -> dict:
         "enabled_disciplines": sorted(
             discipline.value for discipline in settings.enabled_disciplines
         ),
+        "runtime_profile": settings.runtime_profile.value,
         "auth_provider": settings.auth_provider.value,
         "entra_configured": settings.entra_id is not None,
         "entra_local_session_hours": int(

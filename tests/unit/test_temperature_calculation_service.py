@@ -44,7 +44,10 @@ from app.backend.services.temperature_calculations import (
     calculate_temperature_measurement_points,
     calculate_temperature_measurement_points_for_session,
 )
-from app.calculation_engine.temperature.results import TemperaturePointUncertaintyInput
+from app.calculation_engine.temperature.results import (
+    TemperaturePointUncertaintyInput,
+    TemperatureTypeAMethod,
+)
 
 
 def _connection_with_calculable_job(
@@ -118,6 +121,9 @@ def test_calculate_temperature_measurement_points_persists_summary_and_audit():
     assert result.workflow_audit_event_id == 2
     assert events[0].new_value["summary_ids"] == ["job-001-window-001-summary"]
     assert events[0].new_value["points"][0]["measurement_window_id"] == "window-001"
+    assert events[0].new_value["points"][0]["type_a_method"] == (
+        "independent_reference_and_dut"
+    )
     assert events[0].new_value["points"][0]["contributions"][0]["name"] == (
         "reference_sensor_calibration"
     )
@@ -287,6 +293,37 @@ def test_calculate_temperature_measurement_points_requires_uncertainty_input_for
 
     assert "-80 deg C" in str(exc_info.value)
     assert SQLiteMeasurementPointSummaryRepository(connection).list_for_job("job-001") == ()
+
+
+def test_calculate_temperature_measurement_points_audits_paired_type_a_method():
+    connection = _connection_with_calculable_job()
+
+    result = calculate_temperature_measurement_points(
+        connection=connection,
+        job_id="job-001",
+        uncertainty_inputs=(
+            _uncertainty_input(
+                type_a_method=TemperatureTypeAMethod.PAIRED_ERROR_DIFFERENCES
+            ),
+        ),
+        user_id="operator-001",
+        software_version="app-0.1.0",
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version="constants-2026-001",
+        budget_version="budget-temp-001",
+        timestamp=datetime(2026, 6, 1, 15, 0, tzinfo=timezone.utc),
+    )
+
+    point = result.calculation_audit_event.new_value["points"][0]
+    assert point["type_a_method"] == "paired_error_differences"
+    assert [
+        contribution["name"] for contribution in point["contributions"]
+    ] == [
+        "reference_sensor_calibration",
+        "paired_error_repeatability",
+        "bath_or_thermostat",
+        "dut_resolution",
+    ]
 
 
 def _job() -> CalibrationJob:
@@ -473,7 +510,12 @@ def _budget() -> UncertaintyBudget:
     )
 
 
-def _uncertainty_input() -> TemperaturePointUncertaintyInput:
+def _uncertainty_input(
+    *,
+    type_a_method: TemperatureTypeAMethod = (
+        TemperatureTypeAMethod.INDEPENDENT_REFERENCE_AND_DUT
+    ),
+) -> TemperaturePointUncertaintyInput:
     return TemperaturePointUncertaintyInput(
         setpoint=-80.0,
         unit="deg C",
@@ -481,6 +523,7 @@ def _uncertainty_input() -> TemperaturePointUncertaintyInput:
         reference_expanded_uncertainty=0.010,
         bath_expanded_uncertainty=0.004,
         dut_resolution=0.010,
+        type_a_method=type_a_method,
     )
 
 

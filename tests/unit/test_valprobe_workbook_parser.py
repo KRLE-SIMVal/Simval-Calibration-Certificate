@@ -115,6 +115,47 @@ def test_valprobe_parser_warns_and_skips_nonnumeric_measurement(tmp_path):
     )
 
 
+def test_valprobe_parser_rejects_xml_entity_declarations(tmp_path):
+    workbook = tmp_path / "unsafe-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={
+            "Temperature": (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<!DOCTYPE worksheet [<!ENTITY unsafe "expanded">]>'
+                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                '<dimension ref="A1:A1"/><sheetData/></worksheet>'
+            ),
+        },
+    )
+
+    with pytest.raises(ValProbeWorkbookParseError) as exc_info:
+        parse_valprobe_temperature_workbook(
+            workbook,
+            uploaded_file_id="file-001",
+            parser_version="valprobe-xlsx-parser-v1",
+        )
+
+    assert "unsupported XML declarations" in str(exc_info.value)
+
+
+def test_valprobe_parser_reports_malformed_workbook_xml(tmp_path):
+    workbook = tmp_path / "malformed-valprobe.xlsx"
+    _write_workbook(
+        workbook,
+        sheets={"Temperature": "<worksheet><sheetData>"},
+    )
+
+    with pytest.raises(ValProbeWorkbookParseError) as exc_info:
+        parse_valprobe_temperature_workbook(
+            workbook,
+            uploaded_file_id="file-001",
+            parser_version="valprobe-xlsx-parser-v1",
+        )
+
+    assert "not well-formed XML" in str(exc_info.value)
+
+
 def _temperature_sheet_xml(*, data_rows: list[tuple[str, str, str]]) -> str:
     rows = [
         '<row r="7">'

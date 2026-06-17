@@ -103,6 +103,7 @@ def test_build_certificate_preview_for_session_consumes_locked_summaries_and_aud
         "dut_ids": ["dut-001"],
         "reference_equipment_ids": ["ref-001"],
         "metadata_recorded_at": "2026-06-01T14:00:00+00:00",
+        "discipline": "temperature",
         "row_count": 1,
         "template_version": "template-2026-001",
         "accreditation_mark_allowed": True,

@@ -22,6 +22,11 @@ rendering/export controls were closed.
   evidence in the validation evidence directory.
 - Failed scheduled regression runs now open a GitHub issue from the generated
   deviation Markdown.
+- P25 hardening later restricted the normal CI test job to `contents: read` and
+  moved `issues: write` to a separate scheduled-failure issue job that consumes
+  the retained validation evidence artifact.
+- P25 hardening also pinned third-party GitHub Actions to immutable commit SHAs
+  while keeping the original major tag in comments for controlled update review.
 
 ## Scope Not Implemented
 
@@ -41,6 +46,10 @@ rendering/export controls were closed.
   evidence artifact reference.
 - Regression deviation evidence is generated only for scheduled failures; normal
   push and pull-request failures remain standard CI failures.
+- The issue-opening permission is not available to normal test execution; only
+  the scheduled-failure issue job can write issues.
+- Third-party Action updates now require an intentional SHA update and review
+  rather than silently following a moving tag.
 - Manual equipment-library population is accepted as a production-readiness
   activity and is not a blocker for the current P5 validation hardening.
 

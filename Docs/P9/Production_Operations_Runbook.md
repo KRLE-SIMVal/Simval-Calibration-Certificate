@@ -65,11 +65,13 @@ The API exposes two runtime checks:
 - `GET /health`: process liveness only. Expected result: HTTP 200 with
   `{"status":"ok"}`.
 - `GET /readiness`: dependency readiness. Expected production result: HTTP 200
-  with database and artifact storage components set to `ok`.
+  with database, controlled schema baseline, and artifact storage components
+  set to `ok`.
 
-`GET /readiness` returns HTTP 503 when the database cannot be queried, artifact
-storage is not configured, the artifact directory does not exist, or the
-write/delete probe fails. The response deliberately does not include local
+`GET /readiness` returns HTTP 503 when the database cannot be queried, the
+controlled SQLite schema baseline is missing or has an invalid checksum,
+artifact storage is not configured, the artifact directory does not exist, or
+the write/delete probe fails. The response deliberately does not include local
 filesystem paths.
 
 ## Retention Baseline

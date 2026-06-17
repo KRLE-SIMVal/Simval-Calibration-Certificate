@@ -6,6 +6,7 @@ from app.calculation_engine.temperature.results import (
     AdditionalStandardUncertainty,
     TemperatureCalculationError,
     TemperaturePointUncertaintyInput,
+    TemperatureTypeAMethod,
     calculate_automatic_temperature_point,
 )
 
@@ -108,6 +109,36 @@ def test_automatic_temperature_point_includes_additional_standard_terms():
     method_stability = result.contributions[-1]
     assert method_stability.name == "method_stability"
     assert method_stability.effective_standard_uncertainty == pytest.approx(0.006)
+
+
+def test_automatic_temperature_point_can_use_paired_error_repeatability():
+    result = calculate_automatic_temperature_point(
+        point_id="point-001",
+        job_id="job-001",
+        dut_id="dut-001",
+        measurement_window_id="window-001",
+        reference_values=(0.0, 10.0, 20.0),
+        indication_values=(1.0, 11.0, 21.0),
+        uncertainty_input=TemperaturePointUncertaintyInput(
+            setpoint=10.0,
+            unit="deg C",
+            cmc_floor=Decimal("0.000"),
+            reference_expanded_uncertainty=0.002,
+            type_a_method=TemperatureTypeAMethod.PAIRED_ERROR_DIFFERENCES,
+        ),
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version="constants-2026-001",
+        budget_version="budget-temp-001",
+    )
+
+    assert result.summary.error_of_indication == pytest.approx(1.0)
+    assert tuple(contribution.name for contribution in result.contributions) == (
+        "reference_sensor_calibration",
+        "paired_error_repeatability",
+    )
+    assert result.contributions[1].standard_uncertainty == pytest.approx(0.0)
+    assert result.combined_standard_uncertainty == pytest.approx(0.001)
+    assert result.calculated_expanded_uncertainty == pytest.approx(Decimal("0.002"))
 
 
 def test_automatic_temperature_point_rejects_too_few_linked_readings():

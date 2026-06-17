@@ -46,7 +46,11 @@ from app.backend.certificates.template_contract import (
 )
 from app.backend.domain.equipment import ReferenceEquipment, SelectedReferenceEquipment
 from app.backend.domain.equipment import reference_equipment_blockers
-from app.backend.domain.entities import DeviceUnderTest, DomainValidationError
+from app.backend.domain.entities import (
+    DeviceUnderTest,
+    Discipline,
+    DomainValidationError,
+)
 from app.backend.domain.workflow import WorkflowState
 from app.backend.persistence.sqlite import (
     RecordNotFoundError,
@@ -173,6 +177,12 @@ class ReleasedCertificateArtifactRetrieval:
     certificate: CertificateRecord
     artifact: ExportArtifact
     path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class _ApprovalEvidence:
+    approved_by: str
+    approved_at: datetime
 
 
 def capture_certificate_metadata_for_session(
@@ -457,6 +467,7 @@ def build_certificate_preview(
             job_id=job_id,
             generated_by=generated_by,
             generated_at=timestamp,
+            discipline=job.discipline,
             software_version=software_version,
             template_version=template_version,
             accreditation_mark_allowed=accreditation_mark_allowed,
@@ -781,6 +792,7 @@ def _preview_for_release_rendering(
             job_id=job_id,
             generated_by=preview_event.user_id,
             generated_at=preview_event.timestamp,
+            discipline=job.discipline,
             software_version=software_version,
             template_version=template_version,
             accreditation_mark_allowed=accreditation_mark_allowed,
@@ -965,8 +977,9 @@ def _release_certificate_in_transaction(
         {summary.budget_version for summary in summaries},
         "budget",
     )
+    job_audit_events = audit_repository.list_for_entity("calibration_job", job_id)
     if not _matching_preview_exists(
-        audit_repository.list_for_entity("calibration_job", job_id),
+        job_audit_events,
         summary_ids=summary_ids,
         template_version=template_version,
         software_version=software_version,
@@ -978,6 +991,10 @@ def _release_certificate_in_transaction(
         raise CertificateReleaseServiceError(
             "Certificate release requires matching preview audit evidence."
         )
+    approval_evidence = _qa_approval_evidence(job_audit_events) or _ApprovalEvidence(
+        approved_by=released_by,
+        approved_at=timestamp,
+    )
 
     artifact = ExportArtifact(
         artifact_id=artifact_id,
@@ -1001,8 +1018,8 @@ def _release_certificate_in_transaction(
         constant_set_version=constant_set_version,
         budget_version=budget_version,
         template_version=template_version,
-        approved_by=released_by,
-        approved_at=timestamp,
+        approved_by=approval_evidence.approved_by,
+        approved_at=approval_evidence.approved_at,
         released_by=released_by,
         released_at=timestamp,
     )
@@ -1220,6 +1237,7 @@ def _preview_from_summaries(
     job_id: str,
     generated_by: str,
     generated_at: datetime,
+    discipline: Discipline,
     software_version: str,
     template_version: str,
     metadata: CertificateMetadata,
@@ -1245,6 +1263,7 @@ def _preview_from_summaries(
             job_id=job_id,
             generated_by=generated_by,
             generated_at=generated_at,
+            discipline=discipline,
             software_version=software_version,
             calculation_engine_version=calculation_engine_version,
             constant_set_version=constant_set_version,
@@ -1426,6 +1445,7 @@ def _preview_audit_event(preview: CertificatePreview) -> AuditEvent:
                 equipment.equipment_id for equipment in preview.reference_equipment
             ],
             "metadata_recorded_at": preview.metadata.recorded_at.isoformat(),
+            "discipline": preview.discipline.value,
             "row_count": len(preview.rows),
             "template_version": preview.template_version,
             "accreditation_mark_allowed": preview.accreditation_mark_allowed,
@@ -1501,6 +1521,25 @@ def _matching_preview_event(
     return None
 
 
+def _qa_approval_evidence(
+    audit_events: tuple[AuditEvent, ...],
+) -> _ApprovalEvidence | None:
+    approval_events = [
+        event
+        for event in audit_events
+        if event.action is AuditAction.WORKFLOW_TRANSITIONED
+        and event.new_value is not None
+        and event.new_value.get("state") == WorkflowState.APPROVED.value
+    ]
+    if len(approval_events) == 0:
+        return None
+    latest = max(approval_events, key=lambda event: event.timestamp)
+    return _ApprovalEvidence(
+        approved_by=latest.user_id,
+        approved_at=latest.timestamp,
+    )
+
+
 def _export_artifact_audit_event(
     *,
     certificate: CertificateRecord,
@@ -1544,6 +1583,18 @@ def _certificate_release_audit_event(
             "calculation_summary_ids": list(certificate.calculation_summary_ids),
             "certificate_id": certificate.certificate_id,
             "certificate_number": certificate.certificate_number,
+            "approved_by": certificate.approved_by,
+            "approved_at": (
+                certificate.approved_at.isoformat()
+                if certificate.approved_at is not None
+                else None
+            ),
+            "released_by": certificate.released_by,
+            "released_at": (
+                certificate.released_at.isoformat()
+                if certificate.released_at is not None
+                else None
+            ),
             "template_version": certificate.template_version,
             "accreditation_mark_allowed": accreditation_mark_allowed,
         },

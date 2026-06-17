@@ -5,8 +5,10 @@ from decimal import Decimal
 import hashlib
 
 import httpx
+import pytest
 
 from app.backend.api.app import create_app
+from app.backend.audit.events import AuditAction
 from app.backend.auth.entra import EntraTokenValidationError, VerifiedEntraToken
 from app.backend.auth.permissions import Role
 from app.backend.auth.users import UserAccount, UserSession
@@ -30,6 +32,7 @@ from app.backend.domain.entities import (
     UploadedFileKind,
 )
 from app.backend.domain.workflow import WorkflowState
+from app.backend.domain.versioning import ConstantSet, UncertaintyBudget, VersionStatus
 from app.backend.persistence.sqlite import (
     SQLiteAuditEventRepository,
     SQLiteCalibrationJobRepository,
@@ -48,6 +51,7 @@ from app.backend.persistence.sqlite import (
     SQLiteUserSessionRepository,
     initialize_schema,
 )
+from app.backend.persistence.schema_bootstrap import bootstrap_sqlite_schema
 from app.calculation_engine.common.summary import MeasurementPointSummary
 
 
@@ -86,6 +90,11 @@ def test_api_readiness_returns_ready_for_database_and_artifact_storage(tmp_path)
                 "detail": "SQLite connection check passed.",
             },
             {
+                "name": "schema",
+                "status": "ok",
+                "detail": "SQLite controlled schema baseline check passed.",
+            },
+            {
                 "name": "artifact_storage",
                 "status": "ok",
                 "detail": "Artifact storage write/delete probe passed.",
@@ -107,7 +116,7 @@ def test_api_readiness_returns_503_when_artifact_storage_is_not_configured():
 
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
-    assert response.json()["components"][1] == {
+    assert response.json()["components"][2] == {
         "name": "artifact_storage",
         "status": "not_configured",
         "detail": "Artifact storage path is not configured.",
@@ -129,10 +138,33 @@ def test_api_readiness_returns_503_when_artifact_storage_directory_is_missing(
 
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
-    assert response.json()["components"][1] == {
+    assert response.json()["components"][2] == {
         "name": "artifact_storage",
         "status": "error",
         "detail": "Artifact storage path is not an existing directory.",
+    }
+
+
+def test_api_readiness_returns_503_when_schema_baseline_is_missing(tmp_path):
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    initialize_schema(connection)
+
+    response = _api_request(
+        create_app(
+            connection=connection,
+            clock=_fixed_now,
+            artifact_directory=tmp_path,
+        ),
+        "GET",
+        "/readiness",
+    )
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert response.json()["components"][1] == {
+        "name": "schema",
+        "status": "error",
+        "detail": "SQLite controlled baseline migration is missing.",
     }
 
 
@@ -209,9 +241,14 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/calibration-jobs/job-001/imports" in action_paths
     assert "/calibration-jobs/job-001/temperature-data-entry" in action_paths
     assert "/calibration-jobs/job-001/verification-irtd-rows" in action_paths
+    assert "/calibration-jobs/pressure-job-001/pressure-manual-entry" in action_paths
+    assert "/calibration-jobs/pressure-job-001/pressure-automatic-entry" in action_paths
     assert "/calibration-jobs/job-001/temperature-windows" in action_paths
     assert "/calibration-jobs/job-001/temperature-windows/complete" in action_paths
     assert "/calibration-jobs/job-001/temperature-calculations" in action_paths
+    assert "/pressure/manual-calculations" in action_paths
+    assert "/pressure/automatic-calculations" in action_paths
+    assert "/calibration-jobs/pressure-job-001/pressure-calculations" in action_paths
     assert "/calibration-jobs/job-001/technical-review-submissions" in action_paths
     assert "/calibration-jobs/job-001/technical-review-approvals" in action_paths
     assert "/calibration-jobs/job-001/qa-release-approvals" in action_paths
@@ -993,13 +1030,19 @@ def test_api_certificate_preview_returns_locked_rows_and_audit_id():
     ) == 1
 
 
-def test_api_certificate_release_returns_release_evidence_after_preview():
+def test_api_certificate_release_returns_release_evidence_after_preview(tmp_path):
     connection = _connection_with_preview_data(
         job_state=WorkflowState.APPROVED,
         user_roles=(Role.QA_APPROVER,),
     )
+    checksum = _write_manual_release_artifact(tmp_path)
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
     preview_response = _api_request(
-        create_app(connection=connection, clock=_fixed_now),
+        app,
         "POST",
         "/certificate-previews",
         headers={"X-Session-Id": "session-001"},
@@ -1013,7 +1056,7 @@ def test_api_certificate_release_returns_release_evidence_after_preview():
     assert preview_response.status_code == 200
 
     response = _api_request(
-        create_app(connection=connection, clock=_fixed_now),
+        app,
         "POST",
         "/certificate-releases",
         headers={"X-Session-Id": "session-001"},
@@ -1024,7 +1067,7 @@ def test_api_certificate_release_returns_release_evidence_after_preview():
             "artifact_id": "artifact-001",
             "artifact_type": "pdf",
             "filename": "SIMVAL-CAL-0001.pdf",
-            "checksum_sha256": "b" * 64,
+            "checksum_sha256": checksum,
             "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
@@ -1038,7 +1081,7 @@ def test_api_certificate_release_returns_release_evidence_after_preview():
     assert payload["status"] == "released"
     assert payload["accreditation_mark_allowed"] is True
     assert payload["calculation_summary_ids"] == ["point-001"]
-    assert payload["artifacts"][0]["checksum_sha256"] == "b" * 64
+    assert payload["artifacts"][0]["checksum_sha256"] == checksum
     assert payload["export_audit_event_id"] == 2
     assert payload["release_audit_event_id"] == 3
     assert payload["workflow_audit_event_id"] == 4
@@ -1355,12 +1398,17 @@ def test_api_certificate_rendered_release_rejects_unauthorized_session_before_fi
     assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
 
 
-def test_api_certificate_revision_records_revision_and_workflow():
+def test_api_certificate_revision_records_revision_and_workflow(tmp_path):
     connection = _connection_with_preview_data(
         job_state=WorkflowState.APPROVED,
         user_roles=(Role.QA_APPROVER,),
     )
-    app = create_app(connection=connection, clock=_fixed_now)
+    checksum = _write_manual_release_artifact(tmp_path)
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
     preview_response = _api_request(
         app,
         "POST",
@@ -1386,7 +1434,7 @@ def test_api_certificate_revision_records_revision_and_workflow():
             "artifact_id": "artifact-001",
             "artifact_type": "pdf",
             "filename": "SIMVAL-CAL-0001.pdf",
-            "checksum_sha256": "b" * 64,
+            "checksum_sha256": checksum,
             "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
@@ -1424,12 +1472,17 @@ def test_api_certificate_revision_records_revision_and_workflow():
     )
 
 
-def test_api_certificate_history_returns_artifacts_and_revisions():
+def test_api_certificate_history_returns_artifacts_and_revisions(tmp_path):
     connection = _connection_with_preview_data(
         job_state=WorkflowState.APPROVED,
         user_roles=(Role.QA_APPROVER,),
     )
-    app = create_app(connection=connection, clock=_fixed_now)
+    checksum = _write_manual_release_artifact(tmp_path)
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path,
+    )
     assert _api_request(
         app,
         "POST",
@@ -1454,7 +1507,7 @@ def test_api_certificate_history_returns_artifacts_and_revisions():
             "artifact_id": "artifact-001",
             "artifact_type": "pdf",
             "filename": "SIMVAL-CAL-0001.pdf",
-            "checksum_sha256": "b" * 64,
+            "checksum_sha256": checksum,
             "storage_uri": "controlled-local://SIMVAL-CAL-0001.pdf",
             "template_version": "template-2026-001",
             "software_version": "app-0.1.0",
@@ -1488,7 +1541,7 @@ def test_api_certificate_history_returns_artifacts_and_revisions():
     assert payload["entries"][0]["artifacts"][0]["storage_uri"] == (
         "controlled-local://SIMVAL-CAL-0001.pdf"
     )
-    assert payload["entries"][0]["artifacts"][0]["checksum_sha256"] == "b" * 64
+    assert payload["entries"][0]["artifacts"][0]["checksum_sha256"] == checksum
     assert payload["entries"][0]["revisions"][0]["revision_id"] == "rev-001"
     assert payload["entries"][0]["revisions"][0]["reason"] == (
         "Corrected customer address after QA approval."
@@ -1515,6 +1568,394 @@ def test_api_certificate_preview_rejects_unauthorized_session_before_audit():
     assert SQLiteAuditEventRepository(connection).list_for_entity(
         "calibration_job",
         "job-001",
+    ) == ()
+
+
+def test_api_manual_pressure_calculation_returns_result_and_audit_event():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/pressure/manual-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_manual_pressure_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["point_id"] == "pressure-point-001"
+    assert payload["pressure_kind"] == "gauge"
+    assert payload["reference"] == 10.0
+    assert payload["indication"] == pytest.approx(10.005)
+    assert payload["error_of_indication"] == pytest.approx(0.005)
+    assert payload["reported_expanded_uncertainty"] == "0.0042"
+    assert payload["calculated_by"] == "user-001"
+    assert payload["calculated_at"] == _fixed_now().isoformat()
+    assert [item["name"] for item in payload["contributions"]] == [
+        "reference_pressure_mpe",
+        "dut_resolution",
+    ]
+
+    events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "pressure_calculation",
+        "pressure-point-001",
+    )
+    assert len(events) == 1
+    assert events[0].action.value == "calculation_run"
+    assert events[0].user_id == "user-001"
+    assert events[0].software_version == "app-0.1.0"
+    assert events[0].calculation_engine_version == "calc-engine-0.1.0"
+    assert events[0].constant_set_version == "constants-pressure-001"
+    assert events[0].budget_version == "budget-pressure-001"
+    assert events[0].new_value["calculation_type"] == "manual"
+    assert events[0].new_value["pressure_kind"] == "gauge"
+
+
+def test_api_manual_pressure_calculation_rejects_unauthorized_role_before_audit():
+    connection = _connection_with_preview_data(user_roles=(Role.READ_ONLY,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/pressure/manual-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_manual_pressure_payload(barometer_expanded_uncertainty=0.1),
+    )
+
+    assert response.status_code == 403
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "pressure_calculation",
+        "pressure-point-001",
+    ) == ()
+
+
+def test_api_manual_pressure_calculation_rejects_barometer_for_gauge_pressure():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/pressure/manual-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_manual_pressure_payload(barometer_expanded_uncertainty=0.1),
+    )
+
+    assert response.status_code == 409
+    assert "Barometer uncertainty applies only to absolute pressure" in (
+        response.json()["detail"]
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "pressure_calculation",
+        "pressure-point-001",
+    ) == ()
+
+
+def test_api_automatic_pressure_calculation_returns_result_and_audit_event():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/pressure/automatic-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_automatic_pressure_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["point_id"] == "pressure-auto-point-001"
+    assert payload["pressure_kind"] == "gauge"
+    assert payload["reference"] == pytest.approx(100.001)
+    assert payload["indication"] == pytest.approx(100.005)
+    assert payload["error_of_indication"] == pytest.approx(0.004)
+    assert payload["reported_expanded_uncertainty"] == "0.0045"
+    assert payload["calculated_by"] == "user-001"
+    assert payload["calculated_at"] == _fixed_now().isoformat()
+    assert [item["name"] for item in payload["contributions"]] == [
+        "reference_pressure_mpe",
+        "dut_resolution",
+        "reference_pressure_repeatability",
+        "dut_indication_repeatability",
+    ]
+
+    events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "pressure_calculation",
+        "pressure-auto-point-001",
+    )
+    assert len(events) == 1
+    assert events[0].action.value == "calculation_run"
+    assert events[0].new_value["calculation_type"] == "automatic"
+    assert events[0].new_value["pressure_kind"] == "gauge"
+    assert events[0].software_version == "app-0.1.0"
+    assert events[0].calculation_engine_version == "calc-engine-0.1.0"
+
+
+def test_api_automatic_pressure_calculation_rejects_unauthorized_role_before_audit():
+    connection = _connection_with_preview_data(user_roles=(Role.READ_ONLY,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/pressure/automatic-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_automatic_pressure_payload(
+            reference_values=[100.000],
+            indication_values=[100.004],
+        ),
+    )
+
+    assert response.status_code == 403
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "pressure_calculation",
+        "pressure-auto-point-001",
+    ) == ()
+
+
+def test_api_automatic_pressure_calculation_rejects_unpaired_readings():
+    connection = _connection_with_preview_data(user_roles=(Role.OPERATOR,))
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/pressure/automatic-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_automatic_pressure_payload(indication_values=[100.004]),
+    )
+
+    assert response.status_code == 409
+    assert "Reference and indication reading counts must match" in (
+        response.json()["detail"]
+    )
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "pressure_calculation",
+        "pressure-auto-point-001",
+    ) == ()
+
+
+def test_api_pressure_calculation_run_persists_summary_and_transitions_job():
+    connection = _connection_with_pressure_calculation_data()
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_pressure_calculation_run_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "pressure-job-001"
+    assert payload["state"] == "calculated"
+    assert payload["summary_ids"] == ["pressure-point-001"]
+    assert payload["summaries"][0]["calculation_type"] == "manual"
+    assert payload["summaries"][0]["pressure_kind"] == "gauge"
+    assert payload["summaries"][0]["reported_expanded_uncertainty"] == "0.0042"
+    assert SQLiteMeasurementPointSummaryRepository(connection).get(
+        "pressure-point-001"
+    ).job_id == "pressure-job-001"
+    assert SQLiteCalibrationJobRepository(connection).get("pressure-job-001").state is (
+        WorkflowState.CALCULATED
+    )
+    events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "pressure-job-001",
+    )
+    assert tuple(event.action.value for event in events) == (
+        "calculation_run",
+        "workflow_transitioned",
+    )
+    assert events[0].new_value["discipline"] == "pressure"
+    assert events[0].new_value["points"][0]["calculation_type"] == "manual"
+
+
+def test_api_pressure_calculation_run_rejects_unauthorized_before_writes():
+    connection = _connection_with_pressure_calculation_data(
+        user_roles=(Role.READ_ONLY,),
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-calculations",
+        headers={"X-Session-Id": "session-001"},
+        json=_pressure_calculation_run_payload(
+            manual_points=[
+                {
+                    **_manual_pressure_point_payload(),
+                    "barometer_expanded_uncertainty": 0.1,
+                }
+            ]
+        ),
+    )
+
+    assert response.status_code == 403
+    assert SQLiteMeasurementPointSummaryRepository(connection).list_for_job(
+        "pressure-job-001"
+    ) == ()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "pressure-job-001",
+    ) == ()
+    assert SQLiteCalibrationJobRepository(connection).get("pressure-job-001").state is (
+        WorkflowState.WINDOWS_SELECTED
+    )
+
+
+def test_api_manual_pressure_entry_records_dut_window_and_audit_evidence():
+    connection = _connection_with_pressure_manual_entry_data()
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-manual-entry",
+        headers={"X-Session-Id": "session-001"},
+        json=_manual_pressure_entry_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "pressure-job-001"
+    assert payload["state"] == "windows_selected"
+    assert payload["dut_id"] == "pressure-dut-001"
+    assert payload["window_id"] == "pressure-window-001"
+    assert payload["reading_count"] == 2
+    assert SQLiteDeviceUnderTestRepository(connection).get("pressure-dut-001").job_id == (
+        "pressure-job-001"
+    )
+    assert (
+        SQLiteMeasurementWindowRepository(connection)
+        .get("pressure-window-001")
+        .reading_count
+        == 2
+    )
+    assert SQLiteCalibrationJobRepository(connection).get("pressure-job-001").state is (
+        WorkflowState.WINDOWS_SELECTED
+    )
+    window_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "measurement_window",
+        "pressure-window-001",
+    )
+    assert tuple(event.action.value for event in window_events) == (
+        "manual_reading_changed",
+        "measurement_window_changed",
+    )
+
+
+def test_api_automatic_pressure_entry_parses_csv_and_updates_import_review(tmp_path):
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(
+        _pressure_job(
+            state=WorkflowState.EQUIPMENT_SELECTED,
+            mode=MeasurementMode.AUTOMATIC,
+        )
+    )
+    SQLiteUserAccountRepository(connection).add(_user((Role.OPERATOR,)))
+    SQLiteUserSessionRepository(connection).add(_session())
+    app = create_app(
+        connection=connection,
+        clock=_fixed_now,
+        artifact_directory=tmp_path / "artifacts",
+        id_factory=lambda: "pressure-raw-001",
+    )
+    upload = _api_request(
+        app,
+        "POST",
+        (
+            "/calibration-jobs/pressure-job-001/files?"
+            "original_filename=pressure-readings.csv&"
+            "file_kind=other&"
+            "software_version=app-0.1.0"
+        ),
+        headers={
+            "X-Session-Id": "session-001",
+            "Content-Type": "text/csv",
+        },
+        content=(
+            b"timestamp,reference,indication,unit\n"
+            b"2026-06-01T14:20:00Z,10.000,10.004,bar\n"
+            b"2026-06-01T14:21:00Z,10.001,10.005,bar\n"
+        ),
+    )
+    assert upload.status_code == 200
+
+    response = _api_request(
+        app,
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-automatic-entry",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "uploaded_file_id": "file-pressure-raw-001",
+            "dut_id": "pressure-dut-001",
+            "dut_make": "PressureCo",
+            "dut_model": "Transmitter",
+            "dut_serial_number": "PT-001",
+            "dut_channel_id": "PT-001",
+            "window_id": "pressure-window-001",
+            "setpoint": 10.0,
+            "unit": "bar",
+            "parser_version": "pressure-csv-parser-v1",
+            "software_version": "app-0.1.0",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["state"] == "windows_selected"
+    assert payload["reference_values"] == [10.0, 10.001]
+    assert payload["indication_values"] == [10.004, 10.005]
+    assert payload["reference_reading_count"] == 2
+    assert payload["indication_reading_count"] == 2
+    assert payload["warning_count"] == 0
+    assert SQLiteCalibrationJobRepository(connection).get("pressure-job-001").state is (
+        WorkflowState.WINDOWS_SELECTED
+    )
+    window_events = SQLiteAuditEventRepository(connection).list_for_entity(
+        "measurement_window",
+        "pressure-window-001",
+    )
+    assert tuple(event.action for event in window_events) == (
+        AuditAction.IMPORT_ALIGNMENT_RECORDED,
+        AuditAction.MEASUREMENT_WINDOW_CHANGED,
+    )
+
+    import_review = _api_request(
+        app,
+        "GET",
+        "/calibration-jobs/pressure-job-001/imports",
+        headers={"X-Session-Id": "session-001"},
+    )
+    assert import_review.status_code == 200
+    file_review = import_review.json()["files"][0]
+    assert file_review["parser_status"] == "parsed"
+    assert file_review["reading_count"] == 4
+
+
+def test_api_manual_pressure_entry_rejects_unauthorized_before_writes():
+    connection = _connection_with_pressure_manual_entry_data(
+        user_roles=(Role.READ_ONLY,),
+    )
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/calibration-jobs/pressure-job-001/pressure-manual-entry",
+        headers={"X-Session-Id": "session-001"},
+        json=_manual_pressure_entry_payload(readings=[]),
+    )
+
+    assert response.status_code == 403
+    assert SQLiteDeviceUnderTestRepository(connection).list_for_job(
+        "pressure-job-001"
+    ) == ()
+    assert SQLiteMeasurementWindowRepository(connection).list_for_job(
+        "pressure-job-001"
+    ) == ()
+    assert SQLiteAuditEventRepository(connection).list_for_entity(
+        "calibration_job",
+        "pressure-job-001",
     ) == ()
 
 
@@ -1564,6 +2005,13 @@ def _api_request(app, method: str, url: str, **kwargs) -> httpx.Response:
     return asyncio.run(_async_api_request(app, method, url, **kwargs))
 
 
+def _write_manual_release_artifact(base_path) -> str:
+    content = b"%PDF-1.4 controlled manual release artifact"
+    artifact_path = base_path / "SIMVAL-CAL-0001.pdf"
+    artifact_path.write_bytes(content)
+    return hashlib.sha256(content).hexdigest()
+
+
 async def _async_api_request(app, method: str, url: str, **kwargs) -> httpx.Response:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
@@ -1594,7 +2042,7 @@ def _connection_with_preview_data(
     user_roles: tuple[Role, ...] = (Role.OPERATOR,),
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:", check_same_thread=False)
-    initialize_schema(connection)
+    bootstrap_sqlite_schema(connection)
     SQLiteCalibrationJobRepository(connection).add(_job(job_state))
     SQLiteCertificateMetadataRepository(connection).add(_metadata())
     SQLiteUploadedFileRepository(connection).add(_uploaded_file())
@@ -1602,6 +2050,38 @@ def _connection_with_preview_data(
     SQLiteSelectedReferenceEquipmentRepository(connection).add(_selected_reference())
     SQLiteMeasurementWindowRepository(connection).add(_window())
     SQLiteMeasurementPointSummaryRepository(connection).add(_summary())
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
+    return connection
+
+
+def _connection_with_pressure_calculation_data(
+    *,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(_pressure_job())
+    SQLiteUploadedFileRepository(connection).add(_pressure_file())
+    SQLiteDeviceUnderTestRepository(connection).add(_pressure_dut())
+    SQLiteMeasurementWindowRepository(connection).add(_pressure_window())
+    SQLiteConstantSetRepository(connection).add(_pressure_constant_set())
+    SQLiteUncertaintyBudgetRepository(connection).add(_pressure_budget())
+    SQLiteUserAccountRepository(connection).add(_user(user_roles))
+    SQLiteUserSessionRepository(connection).add(_session())
+    return connection
+
+
+def _connection_with_pressure_manual_entry_data(
+    *,
+    user_roles: tuple[Role, ...] = (Role.OPERATOR,),
+) -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    initialize_schema(connection)
+    SQLiteCalibrationJobRepository(connection).add(
+        _pressure_job(state=WorkflowState.EQUIPMENT_SELECTED)
+    )
+    SQLiteUploadedFileRepository(connection).add(_pressure_file())
     SQLiteUserAccountRepository(connection).add(_user(user_roles))
     SQLiteUserSessionRepository(connection).add(_session())
     return connection
@@ -1644,6 +2124,23 @@ def _job(state: WorkflowState) -> CalibrationJob:
         discipline=Discipline.TEMPERATURE,
         measurement_mode=MeasurementMode.AUTOMATIC,
         method="ValProbe RT linked XLSX/PDF workflow",
+        created_by="operator-001",
+        state=state,
+        created_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
+    )
+
+
+def _pressure_job(
+    *,
+    state: WorkflowState = WorkflowState.WINDOWS_SELECTED,
+    mode: MeasurementMode = MeasurementMode.MANUAL,
+) -> CalibrationJob:
+    return CalibrationJob(
+        id="pressure-job-001",
+        client=Client(name="SIMVal pressure customer", address="Pressure Road 1"),
+        discipline=Discipline.PRESSURE,
+        measurement_mode=mode,
+        method="SIMVal pressure method",
         created_by="operator-001",
         state=state,
         created_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
@@ -1695,6 +2192,131 @@ def _metadata_payload() -> dict:
     }
 
 
+def _manual_pressure_payload(**overrides) -> dict:
+    payload = {
+        "point_id": "pressure-point-001",
+        "job_id": "pressure-job-001",
+        "dut_id": "pressure-dut-001",
+        "measurement_window_id": "pressure-window-001",
+        "reference_pressure": 10.0,
+        "indication_values": [10.004, 10.006],
+        "setpoint": 10.0,
+        "unit": "bar",
+        "pressure_kind": "gauge",
+        "cmc_floor": "0.001",
+        "reference_expanded_uncertainty": 0.004,
+        "reference_coverage_factor": 2.0,
+        "dut_resolution": 0.002,
+        "barometer_expanded_uncertainty": 0.0,
+        "barometer_coverage_factor": 2.0,
+        "coverage_factor": 2.0,
+        "additional_standard_uncertainties": [],
+        "software_version": "app-0.1.0",
+        "calculation_engine_version": "calc-engine-0.1.0",
+        "constant_set_version": "constants-pressure-001",
+        "budget_version": "budget-pressure-001",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _pressure_calculation_run_payload(**overrides) -> dict:
+    payload = {
+        "manual_points": [_manual_pressure_point_payload()],
+        "automatic_points": [],
+        "software_version": "app-0.1.0",
+        "calculation_engine_version": "calc-engine-0.1.0",
+        "constant_set_version": "constants-pressure-001",
+        "budget_version": "budget-pressure-001",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _manual_pressure_entry_payload(**overrides) -> dict:
+    payload = {
+        "uploaded_file_id": "pressure-file-001",
+        "dut_id": "pressure-dut-001",
+        "dut_make": "PressureCo",
+        "dut_model": "Gauge",
+        "dut_serial_number": "PG-001",
+        "dut_channel_id": "PG-001",
+        "window_id": "pressure-window-001",
+        "setpoint": 10.0,
+        "unit": "bar",
+        "readings": [
+            {
+                "timestamp": "2026-06-01T14:20:00+00:00",
+                "value": 10.004,
+                "source_label": "Pressure",
+                "row_number": 2,
+                "column_label": "indication",
+            },
+            {
+                "timestamp": "2026-06-01T14:21:00+00:00",
+                "value": 10.006,
+                "source_label": "Pressure",
+                "row_number": 3,
+                "column_label": "indication",
+            },
+        ],
+        "software_version": "app-0.1.0",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _manual_pressure_point_payload(**overrides) -> dict:
+    payload = {
+        "point_id": "pressure-point-001",
+        "dut_id": "pressure-dut-001",
+        "measurement_window_id": "pressure-window-001",
+        "reference_pressure": 10.0,
+        "indication_values": [10.004, 10.006],
+        "setpoint": 10.0,
+        "unit": "bar",
+        "pressure_kind": "gauge",
+        "cmc_floor": "0.001",
+        "reference_expanded_uncertainty": 0.004,
+        "reference_coverage_factor": 2.0,
+        "dut_resolution": 0.002,
+        "barometer_expanded_uncertainty": 0.0,
+        "barometer_coverage_factor": 2.0,
+        "coverage_factor": 2.0,
+        "additional_standard_uncertainties": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _automatic_pressure_payload(**overrides) -> dict:
+    payload = {
+        "point_id": "pressure-auto-point-001",
+        "job_id": "pressure-job-001",
+        "dut_id": "pressure-dut-001",
+        "measurement_window_id": "pressure-auto-window-001",
+        "reference_values": [100.000, 100.002, 100.001],
+        "indication_values": [100.004, 100.006, 100.005],
+        "setpoint": 100.0,
+        "unit": "bar",
+        "pressure_kind": "gauge",
+        "cmc_floor": "0.001",
+        "reference_expanded_uncertainty": 0.004,
+        "reference_coverage_factor": 2.0,
+        "dut_resolution": 0.002,
+        "barometer_expanded_uncertainty": 0.0,
+        "barometer_coverage_factor": 2.0,
+        "coverage_factor": 2.0,
+        "additional_standard_uncertainties": [],
+        "software_version": "app-0.1.0",
+        "calculation_engine_version": "calc-engine-0.1.0",
+        "constant_set_version": "constants-pressure-001",
+        "budget_version": "budget-pressure-001",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _reference_equipment_selection_payload() -> dict:
     return {
         "job_id": "job-001",
@@ -1727,6 +2349,19 @@ def _uploaded_file() -> UploadedFile:
     )
 
 
+def _pressure_file() -> UploadedFile:
+    return UploadedFile(
+        id="pressure-file-001",
+        job_id="pressure-job-001",
+        original_filename="pressure-readings.csv",
+        checksum_sha256="c" * 64,
+        file_kind=UploadedFileKind.OTHER,
+        storage_uri="controlled-local://pressure-readings.csv",
+        parser_version="manual-pressure-entry-v1",
+        uploaded_at=datetime(2026, 6, 1, 14, 5, tzinfo=timezone.utc),
+    )
+
+
 def _dut() -> DeviceUnderTest:
     return DeviceUnderTest(
         id="dut-001",
@@ -1735,6 +2370,17 @@ def _dut() -> DeviceUnderTest:
         model="ValProbe RT",
         serial_number="MJT1",
         channel_id="MJT1-A",
+    )
+
+
+def _pressure_dut() -> DeviceUnderTest:
+    return DeviceUnderTest(
+        id="pressure-dut-001",
+        job_id="pressure-job-001",
+        make="PressureCo",
+        model="Gauge",
+        serial_number="PG-001",
+        channel_id="PG-001",
     )
 
 
@@ -1784,6 +2430,37 @@ def _window() -> MeasurementWindow:
     )
 
 
+def _pressure_window() -> MeasurementWindow:
+    return MeasurementWindow(
+        id="pressure-window-001",
+        job_id="pressure-job-001",
+        dut_id="pressure-dut-001",
+        setpoint=10.0,
+        unit="bar",
+        selected_by="operator-001",
+        selected_at=datetime(2026, 6, 1, 14, 20, tzinfo=timezone.utc),
+        readings=(
+            _pressure_reading(0, 10.004),
+            _pressure_reading(1, 10.006),
+        ),
+    )
+
+
+def _pressure_reading(index: int, value: float) -> MeasurementReading:
+    return MeasurementReading(
+        timestamp=datetime(2026, 6, 1, 14, 20 + index, tzinfo=timezone.utc),
+        channel_id="PG-001",
+        value=value,
+        unit="bar",
+        source=SourceLocation(
+            uploaded_file_id="pressure-file-001",
+            source_label="Pressure",
+            row_number=index + 1,
+            column_label="indication",
+        ),
+    )
+
+
 def _summary() -> MeasurementPointSummary:
     return MeasurementPointSummary(
         point_id="point-001",
@@ -1801,6 +2478,30 @@ def _summary() -> MeasurementPointSummary:
         calculation_engine_version="calc-engine-0.1.0",
         constant_set_version="constants-2026-001",
         budget_version="budget-temp-001",
+    )
+
+
+def _pressure_constant_set() -> ConstantSet:
+    return ConstantSet(
+        version="constants-pressure-001",
+        discipline=Discipline.PRESSURE,
+        status=VersionStatus.APPROVED,
+        effective_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        approved_by="qa-001",
+        approved_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+
+def _pressure_budget() -> UncertaintyBudget:
+    return UncertaintyBudget(
+        version="budget-pressure-001",
+        budget_type="pressure",
+        method="SIMVal pressure method",
+        discipline=Discipline.PRESSURE,
+        status=VersionStatus.APPROVED,
+        linked_constant_set_version="constants-pressure-001",
+        approved_by="qa-001",
+        approved_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
     )
 
 

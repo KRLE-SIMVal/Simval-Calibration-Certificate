@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from enum import StrEnum
 from math import isfinite
 
 from app.calculation_engine.common.statistics import (
@@ -28,6 +29,11 @@ from app.calculation_engine.common.uncertainty import (
 
 class TemperatureCalculationError(ValueError):
     """Raised when a temperature point cannot be calculated safely."""
+
+
+class TemperatureTypeAMethod(StrEnum):
+    INDEPENDENT_REFERENCE_AND_DUT = "independent_reference_and_dut"
+    PAIRED_ERROR_DIFFERENCES = "paired_error_differences"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +65,9 @@ class TemperaturePointUncertaintyInput:
     bath_coverage_factor: float = 2.0
     dut_resolution: float = 0.0
     coverage_factor: float = 2.0
+    type_a_method: TemperatureTypeAMethod = (
+        TemperatureTypeAMethod.INDEPENDENT_REFERENCE_AND_DUT
+    )
     additional_standard_uncertainties: tuple[AdditionalStandardUncertainty, ...] = field(
         default_factory=tuple
     )
@@ -88,6 +97,8 @@ class TemperaturePointUncertaintyInput:
         _require_positive_finite(self.bath_coverage_factor, "Bath coverage factor")
         _require_non_negative_finite(self.dut_resolution, "DUT resolution")
         _require_positive_finite(self.coverage_factor, "Coverage factor")
+        if not isinstance(self.type_a_method, TemperatureTypeAMethod):
+            raise TemperatureCalculationError("Temperature Type A method is invalid.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,16 +214,15 @@ def _temperature_contributions(
                 uncertainty_input.reference_expanded_uncertainty,
                 uncertainty_input.reference_coverage_factor,
             ),
-        ),
-        UncertaintyContribution(
-            name="reference_sensor_repeatability",
-            standard_uncertainty=standard_uncertainty_of_mean(reference_values),
-        ),
-        UncertaintyContribution(
-            name="dut_indication_repeatability",
-            standard_uncertainty=standard_uncertainty_of_mean(indication_values),
-        ),
+        )
     ]
+    contributions.extend(
+        _type_a_contributions(
+            reference_values=reference_values,
+            indication_values=indication_values,
+            method=uncertainty_input.type_a_method,
+        )
+    )
     if uncertainty_input.bath_expanded_uncertainty > 0:
         contributions.append(
             UncertaintyContribution(
@@ -241,6 +251,41 @@ def _temperature_contributions(
         for additional in uncertainty_input.additional_standard_uncertainties
     )
     return tuple(contributions)
+
+
+def _type_a_contributions(
+    *,
+    reference_values: tuple[float, ...],
+    indication_values: tuple[float, ...],
+    method: TemperatureTypeAMethod,
+) -> tuple[UncertaintyContribution, ...]:
+    if method is TemperatureTypeAMethod.INDEPENDENT_REFERENCE_AND_DUT:
+        return (
+            UncertaintyContribution(
+                name="reference_sensor_repeatability",
+                standard_uncertainty=standard_uncertainty_of_mean(reference_values),
+            ),
+            UncertaintyContribution(
+                name="dut_indication_repeatability",
+                standard_uncertainty=standard_uncertainty_of_mean(indication_values),
+            ),
+        )
+    if method is TemperatureTypeAMethod.PAIRED_ERROR_DIFFERENCES:
+        paired_errors = tuple(
+            indication - reference
+            for reference, indication in zip(
+                reference_values,
+                indication_values,
+                strict=True,
+            )
+        )
+        return (
+            UncertaintyContribution(
+                name="paired_error_repeatability",
+                standard_uncertainty=standard_uncertainty_of_mean(paired_errors),
+            ),
+        )
+    raise TemperatureCalculationError("Temperature Type A method is invalid.")
 
 
 def _require_equal_point_lengths(

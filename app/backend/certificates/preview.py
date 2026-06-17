@@ -8,6 +8,7 @@ from decimal import Decimal
 from math import isfinite
 
 from app.backend.certificates.metadata import CertificateMetadata
+from app.backend.domain.entities import Discipline
 
 
 class CertificatePreviewError(ValueError):
@@ -124,6 +125,7 @@ class CertificatePreview:
     job_id: str
     generated_by: str
     generated_at: datetime
+    discipline: Discipline
     software_version: str
     calculation_engine_version: str
     constant_set_version: str
@@ -146,6 +148,8 @@ class CertificatePreview:
             "template_version",
         ):
             _require_text(getattr(self, field_name), field_name)
+        if not isinstance(self.discipline, Discipline):
+            raise CertificatePreviewError("Certificate preview discipline is invalid.")
         _require_timezone_aware(self.generated_at, "Preview generated_at")
         if not isinstance(self.metadata, CertificateMetadata):
             raise CertificatePreviewError("Certificate metadata is invalid.")

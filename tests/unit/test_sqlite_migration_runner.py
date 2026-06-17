@@ -98,6 +98,30 @@ def test_apply_sqlite_migrations_rejects_duplicate_versions_in_plan():
         )
 
 
+def test_apply_sqlite_migrations_rejects_unknown_applied_history():
+    connection = sqlite3.connect(":memory:")
+    unmanaged = SQLiteMigration(
+        version="unmanaged",
+        description="unmanaged schema change",
+        sql="CREATE TABLE unmanaged_records (id TEXT PRIMARY KEY);",
+    )
+    apply_sqlite_migrations(connection, (unmanaged,))
+
+    with pytest.raises(MigrationError) as exc_info:
+        apply_sqlite_migrations(
+            connection,
+            (
+                SQLiteMigration(
+                    version="001",
+                    description="controlled plan",
+                    sql="CREATE TABLE controlled_records (id TEXT PRIMARY KEY);",
+                ),
+            ),
+        )
+
+    assert "outside the controlled plan" in str(exc_info.value)
+
+
 def test_apply_sqlite_migrations_does_not_record_failed_migration():
     connection = sqlite3.connect(":memory:")
 

@@ -24,6 +24,7 @@ from app.backend.certificates.template_contract import (
     CertificateTemplateContractError,
     validate_certificate_template_contract,
 )
+from app.backend.domain.entities import Discipline
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -140,6 +141,8 @@ def test_render_certificate_pdf_uses_simval_three_page_structure_for_single_dut(
     assert "Kaye ValProbe RT SN: MJT1 Channel: MJT1-A" in content_text
     assert "SIMVal SOP-TEMP-001" in content_text
     assert "Room temperature 23 +/- 2 deg C." in content_text
+    assert "Temperaturskala / Temperature scale: ITS-90" in content_text
+    assert "Skala/enhed / Scale/unit:" not in content_text
     assert "SIM-T-001" in content_text
     assert "IRTD" in content_text
     assert "IRT-123" in content_text
@@ -154,6 +157,7 @@ def test_render_certificate_pdf_uses_locked_preview_values_without_recalculation
         job_id="job-001",
         generated_by="qa-001",
         generated_at=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        discipline=Discipline.TEMPERATURE,
         software_version="app-0.1.0",
         calculation_engine_version="calc-engine-0.1.0",
         constant_set_version="constants-2026-001",
@@ -186,6 +190,27 @@ def test_render_certificate_pdf_uses_locked_preview_values_without_recalculation
     content_text = artifact.content_bytes.decode("latin-1")
     assert "9.999 +/- 0.012 deg C" in content_text
     assert "100.000 +/- 0.012 deg C" not in content_text
+
+
+def test_render_certificate_pdf_uses_pressure_result_wording_from_locked_preview():
+    preview = _pressure_preview()
+
+    artifact = render_certificate_pdf(
+        certificate_id="cert-001",
+        certificate_number="SIMVAL-CAL-0001",
+        preview=preview,
+    )
+
+    content_text = artifact.content_bytes.decode("latin-1")
+    assert "Trykenhed / Pressure unit: bar" in content_text
+    assert "Trykresultater / Pressure results:" in content_text
+    assert "Temperaturskala / Temperature scale:" not in content_text
+    assert "MÃ¥leresultater / Measurement Results:" not in content_text
+    assert validate_certificate_template_contract(
+        artifact=artifact,
+        preview=preview,
+        certificate_number="SIMVAL-CAL-0001",
+    ).checks
 
 
 def test_render_certificate_pdf_groups_multiple_duts_in_one_certificate():
@@ -314,6 +339,7 @@ def _preview() -> CertificatePreview:
         job_id="job-001",
         generated_by="qa-001",
         generated_at=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        discipline=Discipline.TEMPERATURE,
         software_version="app-0.1.0",
         calculation_engine_version="calc-engine-0.1.0",
         constant_set_version="constants-2026-001",
@@ -343,6 +369,7 @@ def _multi_dut_preview() -> CertificatePreview:
         job_id="job-001",
         generated_by="qa-001",
         generated_at=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        discipline=Discipline.TEMPERATURE,
         software_version="app-0.1.0",
         calculation_engine_version="calc-engine-0.1.0",
         constant_set_version="constants-2026-001",
@@ -387,11 +414,72 @@ def _multi_dut_preview() -> CertificatePreview:
     )
 
 
+def _pressure_preview() -> CertificatePreview:
+    return CertificatePreview(
+        job_id="pressure-job-001",
+        generated_by="qa-001",
+        generated_at=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        discipline=Discipline.PRESSURE,
+        software_version="app-0.1.0",
+        calculation_engine_version="calc-engine-0.1.0",
+        constant_set_version="constants-pressure-2026-001",
+        budget_version="budget-pressure-001",
+        template_version="template-pressure-2026-001",
+        metadata=_metadata(
+            job_id="pressure-job-001",
+            procedure="SIMVal SOP-PRESS-001",
+            place="SIMVal Pressure Laboratory, Lyngby",
+            remarks="Manual pressure readings transcribed from retained source evidence.",
+            ambient_conditions="Room temperature 23 +/- 2 deg C.",
+            scale_or_unit="bar",
+        ),
+        duts=(
+            CertificatePreviewDut(
+                dut_id="pressure-dut-001",
+                make="PressureCo",
+                model="Gauge",
+                serial_number="PG-001",
+                channel_id="PG-001",
+            ),
+        ),
+        reference_equipment=(
+            CertificatePreviewReferenceEquipment(
+                equipment_id="ref-pressure-001",
+                simval_id="SIM-P-001",
+                equipment_type="Pressure calibrator",
+                serial_number="PC-123",
+                calibration_certificate_reference="DANAK-P-12345",
+                calibration_due_date=date(2027, 4, 30),
+                range_minimum=0.0,
+                range_maximum=20.0,
+                range_unit="bar",
+                traceability_statement=(
+                    "Accredited pressure calibration with SI traceability."
+                ),
+            ),
+        ),
+        rows=(
+            CertificatePreviewRow(
+                point_id="pressure-point-001",
+                dut_id="pressure-dut-001",
+                measurement_window_id="pressure-window-001",
+                reference=10.0,
+                indication=10.005,
+                error_of_indication=0.005,
+                display_error_of_indication=Decimal("0.005"),
+                reported_expanded_uncertainty=Decimal("0.020"),
+                unit="bar",
+            ),
+        ),
+    )
+
+
 def _many_row_preview() -> CertificatePreview:
     return CertificatePreview(
         job_id="job-001",
         generated_by="qa-001",
         generated_at=datetime(2026, 6, 1, 15, 20, tzinfo=timezone.utc),
+        discipline=Discipline.TEMPERATURE,
         software_version="app-0.1.0",
         calculation_engine_version="calc-engine-0.1.0",
         constant_set_version="constants-2026-001",
@@ -417,9 +505,17 @@ def _many_row_preview() -> CertificatePreview:
     )
 
 
-def _metadata() -> CertificateMetadata:
+def _metadata(
+    *,
+    job_id: str = "job-001",
+    procedure: str = "SIMVal SOP-TEMP-001",
+    place: str = "SIMVal Temperature Laboratory, Lyngby",
+    remarks: str = "Aflæsning af logger data via ValProbe RT.",
+    ambient_conditions: str = "Room temperature 23 +/- 2 deg C.",
+    scale_or_unit: str = "ITS-90",
+) -> CertificateMetadata:
     return CertificateMetadata(
-        job_id="job-001",
+        job_id=job_id,
         certificate_date=date(2026, 6, 3),
         calibration_date=date(2026, 6, 1),
         receipt_date=date(2026, 5, 31),
@@ -427,10 +523,10 @@ def _metadata() -> CertificateMetadata:
         purchase_order="PO-12345",
         client_name="SIMVal customer",
         client_address="Validated Road 1, 2800 Lyngby",
-        procedure="SIMVal SOP-TEMP-001",
-        place="SIMVal Temperature Laboratory, Lyngby",
+        procedure=procedure,
+        place=place,
         approved_by_label="QA User",
-        remarks="Aflæsning af logger data via ValProbe RT.",
+        remarks=remarks,
         traceability_statement=(
             "Measurements are metrologically traceable through calibrated "
             "reference equipment under ILAC/EA/DANAK principles."
@@ -439,8 +535,8 @@ def _metadata() -> CertificateMetadata:
             "The reported expanded uncertainty is based on standard uncertainty "
             "multiplied by coverage factor k=2."
         ),
-        ambient_conditions="Room temperature 23 +/- 2 deg C.",
-        temperature_scale="ITS-90",
+        ambient_conditions=ambient_conditions,
+        temperature_scale=scale_or_unit,
         recorded_by="operator-001",
         recorded_at=datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc),
     )

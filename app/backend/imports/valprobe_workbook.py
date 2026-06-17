@@ -28,6 +28,7 @@ RELATIONSHIP_ID = (
 )
 _CELL_REF_PATTERN = re.compile(r"^([A-Z]+)([0-9]+)$")
 _EXCEL_EPOCH = datetime(1899, 12, 30, tzinfo=timezone.utc)
+MAX_XML_MEMBER_SIZE_BYTES = 10 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +188,30 @@ def parse_valprobe_temperature_workbook(
 
 
 def _read_xml(archive: ZipFile, name: str) -> ET.Element:
-    return ET.fromstring(archive.read(name))
+    try:
+        member = archive.getinfo(name)
+    except KeyError:
+        raise
+    if member.file_size > MAX_XML_MEMBER_SIZE_BYTES:
+        raise ValProbeWorkbookParseError(
+            f"Workbook XML member {name!r} exceeds parser size limit."
+        )
+    content = archive.read(name)
+    if _contains_unsafe_xml_construct(content):
+        raise ValProbeWorkbookParseError(
+            f"Workbook XML member {name!r} contains unsupported XML declarations."
+        )
+    try:
+        return ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ValProbeWorkbookParseError(
+            f"Workbook XML member {name!r} is not well-formed XML."
+        ) from exc
+
+
+def _contains_unsafe_xml_construct(content: bytes) -> bool:
+    prefix = content[:2048].upper()
+    return b"<!DOCTYPE" in prefix or b"<!ENTITY" in prefix
 
 
 def _read_shared_strings(archive: ZipFile) -> list[str]:
