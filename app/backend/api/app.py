@@ -11,7 +11,7 @@ import sqlite3
 import uuid
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 
 from app.backend.audit.events import AuditAction, AuditEvent
@@ -25,6 +25,10 @@ from app.backend.certificates.storage import (
     verified_stored_artifact_path,
 )
 from app.backend.certificates.records import ArtifactType
+from app.backend.certificates.rendering import (
+    CertificateRenderingError,
+    render_certificate_pdf,
+)
 from app.backend.domain.entities import (
     Discipline,
     DomainValidationError,
@@ -782,6 +786,11 @@ class CertificatePreviewRequest(BaseModel):
     template_version: str
     software_version: str
     accreditation_mark_allowed: bool
+
+
+class CertificatePreviewPdfRequest(CertificatePreviewRequest):
+    certificate_id: str
+    certificate_number: str
 
 
 class CertificateMetadataRequest(BaseModel):
@@ -2440,6 +2449,55 @@ def create_app(
         except CertificatePreviewServiceError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return _preview_response(result)
+
+    @app.post(
+        "/certificate-preview-pdfs",
+        responses={
+            200: {"content": {"application/pdf": {}}},
+            401: {"model": ApiError},
+            403: {"model": ApiError},
+            409: {"model": ApiError},
+        },
+    )
+    def certificate_preview_pdf(
+        request: CertificatePreviewPdfRequest,
+        x_session_id: str = Header(alias="X-Session-Id"),
+    ) -> Response:
+        try:
+            with connection_scope() as scoped_connection:
+                result = build_certificate_preview_for_session(
+                    connection=scoped_connection,
+                    session_id=x_session_id,
+                    job_id=request.job_id,
+                    template_version=request.template_version,
+                    software_version=request.software_version,
+                    accreditation_mark_allowed=(
+                        request.accreditation_mark_allowed
+                    ),
+                    timestamp=clock_fn(),
+                )
+            rendered = render_certificate_pdf(
+                certificate_id=request.certificate_id,
+                certificate_number=request.certificate_number,
+                preview=result.preview,
+            )
+        except AuthenticationFailureError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationServiceError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationServiceError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except (CertificatePreviewServiceError, CertificateRenderingError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return Response(
+            content=rendered.content_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{rendered.filename}"',
+                "X-SIMVal-Checksum-SHA256": rendered.checksum_sha256,
+                "X-SIMVal-Preview-Audit-Event-Id": str(result.audit_event_id),
+            },
+        )
 
     @app.post(
         "/certificate-releases",

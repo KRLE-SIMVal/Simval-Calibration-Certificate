@@ -160,6 +160,32 @@ def browser_workflow_html() -> str:
     }
     .wide { grid-column: 1 / -1; }
     .panel-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .run-status {
+      margin-top: 12px;
+      min-height: 96px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #111827;
+      color: #f9fafb;
+      font-family: Consolas, monospace;
+      font-size: .82rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    a.button-link {
+      min-height: 38px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--accent);
+      background: var(--surface);
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    a.button-link[hidden] { display: none; }
     pre {
       margin: 0;
       min-height: 248px;
@@ -205,6 +231,34 @@ def browser_workflow_html() -> str:
     </div>
     <div class="workflow" id="workflow"></div>
     <div class="task-grid">
+      <section class="panel">
+        <h2>Manual Pressure Preview</h2>
+        <div class="field-grid">
+          <label>Job ID
+            <input id="manualPressureJobId" autocomplete="off">
+          </label>
+          <label>Certificate number
+            <input id="manualPressureCertificateNumber" autocomplete="off" value="SIMVAL-MANUAL-PRESSURE-0001">
+          </label>
+          <label>Reference pressure
+            <input id="manualPressureReference" autocomplete="off" value="10.000">
+          </label>
+          <label>Indication 1
+            <input id="manualPressureIndicationA" autocomplete="off" value="10.004">
+          </label>
+          <label>Indication 2
+            <input id="manualPressureIndicationB" autocomplete="off" value="10.006">
+          </label>
+          <label>Unit
+            <input id="manualPressureUnit" autocomplete="off" value="bar">
+          </label>
+        </div>
+        <div class="panel-actions">
+          <button id="runManualPressurePreview">Run Preview</button>
+          <a class="button-link" id="manualPressurePdfLink" href="#" target="_blank" rel="noopener" hidden>Open PDF</a>
+        </div>
+        <div class="run-status" id="manualPressureStatus"></div>
+      </section>
       <section class="panel">
         <h2>Create Job</h2>
         <div class="field-grid">
@@ -575,6 +629,14 @@ def browser_workflow_html() -> str:
         software_version: "app-0.1.0",
         accreditation_mark_allowed: true
       },
+      "/certificate-preview-pdfs": {
+        job_id: "job-001",
+        certificate_id: "cert-preview-001",
+        certificate_number: "SIMVAL-PREVIEW-0001",
+        template_version: "template-2026-001",
+        software_version: "app-0.1.0",
+        accreditation_mark_allowed: false
+      },
       "/certificate-rendered-releases": {
         job_id: "job-001",
         certificate_id: "cert-001",
@@ -612,6 +674,50 @@ def browser_workflow_html() -> str:
 
     function pretty(value) {
       return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    }
+
+    function setManualPressureDefaults() {
+      const jobIdEl = document.getElementById("manualPressureJobId");
+      if (!jobIdEl.value.trim()) {
+        jobIdEl.value = `manual-pressure-${Date.now()}`;
+      }
+    }
+
+    function manualPressureStatus(message) {
+      document.getElementById("manualPressureStatus").textContent = message;
+    }
+
+    function appendManualPressureStatus(message) {
+      const statusEl = document.getElementById("manualPressureStatus");
+      const separator = statusEl.textContent ? String.fromCharCode(10) : "";
+      statusEl.textContent = `${statusEl.textContent}${separator}${message}`;
+    }
+
+    function requireSessionId() {
+      const sessionId = document.getElementById("sessionId").value.trim();
+      if (!sessionId) {
+        throw new Error("Session ID is required.");
+      }
+      return sessionId;
+    }
+
+    async function parseResponse(response) {
+      const text = await response.text();
+      let parsed = text;
+      try { parsed = JSON.parse(text); } catch (_error) {}
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}: ${pretty(parsed)}`);
+      }
+      return parsed;
+    }
+
+    async function postJson(path, payload) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      return parseResponse(response);
     }
 
     function loadSample() {
@@ -784,7 +890,7 @@ def browser_workflow_html() -> str:
     }
 
     function parseTableRows(rawText) {
-      return rawText.split(/\r?\n/)
+      return rawText.split(/\\r?\\n/)
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .map(line => {
@@ -941,6 +1047,238 @@ def browser_workflow_html() -> str:
       }
     }
 
+    function pressureNumber(id) {
+      const value = Number(document.getElementById(id).value);
+      if (!Number.isFinite(value)) {
+        throw new Error(`${id} must be numeric.`);
+      }
+      return value;
+    }
+
+    function manualPressureIds(jobId) {
+      return {
+        dutId: `${jobId}-dut-001`,
+        windowId: `${jobId}-window-001`,
+        pointId: `${jobId}-point-001`,
+        constantSetVersion: `${jobId}-constants`,
+        budgetVersion: `${jobId}-budget`
+      };
+    }
+
+    async function uploadManualPressureEvidence(jobId, softwareVersion) {
+      const unit = document.getElementById("manualPressureUnit").value.trim();
+      const rows = [
+        "timestamp,reference,indication,unit",
+        `2026-06-17T09:21:00+00:00,${pressureNumber("manualPressureReference")},${pressureNumber("manualPressureIndicationA")},${unit}`,
+        `2026-06-17T09:22:00+00:00,${pressureNumber("manualPressureReference")},${pressureNumber("manualPressureIndicationB")},${unit}`
+      ];
+      const params = new URLSearchParams({
+        original_filename: "manual-pressure-readings.csv",
+        file_kind: "other",
+        software_version: softwareVersion,
+        parser_version: "manual-pressure-entry-v1"
+      });
+      const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/files?${params}`, {
+        method: "POST",
+        headers: { ...sessionHeaders(), "Content-Type": "application/octet-stream" },
+        body: rows.join(String.fromCharCode(10)) + String.fromCharCode(10)
+      });
+      return parseResponse(response);
+    }
+
+    async function runManualPressurePreview() {
+      const linkEl = document.getElementById("manualPressurePdfLink");
+      if (linkEl.dataset.objectUrl) {
+        URL.revokeObjectURL(linkEl.dataset.objectUrl);
+        delete linkEl.dataset.objectUrl;
+      }
+      linkEl.hidden = true;
+      manualPressureStatus("");
+      responseBodyEl.textContent = "";
+      try {
+        requireSessionId();
+        setManualPressureDefaults();
+        const jobId = document.getElementById("manualPressureJobId").value.trim();
+        const certificateNumber = document.getElementById("manualPressureCertificateNumber").value.trim();
+        const softwareVersion = document.getElementById("uploadSoftwareVersion").value.trim() || "app-0.1.0";
+        const unit = document.getElementById("manualPressureUnit").value.trim();
+        const referencePressure = pressureNumber("manualPressureReference");
+        const indicationA = pressureNumber("manualPressureIndicationA");
+        const indicationB = pressureNumber("manualPressureIndicationB");
+        const ids = manualPressureIds(jobId);
+
+        document.getElementById("jobId").value = jobId;
+        document.getElementById("jobDiscipline").value = "pressure";
+        document.getElementById("measurementMode").value = "manual";
+        document.getElementById("jobMethod").value = "SIMVal manual pressure calibration method";
+        document.getElementById("constantSetVersion").value = ids.constantSetVersion;
+        document.getElementById("budgetVersion").value = ids.budgetVersion;
+
+        appendManualPressureStatus("Creating pressure job");
+        await postJson("/calibration-jobs", {
+          job_id: jobId,
+          client_name: "SIMVal pressure customer",
+          client_address: "Pressure Road 1, 2800 Lyngby",
+          discipline: "pressure",
+          measurement_mode: "manual",
+          method: "SIMVal manual pressure calibration method",
+          software_version: softwareVersion
+        });
+
+        appendManualPressureStatus("Capturing certificate metadata");
+        await postJson("/certificate-metadata", {
+          job_id: jobId,
+          certificate_date: "2026-06-17",
+          calibration_date: "2026-06-17",
+          receipt_date: "2026-06-16",
+          task_number: "TASK-PRESSURE-2026-001",
+          purchase_order: "PO-PRESSURE-12345",
+          client_name: "SIMVal pressure customer",
+          client_address: "Pressure Road 1, 2800 Lyngby",
+          procedure: "SIMVal SOP-PRESS-001",
+          place: "SIMVal Pressure Laboratory, Lyngby",
+          approved_by_label: "QA Preview User",
+          remarks: "Manual pressure readings entered from controlled source evidence.",
+          traceability_statement: "Pressure measurements are traceable through the selected reference pressure standard.",
+          uncertainty_statement: "Expanded uncertainty is reported with coverage factor k=2.",
+          ambient_conditions: "Room temperature 23 +/- 2 deg C; stable laboratory conditions.",
+          temperature_scale: unit,
+          software_version: softwareVersion
+        });
+
+        appendManualPressureStatus("Selecting pressure reference equipment");
+        await postJson("/reference-equipment-selections", {
+          job_id: jobId,
+          equipment_id: `${jobId}-ref-001`,
+          simval_id: "SIM-P-001",
+          equipment_type: "Pressure calibrator",
+          serial_number: "PCAL-123",
+          discipline: "pressure",
+          calibration_certificate_reference: "DANAK-PRESS-12345",
+          calibration_due_date: "2027-06-30",
+          status: "active",
+          range_minimum: 0.0,
+          range_maximum: 20.0,
+          range_unit: unit,
+          traceability_statement: "Accredited pressure calibration with SI traceability.",
+          software_version: softwareVersion
+        });
+
+        appendManualPressureStatus("Uploading pressure source evidence");
+        const upload = await uploadManualPressureEvidence(jobId, softwareVersion);
+
+        appendManualPressureStatus("Recording manual pressure readings");
+        await postJson(`/calibration-jobs/${encodeURIComponent(jobId)}/pressure-manual-entry`, {
+          uploaded_file_id: upload.uploaded_file_id,
+          dut_id: ids.dutId,
+          dut_make: "PressureCo",
+          dut_model: "Gauge",
+          dut_serial_number: "PG-001",
+          dut_channel_id: "PG-001",
+          window_id: ids.windowId,
+          setpoint: referencePressure,
+          unit,
+          readings: [
+            {
+              timestamp: "2026-06-17T09:21:00+00:00",
+              value: indicationA,
+              source_label: "Pressure",
+              row_number: 2,
+              column_label: "indication"
+            },
+            {
+              timestamp: "2026-06-17T09:22:00+00:00",
+              value: indicationB,
+              source_label: "Pressure",
+              row_number: 3,
+              column_label: "indication"
+            }
+          ],
+          software_version: softwareVersion
+        });
+
+        appendManualPressureStatus("Approving pressure constants and budget");
+        await postJson("/constant-sets/approved", {
+          version: ids.constantSetVersion,
+          discipline: "pressure",
+          effective_from: "2026-01-01T00:00:00+00:00",
+          software_version: softwareVersion
+        });
+        await postJson("/uncertainty-budgets/approved", {
+          version: ids.budgetVersion,
+          budget_type: "pressure",
+          method: "SIMVal manual pressure calibration method",
+          discipline: "pressure",
+          linked_constant_set_version: ids.constantSetVersion,
+          software_version: softwareVersion
+        });
+
+        appendManualPressureStatus("Calculating pressure point");
+        const calculation = await postJson(`/calibration-jobs/${encodeURIComponent(jobId)}/pressure-calculations`, {
+          manual_points: [
+            {
+              point_id: ids.pointId,
+              dut_id: ids.dutId,
+              measurement_window_id: ids.windowId,
+              reference_pressure: referencePressure,
+              indication_values: [indicationA, indicationB],
+              setpoint: referencePressure,
+              unit,
+              pressure_kind: "gauge",
+              cmc_floor: "0.001",
+              reference_expanded_uncertainty: 0.004,
+              reference_coverage_factor: 2.0,
+              dut_resolution: 0.002,
+              barometer_expanded_uncertainty: 0.0,
+              barometer_coverage_factor: 2.0,
+              coverage_factor: 2.0,
+              additional_standard_uncertainties: []
+            }
+          ],
+          automatic_points: [],
+          software_version: softwareVersion,
+          calculation_engine_version: "calc-engine-0.1.0",
+          constant_set_version: ids.constantSetVersion,
+          budget_version: ids.budgetVersion
+        });
+
+        appendManualPressureStatus("Rendering preview PDF");
+        const pdfResponse = await fetch("/certificate-preview-pdfs", {
+          method: "POST",
+          headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            job_id: jobId,
+            certificate_id: `${jobId}-preview-cert`,
+            certificate_number: certificateNumber,
+            template_version: "template-pressure-preview-001",
+            software_version: softwareVersion,
+            accreditation_mark_allowed: false
+          })
+        });
+        if (!pdfResponse.ok) {
+          await parseResponse(pdfResponse);
+        }
+        const pdfBlob = await pdfResponse.blob();
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        linkEl.href = pdfUrl;
+        linkEl.dataset.objectUrl = pdfUrl;
+        linkEl.hidden = false;
+        const checksum = pdfResponse.headers.get("X-SIMVal-Checksum-SHA256");
+        appendManualPressureStatus("Preview PDF ready");
+        responseBodyEl.textContent = pretty({
+          job_id: jobId,
+          certificate_number: certificateNumber,
+          pdf_size_bytes: pdfBlob.size,
+          checksum_sha256: checksum,
+          summary_ids: calculation.summaries.map(summary => summary.point_id)
+        });
+        window.open(pdfUrl, "_blank", "noopener");
+      } catch (error) {
+        appendManualPressureStatus(`Blocked: ${error.message || String(error)}`);
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -961,6 +1299,8 @@ def browser_workflow_html() -> str:
     document.getElementById("approveQaRelease").addEventListener("click", () => postJobWorkflowAction("qa-release-approvals"));
     document.getElementById("buildCertificatePreview").addEventListener("click", () => postSample("/certificate-previews"));
     document.getElementById("renderCertificateRelease").addEventListener("click", () => postSample("/certificate-rendered-releases"));
+    document.getElementById("runManualPressurePreview").addEventListener("click", runManualPressurePreview);
+    setManualPressureDefaults();
     loadContract();
   </script>
 </body>
@@ -1233,8 +1573,14 @@ def _workflow_steps() -> tuple[WorkflowStep, ...]:
                     path="/certificate-previews",
                     required_roles=("operator", "technical_reviewer", "qa_approver", "admin"),
                 ),
+                WorkflowAction(
+                    label="Render preview PDF",
+                    method="POST",
+                    path="/certificate-preview-pdfs",
+                    required_roles=("operator", "technical_reviewer", "qa_approver", "admin"),
+                ),
             ),
-            evidence=("preview_audit_event_id", "summary_ids", "version_refs"),
+            evidence=("preview_audit_event_id", "summary_ids", "version_refs", "preview_pdf_checksum"),
         ),
         WorkflowStep(
             step_id="release",

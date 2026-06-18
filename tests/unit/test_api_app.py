@@ -187,9 +187,12 @@ def test_api_serves_browser_workflow_shell():
     assert 'id="approveConstantSet"' in response.text
     assert 'id="approveUncertaintyBudget"' in response.text
     assert 'id="buildCertificatePreview"' in response.text
+    assert 'id="runManualPressurePreview"' in response.text
+    assert 'id="manualPressurePdfLink"' in response.text
     assert 'id="renderCertificateRelease"' in response.text
     assert "/calibration-jobs" in response.text
     assert "/certificate-metadata" in response.text
+    assert "/certificate-preview-pdfs" in response.text
     assert "/certificate-rendered-releases" in response.text
     assert "/certificate-rendered-releases/allocated" in response.text
     assert "/certificate-artifacts/artifact-001" in response.text
@@ -255,6 +258,7 @@ def test_api_workflow_contract_lists_regulated_frontend_steps():
     assert "/certificate-metadata" in action_paths
     assert "/reference-equipment-selections" in action_paths
     assert "/certificate-previews" in action_paths
+    assert "/certificate-preview-pdfs" in action_paths
     assert "/certificate-rendered-releases" in action_paths
     assert "/certificate-rendered-releases/allocated" in action_paths
     assert "/certificate-history/job-001" in action_paths
@@ -1028,6 +1032,38 @@ def test_api_certificate_preview_returns_locked_rows_and_audit_id():
             "job-001",
         )
     ) == 1
+
+
+def test_api_certificate_preview_pdf_returns_pdf_without_release_record():
+    connection = _connection_with_preview_data()
+
+    response = _api_request(
+        create_app(connection=connection, clock=_fixed_now),
+        "POST",
+        "/certificate-preview-pdfs",
+        headers={"X-Session-Id": "session-001"},
+        json={
+            "job_id": "job-001",
+            "certificate_id": "cert-preview-001",
+            "certificate_number": "SIMVAL-PREVIEW-0001",
+            "template_version": "template-2026-001",
+            "software_version": "app-0.1.0",
+            "accreditation_mark_allowed": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert response.headers["content-disposition"] == (
+        'inline; filename="SIMVAL-PREVIEW-0001.pdf"'
+    )
+    assert len(response.headers["x-simval-checksum-sha256"]) == 64
+    assert response.headers["x-simval-preview-audit-event-id"] == "1"
+    assert response.content.startswith(b"%PDF-1.4")
+    assert SQLiteCertificateRecordRepository(connection).list_for_job("job-001") == ()
+    assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
+        WorkflowState.CALCULATED
+    )
 
 
 def test_api_certificate_release_returns_release_evidence_after_preview(tmp_path):
