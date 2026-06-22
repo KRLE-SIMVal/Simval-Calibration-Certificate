@@ -474,13 +474,40 @@ def browser_workflow_html() -> str:
                 <input id="manualPressureCertificateNumber" autocomplete="off" value="SIMVAL-MANUAL-PRESSURE-0001">
               </label>
               <label>Task number
-                <input autocomplete="off" value="TASK-PRESSURE-2026-001">
+                <input id="taskNumber" autocomplete="off" value="TASK-PRESSURE-2026-001">
+              </label>
+              <label>Purchase order
+                <input id="purchaseOrder" autocomplete="off" value="PO-PRESSURE-12345">
+              </label>
+              <label>Certificate date
+                <input id="certificateDate" autocomplete="off" value="2026-06-17">
+              </label>
+              <label>Calibration date
+                <input id="calibrationDate" autocomplete="off" value="2026-06-17">
+              </label>
+              <label>Receipt date
+                <input id="receiptDate" autocomplete="off" value="2026-06-16">
               </label>
               <label>Procedure
-                <input autocomplete="off" value="SIMVal SOP-PRESS-001">
+                <input id="procedure" autocomplete="off" value="SIMVal SOP-PRESS-001">
               </label>
               <label>Place
-                <input autocomplete="off" value="SIMVal Pressure Laboratory, Lyngby">
+                <input id="place" autocomplete="off" value="SIMVal Pressure Laboratory, Lyngby">
+              </label>
+              <label>Approved by
+                <input id="approvedByLabel" autocomplete="off" value="QA Preview User">
+              </label>
+              <label class="wide">Remarks
+                <input id="remarks" autocomplete="off" value="Manual pressure readings entered from controlled source evidence.">
+              </label>
+              <label class="wide">Traceability statement
+                <input id="traceabilityStatement" autocomplete="off" value="Pressure measurements are traceable through the selected reference pressure standard.">
+              </label>
+              <label class="wide">Uncertainty statement
+                <input id="uncertaintyStatement" autocomplete="off" value="Expanded uncertainty is reported with coverage factor k=2.">
+              </label>
+              <label class="wide">Ambient conditions
+                <input id="ambientConditions" autocomplete="off" value="Room temperature 23 +/- 2 deg C; stable laboratory conditions.">
               </label>
             </div>
             <div class="panel-actions">
@@ -515,6 +542,18 @@ def browser_workflow_html() -> str:
               <label>Unit
                 <input id="manualPressureUnit" autocomplete="off" value="bar">
               </label>
+              <label>DUT make
+                <input id="dutMake" autocomplete="off" value="PressureCo">
+              </label>
+              <label>DUT model
+                <input id="dutModel" autocomplete="off" value="Gauge">
+              </label>
+              <label>DUT serial
+                <input id="dutSerialNumber" autocomplete="off" value="PG-001">
+              </label>
+              <label>DUT channel
+                <input id="dutChannelId" autocomplete="off" value="PG-001">
+              </label>
               <label>Indication 1
                 <input id="manualPressureIndicationA" autocomplete="off" value="10.004">
               </label>
@@ -537,21 +576,43 @@ def browser_workflow_html() -> str:
               <button id="uploadSourceFile">Upload File</button>
               <button class="secondary" id="reviewImports">Review Imports</button>
             </div>
+            <div class="run-status" id="sourceFileStatus"></div>
           </section>
           <section class="wizard-section" data-wizard-panel="calculation" hidden>
             <div class="section-head">
-              <h3>Calculation</h3>
+              <h3>Uncertainty Budget and Calculation</h3>
               <span class="status-pill" data-step-status="calculation">Pending</span>
             </div>
             <div class="field-grid">
+              <label class="wide">Budget method
+                <input id="budgetMethod" autocomplete="off" value="SIMVal manual pressure calibration method">
+              </label>
+              <label>Pressure kind
+                <select id="pressureKind">
+                  <option value="gauge" selected>Gauge</option>
+                  <option value="absolute">Absolute</option>
+                </select>
+              </label>
               <label>CMC floor
                 <input id="cmcFloor" autocomplete="off" value="0.001">
               </label>
               <label>Reference U
                 <input id="referenceExpandedUncertainty" autocomplete="off" value="0.004">
               </label>
+              <label>Reference k
+                <input id="referenceCoverageFactor" autocomplete="off" value="2.0">
+              </label>
               <label>DUT resolution
                 <input id="dutResolution" autocomplete="off" value="0.002">
+              </label>
+              <label>Barometer U
+                <input id="barometerExpandedUncertainty" autocomplete="off" value="0.0">
+              </label>
+              <label>Barometer k
+                <input id="barometerCoverageFactor" autocomplete="off" value="2.0">
+              </label>
+              <label>Coverage factor
+                <input id="coverageFactor" autocomplete="off" value="2.0">
               </label>
               <label>Calculation engine
                 <input id="calculationEngineVersion" autocomplete="off" value="calc-engine-0.1.0">
@@ -564,8 +625,11 @@ def browser_workflow_html() -> str:
               </label>
             </div>
             <div class="panel-actions">
+              <button class="secondary" id="createUncertaintyBudget">Create Budget</button>
+              <button class="secondary" id="calculatePressure">Calculate Pressure</button>
               <button class="secondary" type="button" id="openReviewStep">Review Preview</button>
             </div>
+            <div class="run-status" id="budgetStatus"></div>
           </section>
           <section class="wizard-section" data-wizard-panel="review" hidden>
             <div class="section-head">
@@ -576,6 +640,7 @@ def browser_workflow_html() -> str:
               <div class="summary-item"><span>Pressure point</span><strong id="pressurePointSummary">10.000 bar</strong></div>
               <div class="summary-item"><span>Certificate</span><strong id="certificateSummary">SIMVAL-MANUAL-PRESSURE-0001</strong></div>
               <div class="summary-item"><span>Preview PDF</span><strong id="pdfSummary">Not rendered</strong></div>
+              <div class="summary-item"><span>Released certificate</span><strong id="releaseSummary">Not released</strong></div>
             </div>
             <div class="panel-actions">
               <button class="secondary" id="submitTechnicalReview">Submit Review</button>
@@ -584,7 +649,9 @@ def browser_workflow_html() -> str:
               <button class="secondary" id="buildCertificatePreview">Build Preview</button>
               <button class="secondary" id="renderCertificateRelease">Render Release</button>
               <button id="runManualPressurePreview">Run Complete Preview</button>
+              <button id="runFirstCertificate">Produce Certificate</button>
               <a class="button-link" id="manualPressurePdfLink" href="#" target="_blank" rel="noopener" hidden>Open Preview PDF</a>
+              <a class="button-link" id="certificatePdfLink" href="#" target="_blank" rel="noopener" hidden>Open Certificate PDF</a>
             </div>
             <div class="run-status" id="manualPressureStatus"></div>
           </section>
@@ -928,10 +995,22 @@ def browser_workflow_html() -> str:
     const wizardSteps = Array.from(document.querySelectorAll(".wizard-step"));
     const wizardPanels = Array.from(document.querySelectorAll("[data-wizard-panel]"));
     const wizardStepOrder = wizardSteps.map(step => step.dataset.stepTarget);
+    const localActorSessions = {
+      operator: "lab-flow-operator",
+      technical: "lab-flow-technical",
+      qa: "lab-flow-qa",
+      release: "lab-flow-release"
+    };
     let wizardStepIndex = 0;
+    let lastUploadedPressureFileId = "";
+    let lastCertificateObjectUrl = "";
 
     function pretty(value) {
       return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    }
+
+    function isLocalhost() {
+      return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
     }
 
     function setStepStatus(stepId, state) {
@@ -972,11 +1051,10 @@ def browser_workflow_html() -> str:
       const sessionEl = document.getElementById("sessionId");
       let storedSession = "";
       try { storedSession = window.localStorage.getItem("simvalSessionId") || ""; } catch (_error) {}
-      const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
       if (!sessionEl.value.trim() && storedSession) {
         sessionEl.value = storedSession;
       }
-      if (!sessionEl.value.trim() && isLocalhost) {
+      if (!sessionEl.value.trim() && isLocalhost()) {
         sessionEl.value = "lab-flow-test";
       }
       sessionEl.addEventListener("change", () => {
@@ -1004,6 +1082,123 @@ def browser_workflow_html() -> str:
         `${document.getElementById("manualPressureReference").value.trim()} ${document.getElementById("manualPressureUnit").value.trim()}`;
       document.getElementById("certificateSummary").textContent =
         document.getElementById("manualPressureCertificateNumber").value.trim();
+    }
+
+    function setSourceFileStatus(message) {
+      document.getElementById("sourceFileStatus").textContent = message;
+    }
+
+    function appendSourceFileStatus(message) {
+      const statusEl = document.getElementById("sourceFileStatus");
+      const separator = statusEl.textContent ? String.fromCharCode(10) : "";
+      statusEl.textContent = `${statusEl.textContent}${separator}${message}`;
+    }
+
+    function setBudgetStatus(message) {
+      document.getElementById("budgetStatus").textContent = message;
+    }
+
+    function appendBudgetStatus(message) {
+      const statusEl = document.getElementById("budgetStatus");
+      const separator = statusEl.textContent ? String.fromCharCode(10) : "";
+      statusEl.textContent = `${statusEl.textContent}${separator}${message}`;
+    }
+
+    function fieldValue(id) {
+      return document.getElementById(id).value.trim();
+    }
+
+    function numericField(id) {
+      const value = Number(fieldValue(id));
+      if (!Number.isFinite(value)) {
+        throw new Error(`${id} must be numeric.`);
+      }
+      return value;
+    }
+
+    function parseDelimitedLine(line, delimiter) {
+      const cells = [];
+      let cell = "";
+      let quoted = false;
+      for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        if (char === '"') {
+          if (quoted && line[index + 1] === '"') {
+            cell += '"';
+            index += 1;
+          } else {
+            quoted = !quoted;
+          }
+        } else if (char === delimiter && !quoted) {
+          cells.push(cell.trim());
+          cell = "";
+        } else {
+          cell += char;
+        }
+      }
+      cells.push(cell.trim());
+      return cells;
+    }
+
+    function parseDelimitedRows(rawText) {
+      return rawText.split(/\\r?\\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => {
+          const delimiter = line.includes("\t") ? "\t" : ",";
+          return parseDelimitedLine(line, delimiter);
+        });
+    }
+
+    function normaliseHeader(value) {
+      return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    function headerIndex(headers, names, fallback) {
+      const normalised = headers.map(normaliseHeader);
+      for (const name of names) {
+        const index = normalised.indexOf(name);
+        if (index >= 0) return index;
+      }
+      return fallback;
+    }
+
+    function applyManualPressureRowsFromText(rawText) {
+      const rows = parseDelimitedRows(rawText);
+      if (rows.length < 2) {
+        throw new Error("Pressure source file must contain a header row and at least one reading row.");
+      }
+      const header = rows[0];
+      const timestampIndex = headerIndex(header, ["timestamp", "time", "datetime"], 0);
+      const referenceIndex = headerIndex(header, ["reference", "referencepressure", "referencevalue"], 1);
+      const indicationIndex = headerIndex(header, ["indication", "indicationpressure", "dut", "dutindication"], 2);
+      const unitIndex = headerIndex(header, ["unit", "units"], 3);
+      const dataRows = rows.slice(1).filter(row => row.length > Math.max(referenceIndex, indicationIndex));
+      if (dataRows.length === 0) {
+        throw new Error("Pressure source file does not contain parseable reading rows.");
+      }
+      const first = dataRows[0];
+      const second = dataRows[1] || dataRows[0];
+      const referencePressure = Number(first[referenceIndex]);
+      const indicationA = Number(first[indicationIndex]);
+      const indicationB = Number(second[indicationIndex]);
+      if (!Number.isFinite(referencePressure) || !Number.isFinite(indicationA) || !Number.isFinite(indicationB)) {
+        throw new Error("Pressure source file reference and indication columns must be numeric.");
+      }
+      document.getElementById("manualPressureReference").value = String(referencePressure);
+      document.getElementById("manualPressureIndicationA").value = String(indicationA);
+      document.getElementById("manualPressureIndicationB").value = String(indicationB);
+      if (first[unitIndex]) {
+        document.getElementById("manualPressureUnit").value = first[unitIndex];
+      }
+      updatePressureSummary();
+      return dataRows.map((row, index) => ({
+        timestamp: row[timestampIndex] || `2026-06-17T09:${String(21 + index).padStart(2, "0")}:00+00:00`,
+        reference: Number(row[referenceIndex]),
+        indication: Number(row[indicationIndex]),
+        unit: row[unitIndex] || fieldValue("manualPressureUnit"),
+        rowNumber: index + 2
+      }));
     }
 
     function manualPressureStatus(message) {
@@ -1116,6 +1311,22 @@ def browser_workflow_html() -> str:
       return headers;
     }
 
+    function sessionHeadersForStage(stage) {
+      if (isLocalhost() && localActorSessions[stage]) {
+        return { "X-Session-Id": localActorSessions[stage] };
+      }
+      return sessionHeaders();
+    }
+
+    async function postJsonForStage(stage, path, payload) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { ...sessionHeadersForStage(stage), "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      return parseResponse(response);
+    }
+
     async function createJob() {
       const jobId = syncJobIds();
       const payload = {
@@ -1143,13 +1354,23 @@ def browser_workflow_html() -> str:
     }
 
     async function uploadSourceFile() {
+      setSourceFileStatus("");
       const fileInput = document.getElementById("sourceFile");
       const file = fileInput.files[0];
       if (!file) {
         responseBodyEl.textContent = "Select a source file first.";
+        setSourceFileStatus("No file selected.");
         return;
       }
       const jobId = syncJobIds();
+      let fileText = "";
+      try {
+        fileText = await file.text();
+        applyManualPressureRowsFromText(fileText);
+        appendSourceFileStatus("Read pressure rows from selected file");
+      } catch (error) {
+        appendSourceFileStatus(`File retained; manual fields unchanged: ${error.message || String(error)}`);
+      }
       const params = new URLSearchParams({
         original_filename: file.name,
         file_kind: document.getElementById("uploadFileKind").value,
@@ -1159,7 +1380,7 @@ def browser_workflow_html() -> str:
       try {
         const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/files?${params}`, {
           method: "POST",
-          headers: { ...sessionHeaders(), "Content-Type": "application/octet-stream" },
+          headers: { ...sessionHeadersForStage("operator"), "Content-Type": "application/octet-stream" },
           body: await file.arrayBuffer()
         });
         const parsed = await response.json();
@@ -1169,9 +1390,15 @@ def browser_workflow_html() -> str:
         if (response.ok && parsed.uploaded_file_id && parsed.file_kind === "verification_pdf") {
           document.getElementById("verificationUploadedFileId").value = parsed.uploaded_file_id;
         }
+        if (response.ok && parsed.uploaded_file_id) {
+          lastUploadedPressureFileId = parsed.uploaded_file_id;
+          appendSourceFileStatus(`Uploaded ${file.name}`);
+          setStepStatus("measurement", "active");
+        }
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
+        appendSourceFileStatus(`Upload blocked: ${error.message || String(error)}`);
       }
     }
 
@@ -1390,7 +1617,7 @@ def browser_workflow_html() -> str:
       };
     }
 
-    async function uploadManualPressureEvidence(jobId, softwareVersion) {
+    async function uploadManualPressureEvidence(jobId, softwareVersion, stage = "operator") {
       const unit = document.getElementById("manualPressureUnit").value.trim();
       const rows = [
         "timestamp,reference,indication,unit",
@@ -1405,10 +1632,230 @@ def browser_workflow_html() -> str:
       });
       const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/files?${params}`, {
         method: "POST",
-        headers: { ...sessionHeaders(), "Content-Type": "application/octet-stream" },
+        headers: { ...sessionHeadersForStage(stage), "Content-Type": "application/octet-stream" },
         body: rows.join(String.fromCharCode(10)) + String.fromCharCode(10)
       });
       return parseResponse(response);
+    }
+
+    async function uploadSelectedOrGeneratedPressureEvidence(jobId, softwareVersion, stage = "operator") {
+      const fileInput = document.getElementById("sourceFile");
+      const file = fileInput.files[0];
+      if (!file) {
+        const generated = await uploadManualPressureEvidence(jobId, softwareVersion, stage);
+        lastUploadedPressureFileId = generated.uploaded_file_id;
+        appendSourceFileStatus("Uploaded generated pressure evidence");
+        return generated;
+      }
+      const rawText = await file.text();
+      try {
+        applyManualPressureRowsFromText(rawText);
+        appendSourceFileStatus("Read pressure rows from selected file");
+      } catch (error) {
+        appendSourceFileStatus(`File retained; manual fields unchanged: ${error.message || String(error)}`);
+      }
+      const params = new URLSearchParams({
+        original_filename: file.name,
+        file_kind: document.getElementById("uploadFileKind").value,
+        software_version: softwareVersion,
+        parser_version: "manual-pressure-entry-v1"
+      });
+      const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/files?${params}`, {
+        method: "POST",
+        headers: { ...sessionHeadersForStage(stage), "Content-Type": "application/octet-stream" },
+        body: await file.arrayBuffer()
+      });
+      const upload = await parseResponse(response);
+      lastUploadedPressureFileId = upload.uploaded_file_id;
+      appendSourceFileStatus(`Uploaded ${file.name}`);
+      return upload;
+    }
+
+    function pressureRunContext() {
+      const jobId = syncJobIds();
+      const ids = manualPressureIds(jobId);
+      return {
+        jobId,
+        ids,
+        certificateNumber: fieldValue("manualPressureCertificateNumber"),
+        softwareVersion: fieldValue("uploadSoftwareVersion") || "app-0.1.0",
+        unit: fieldValue("manualPressureUnit"),
+        referencePressure: numericField("manualPressureReference"),
+        indicationA: numericField("manualPressureIndicationA"),
+        indicationB: numericField("manualPressureIndicationB")
+      };
+    }
+
+    function calibrationJobPayload(context) {
+      return {
+        job_id: context.jobId,
+        client_name: fieldValue("clientName"),
+        client_address: fieldValue("clientAddress"),
+        discipline: "pressure",
+        measurement_mode: "manual",
+        method: fieldValue("jobMethod"),
+        software_version: context.softwareVersion
+      };
+    }
+
+    function metadataPayload(context) {
+      return {
+        job_id: context.jobId,
+        certificate_date: fieldValue("certificateDate"),
+        calibration_date: fieldValue("calibrationDate"),
+        receipt_date: fieldValue("receiptDate"),
+        task_number: fieldValue("taskNumber"),
+        purchase_order: fieldValue("purchaseOrder"),
+        client_name: fieldValue("clientName"),
+        client_address: fieldValue("clientAddress"),
+        procedure: fieldValue("procedure"),
+        place: fieldValue("place"),
+        approved_by_label: fieldValue("approvedByLabel"),
+        remarks: fieldValue("remarks"),
+        traceability_statement: fieldValue("traceabilityStatement"),
+        uncertainty_statement: fieldValue("uncertaintyStatement"),
+        ambient_conditions: fieldValue("ambientConditions"),
+        temperature_scale: context.unit,
+        software_version: context.softwareVersion
+      };
+    }
+
+    function referenceEquipmentPayload(context) {
+      return {
+        job_id: context.jobId,
+        equipment_id: `${context.jobId}-ref-001`,
+        simval_id: "SIM-P-001",
+        equipment_type: "Pressure calibrator",
+        serial_number: "PCAL-123",
+        discipline: "pressure",
+        calibration_certificate_reference: "DANAK-PRESS-12345",
+        calibration_due_date: "2027-06-30",
+        status: "active",
+        range_minimum: 0.0,
+        range_maximum: 20.0,
+        range_unit: context.unit,
+        traceability_statement: "Accredited pressure calibration with SI traceability.",
+        software_version: context.softwareVersion
+      };
+    }
+
+    function manualPressureEntryPayload(context, upload) {
+      return {
+        uploaded_file_id: upload.uploaded_file_id,
+        dut_id: context.ids.dutId,
+        dut_make: fieldValue("dutMake"),
+        dut_model: fieldValue("dutModel"),
+        dut_serial_number: fieldValue("dutSerialNumber"),
+        dut_channel_id: fieldValue("dutChannelId"),
+        window_id: context.ids.windowId,
+        setpoint: context.referencePressure,
+        unit: context.unit,
+        readings: [
+          {
+            timestamp: "2026-06-17T09:21:00+00:00",
+            value: context.indicationA,
+            source_label: "Pressure",
+            row_number: 2,
+            column_label: "indication"
+          },
+          {
+            timestamp: "2026-06-17T09:22:00+00:00",
+            value: context.indicationB,
+            source_label: "Pressure",
+            row_number: 3,
+            column_label: "indication"
+          }
+        ],
+        software_version: context.softwareVersion
+      };
+    }
+
+    function constantSetPayload(context) {
+      return {
+        version: context.ids.constantSetVersion,
+        discipline: "pressure",
+        effective_from: "2026-01-01T00:00:00+00:00",
+        software_version: context.softwareVersion
+      };
+    }
+
+    function uncertaintyBudgetPayload(context) {
+      return {
+        version: context.ids.budgetVersion,
+        budget_type: "pressure",
+        method: fieldValue("budgetMethod"),
+        discipline: "pressure",
+        linked_constant_set_version: context.ids.constantSetVersion,
+        software_version: context.softwareVersion
+      };
+    }
+
+    function pressureCalculationPayload(context) {
+      return {
+        manual_points: [
+          {
+            point_id: context.ids.pointId,
+            dut_id: context.ids.dutId,
+            measurement_window_id: context.ids.windowId,
+            reference_pressure: context.referencePressure,
+            indication_values: [context.indicationA, context.indicationB],
+            setpoint: context.referencePressure,
+            unit: context.unit,
+            pressure_kind: fieldValue("pressureKind"),
+            cmc_floor: fieldValue("cmcFloor"),
+            reference_expanded_uncertainty: numericField("referenceExpandedUncertainty"),
+            reference_coverage_factor: numericField("referenceCoverageFactor"),
+            dut_resolution: numericField("dutResolution"),
+            barometer_expanded_uncertainty: numericField("barometerExpandedUncertainty"),
+            barometer_coverage_factor: numericField("barometerCoverageFactor"),
+            coverage_factor: numericField("coverageFactor"),
+            additional_standard_uncertainties: []
+          }
+        ],
+        automatic_points: [],
+        software_version: context.softwareVersion,
+        calculation_engine_version: fieldValue("calculationEngineVersion"),
+        constant_set_version: context.ids.constantSetVersion,
+        budget_version: context.ids.budgetVersion
+      };
+    }
+
+    async function createUncertaintyBudget() {
+      setBudgetStatus("");
+      try {
+        const context = pressureRunContext();
+        document.getElementById("constantSetVersion").value = context.ids.constantSetVersion;
+        document.getElementById("budgetVersion").value = context.ids.budgetVersion;
+        appendBudgetStatus("Approving pressure constants");
+        await postJsonForStage("qa", "/constant-sets/approved", constantSetPayload(context));
+        appendBudgetStatus("Approving uncertainty budget");
+        await postJsonForStage("qa", "/uncertainty-budgets/approved", uncertaintyBudgetPayload(context));
+        appendBudgetStatus(`Budget ready: ${context.ids.budgetVersion}`);
+        setStepStatus("equipment", "done");
+      } catch (error) {
+        appendBudgetStatus(`Budget blocked: ${error.message || String(error)}`);
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
+    async function calculatePressure() {
+      setBudgetStatus("");
+      try {
+        const context = pressureRunContext();
+        appendBudgetStatus("Calculating pressure point");
+        const calculation = await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/pressure-calculations`,
+          pressureCalculationPayload(context)
+        );
+        appendBudgetStatus(`Calculated ${calculation.summaries.length} pressure point`);
+        responseBodyEl.textContent = pretty(calculation);
+        setStepStatus("calculation", "done");
+        showWizardStep("review");
+      } catch (error) {
+        appendBudgetStatus(`Calculation blocked: ${error.message || String(error)}`);
+        responseBodyEl.textContent = String(error);
+      }
     }
 
     async function runManualPressurePreview() {
@@ -1613,6 +2060,162 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function runFirstCertificate() {
+      const previewLinkEl = document.getElementById("manualPressurePdfLink");
+      const certificateLinkEl = document.getElementById("certificatePdfLink");
+      if (previewLinkEl.dataset.objectUrl) {
+        URL.revokeObjectURL(previewLinkEl.dataset.objectUrl);
+        delete previewLinkEl.dataset.objectUrl;
+      }
+      if (certificateLinkEl.dataset.objectUrl) {
+        URL.revokeObjectURL(certificateLinkEl.dataset.objectUrl);
+        delete certificateLinkEl.dataset.objectUrl;
+      }
+      if (lastCertificateObjectUrl) {
+        URL.revokeObjectURL(lastCertificateObjectUrl);
+        lastCertificateObjectUrl = "";
+      }
+      previewLinkEl.hidden = true;
+      certificateLinkEl.hidden = true;
+      document.getElementById("pdfSummary").textContent = "Not rendered";
+      document.getElementById("releaseSummary").textContent = "Not released";
+      manualPressureStatus("");
+      setSourceFileStatus("");
+      setBudgetStatus("");
+      responseBodyEl.textContent = "";
+      try {
+        if (!isLocalhost()) requireSessionId();
+        const context = pressureRunContext();
+        updatePressureSummary();
+        showWizardStep("review");
+        document.getElementById("jobDiscipline").value = "pressure";
+        document.getElementById("measurementMode").value = "manual";
+        document.getElementById("constantSetVersion").value = context.ids.constantSetVersion;
+        document.getElementById("budgetVersion").value = context.ids.budgetVersion;
+
+        appendManualPressureStatus("Creating pressure job");
+        await postJsonForStage("operator", "/calibration-jobs", calibrationJobPayload(context));
+        setStepStatus("job", "done");
+
+        appendManualPressureStatus("Capturing certificate metadata");
+        await postJsonForStage("operator", "/certificate-metadata", metadataPayload(context));
+        setStepStatus("metadata", "done");
+
+        appendManualPressureStatus("Selecting reference equipment");
+        await postJsonForStage("operator", "/reference-equipment-selections", referenceEquipmentPayload(context));
+        setStepStatus("equipment", "active");
+
+        appendManualPressureStatus("Uploading source file");
+        const upload = await uploadSelectedOrGeneratedPressureEvidence(
+          context.jobId,
+          context.softwareVersion,
+          "operator"
+        );
+
+        appendManualPressureStatus("Recording manual readings");
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/pressure-manual-entry`,
+          manualPressureEntryPayload(context, upload)
+        );
+        setStepStatus("measurement", "done");
+
+        appendManualPressureStatus("Creating uncertainty budget");
+        await postJsonForStage("qa", "/constant-sets/approved", constantSetPayload(context));
+        await postJsonForStage("qa", "/uncertainty-budgets/approved", uncertaintyBudgetPayload(context));
+        appendBudgetStatus(`Budget ready: ${context.ids.budgetVersion}`);
+        setStepStatus("equipment", "done");
+
+        appendManualPressureStatus("Calculating pressure point");
+        const calculation = await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/pressure-calculations`,
+          pressureCalculationPayload(context)
+        );
+        setStepStatus("calculation", "done");
+
+        appendManualPressureStatus("Rendering preview PDF");
+        const previewResponse = await fetch("/certificate-preview-pdfs", {
+          method: "POST",
+          headers: { ...sessionHeadersForStage("operator"), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            job_id: context.jobId,
+            certificate_id: `${context.jobId}-preview-cert`,
+            certificate_number: context.certificateNumber,
+            template_version: "template-pressure-preview-001",
+            software_version: context.softwareVersion,
+            accreditation_mark_allowed: false
+          })
+        });
+        if (!previewResponse.ok) {
+          await parseResponse(previewResponse);
+        }
+        const previewBlob = await previewResponse.blob();
+        const previewUrl = URL.createObjectURL(previewBlob);
+        previewLinkEl.href = previewUrl;
+        previewLinkEl.dataset.objectUrl = previewUrl;
+        previewLinkEl.hidden = false;
+        document.getElementById("pdfSummary").textContent = `${previewBlob.size} bytes`;
+
+        appendManualPressureStatus("Submitting technical review");
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/technical-review-submissions`,
+          { software_version: context.softwareVersion }
+        );
+        appendManualPressureStatus("Approving technical review");
+        await postJsonForStage(
+          "technical",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/technical-review-approvals`,
+          { software_version: context.softwareVersion }
+        );
+        appendManualPressureStatus("Approving QA release");
+        await postJsonForStage(
+          "qa",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/qa-release-approvals`,
+          { software_version: context.softwareVersion }
+        );
+
+        appendManualPressureStatus("Releasing certificate PDF");
+        const release = await postJsonForStage("release", "/certificate-rendered-releases", {
+          job_id: context.jobId,
+          certificate_id: `${context.jobId}-cert`,
+          certificate_number: context.certificateNumber,
+          artifact_id: `${context.jobId}-artifact`,
+          template_version: "template-pressure-preview-001",
+          software_version: context.softwareVersion,
+          accreditation_mark_allowed: false
+        });
+        const artifact = release.artifacts[0];
+        const artifactResponse = await fetch(`/certificate-artifacts/${encodeURIComponent(artifact.artifact_id)}`, {
+          headers: sessionHeadersForStage("release")
+        });
+        if (!artifactResponse.ok) {
+          await parseResponse(artifactResponse);
+        }
+        const artifactBlob = await artifactResponse.blob();
+        const artifactUrl = URL.createObjectURL(artifactBlob);
+        lastCertificateObjectUrl = artifactUrl;
+        certificateLinkEl.href = artifactUrl;
+        certificateLinkEl.dataset.objectUrl = artifactUrl;
+        certificateLinkEl.hidden = false;
+        document.getElementById("releaseSummary").textContent = release.certificate_number;
+        setStepStatus("review", "done");
+        appendManualPressureStatus("Certificate PDF ready");
+        responseBodyEl.textContent = pretty({
+          job_id: context.jobId,
+          certificate_number: release.certificate_number,
+          artifact_id: artifact.artifact_id,
+          artifact_bytes: artifactBlob.size,
+          checksum_sha256: artifact.checksum_sha256,
+          summary_ids: calculation.summaries.map(summary => summary.point_id)
+        });
+      } catch (error) {
+        appendManualPressureStatus(`Blocked: ${error.message || String(error)}`);
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -1628,12 +2231,15 @@ def browser_workflow_html() -> str:
     document.getElementById("selectTemperatureWindow").addEventListener("click", selectTemperatureWindow);
     document.getElementById("completeTemperatureWindows").addEventListener("click", completeTemperatureWindows);
     document.getElementById("calculateTemperature").addEventListener("click", calculateTemperature);
+    document.getElementById("createUncertaintyBudget").addEventListener("click", createUncertaintyBudget);
+    document.getElementById("calculatePressure").addEventListener("click", calculatePressure);
     document.getElementById("submitTechnicalReview").addEventListener("click", () => postJobWorkflowAction("technical-review-submissions"));
     document.getElementById("approveTechnicalReview").addEventListener("click", () => postJobWorkflowAction("technical-review-approvals"));
     document.getElementById("approveQaRelease").addEventListener("click", () => postJobWorkflowAction("qa-release-approvals"));
     document.getElementById("buildCertificatePreview").addEventListener("click", () => postSample("/certificate-previews"));
     document.getElementById("renderCertificateRelease").addEventListener("click", () => postSample("/certificate-rendered-releases"));
     document.getElementById("runManualPressurePreview").addEventListener("click", runManualPressurePreview);
+    document.getElementById("runFirstCertificate").addEventListener("click", runFirstCertificate);
     document.getElementById("previousWizardStep").addEventListener("click", () => moveWizardStep(-1));
     document.getElementById("nextWizardStep").addEventListener("click", () => moveWizardStep(1));
     document.getElementById("openReviewStep").addEventListener("click", () => showWizardStep("review"));

@@ -195,10 +195,16 @@ def test_api_serves_browser_workflow_shell():
     assert 'id="approveConstantSet"' in response.text
     assert 'id="approveUncertaintyBudget"' in response.text
     assert 'id="buildCertificatePreview"' in response.text
+    assert 'id="createUncertaintyBudget"' in response.text
+    assert 'id="calculatePressure"' in response.text
     assert 'id="runManualPressurePreview"' in response.text
+    assert 'id="runFirstCertificate"' in response.text
     assert 'id="manualPressurePdfLink"' in response.text
+    assert 'id="certificatePdfLink"' in response.text
     assert "Run Complete Preview" in response.text
+    assert "Produce Certificate" in response.text
     assert "Open Preview PDF" in response.text
+    assert "Open Certificate PDF" in response.text
     assert 'id="renderCertificateRelease"' in response.text
     assert "/calibration-jobs" in response.text
     assert "/certificate-metadata" in response.text
