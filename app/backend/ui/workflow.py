@@ -407,23 +407,23 @@ def browser_workflow_html() -> str:
           <div class="workflow" id="workflow"></div>
         </section>
       </aside>
-      <section class="certificate-board" id="manualPressureWizard">
+      <section class="certificate-board" id="temperatureWizard">
         <div class="board-header">
           <div>
-            <h2>Create Certificate</h2>
-            <p>Manual pressure certificate draft</p>
+            <h2 id="workflowTitle">Create Temperature Certificate</h2>
+            <p id="workflowModeSummary">ValProbe RT linked XLSX/PDF workflow</p>
           </div>
           <div class="mode-strip">
             <label>Discipline
               <select id="jobDiscipline">
-                <option value="pressure" selected>Pressure</option>
-                <option value="temperature">Temperature</option>
+                <option value="temperature" selected>Temperature</option>
+                <option value="pressure">Pressure</option>
               </select>
             </label>
             <label>Mode
               <select id="measurementMode">
-                <option value="manual" selected>Manual</option>
-                <option value="automatic">Automatic</option>
+                <option value="automatic" selected>Automatic</option>
+                <option value="manual">Manual</option>
               </select>
             </label>
           </div>
@@ -447,13 +447,13 @@ def browser_workflow_html() -> str:
                 <input id="manualPressureJobId" autocomplete="off">
               </label>
               <label>Client
-                <input id="clientName" autocomplete="off" value="SIMVal pressure customer">
+                <input id="clientName" autocomplete="off" value="SIMVal temperature customer">
               </label>
               <label class="wide">Client address
-                <input id="clientAddress" autocomplete="off" value="Pressure Road 1, 2800 Lyngby">
+                <input id="clientAddress" autocomplete="off" value="Temperature Road 1, 2800 Lyngby">
               </label>
               <label class="wide">Method
-                <input id="jobMethod" autocomplete="off" value="SIMVal manual pressure calibration method">
+                <input id="jobMethod" autocomplete="off" value="ValProbe RT linked XLSX/PDF workflow">
               </label>
               <label>Software version
                 <input id="uploadSoftwareVersion" autocomplete="off" value="app-0.1.0">
@@ -471,13 +471,13 @@ def browser_workflow_html() -> str:
             </div>
             <div class="field-grid">
               <label>Certificate number
-                <input id="manualPressureCertificateNumber" autocomplete="off" value="SIMVAL-MANUAL-PRESSURE-0001">
+                <input id="manualPressureCertificateNumber" autocomplete="off" value="SIMVAL-TEMP-0001">
               </label>
               <label>Task number
-                <input id="taskNumber" autocomplete="off" value="TASK-PRESSURE-2026-001">
+                <input id="taskNumber" autocomplete="off" value="TASK-TEMP-2026-001">
               </label>
               <label>Purchase order
-                <input id="purchaseOrder" autocomplete="off" value="PO-PRESSURE-12345">
+                <input id="purchaseOrder" autocomplete="off" value="PO-TEMP-12345">
               </label>
               <label>Certificate date
                 <input id="certificateDate" autocomplete="off" value="2026-06-17">
@@ -489,25 +489,25 @@ def browser_workflow_html() -> str:
                 <input id="receiptDate" autocomplete="off" value="2026-06-16">
               </label>
               <label>Procedure
-                <input id="procedure" autocomplete="off" value="SIMVal SOP-PRESS-001">
+                <input id="procedure" autocomplete="off" value="SIMVal SOP-TEMP-001">
               </label>
               <label>Place
-                <input id="place" autocomplete="off" value="SIMVal Pressure Laboratory, Lyngby">
+                <input id="place" autocomplete="off" value="SIMVal Temperature Laboratory, Lyngby">
               </label>
               <label>Approved by
                 <input id="approvedByLabel" autocomplete="off" value="QA Preview User">
               </label>
               <label class="wide">Remarks
-                <input id="remarks" autocomplete="off" value="Manual pressure readings entered from controlled source evidence.">
+                <input id="remarks" autocomplete="off" value="ValProbe RT logger data reviewed.">
               </label>
               <label class="wide">Traceability statement
-                <input id="traceabilityStatement" autocomplete="off" value="Pressure measurements are traceable through the selected reference pressure standard.">
+                <input id="traceabilityStatement" autocomplete="off" value="Measurements are metrologically traceable through the selected reference IRTD.">
               </label>
               <label class="wide">Uncertainty statement
                 <input id="uncertaintyStatement" autocomplete="off" value="Expanded uncertainty is reported with coverage factor k=2.">
               </label>
               <label class="wide">Ambient conditions
-                <input id="ambientConditions" autocomplete="off" value="Room temperature 23 +/- 2 deg C; stable laboratory conditions.">
+                <input id="ambientConditions" autocomplete="off" value="Room temperature 23 +/- 2 deg C.">
               </label>
             </div>
             <div class="panel-actions">
@@ -520,9 +520,9 @@ def browser_workflow_html() -> str:
               <span class="status-pill" data-step-status="equipment">Pending</span>
             </div>
             <div class="summary-grid">
-              <div class="summary-item"><span>SIMVal ID</span><strong>SIM-P-001</strong></div>
-              <div class="summary-item"><span>Type</span><strong>Pressure calibrator</strong></div>
-              <div class="summary-item"><span>Range</span><strong>0 to 20 bar</strong></div>
+              <div class="summary-item"><span>SIMVal ID</span><strong id="referenceEquipmentSummaryId">SIM-T-001</strong></div>
+              <div class="summary-item"><span>Type</span><strong id="referenceEquipmentSummaryType">IRTD</strong></div>
+              <div class="summary-item"><span>Range</span><strong id="referenceEquipmentSummaryRange">-90 to 140 deg C</strong></div>
             </div>
             <div class="panel-actions">
               <button class="secondary" id="selectReferenceEquipment">Select Equipment</button>
@@ -532,49 +532,83 @@ def browser_workflow_html() -> str:
           </section>
           <section class="wizard-section" data-wizard-panel="measurement" hidden>
             <div class="section-head">
-              <h3>Manual Measurement</h3>
+              <h3>Temperature Measurement</h3>
               <span class="status-pill" data-step-status="measurement">Pending</span>
             </div>
             <div class="field-grid">
-              <label>Reference pressure
-                <input id="manualPressureReference" autocomplete="off" value="10.000">
+              <label>Setpoints
+                <input id="temperatureSetpoints" autocomplete="off" value="-80">
               </label>
               <label>Unit
-                <input id="manualPressureUnit" autocomplete="off" value="bar">
+                <input id="temperatureUnit" autocomplete="off" value="deg C">
               </label>
               <label>DUT make
-                <input id="dutMake" autocomplete="off" value="PressureCo">
+                <input id="dutMake" autocomplete="off" value="Kaye">
               </label>
               <label>DUT model
-                <input id="dutModel" autocomplete="off" value="Gauge">
+                <input id="dutModel" autocomplete="off" value="ValProbe RT">
               </label>
               <label>DUT serial
-                <input id="dutSerialNumber" autocomplete="off" value="PG-001">
+                <input id="dutSerialNumber" autocomplete="off" value="MJT1">
               </label>
               <label>DUT channel
-                <input id="dutChannelId" autocomplete="off" value="PG-001">
+                <input id="dutChannelId" autocomplete="off" value="MJT1-A">
               </label>
-              <label>Indication 1
+              <label>Calibration XLSX
+                <input id="sourceFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+              </label>
+              <label>Verification PDF
+                <input id="verificationSourceFile" type="file" accept=".pdf,application/pdf">
+              </label>
+              <label>Window ID
+                <input id="windowId" autocomplete="off" value="window-001">
+              </label>
+              <label>Window channel
+                <input id="windowChannelId" autocomplete="off" value="MJT1-A">
+              </label>
+              <label>Window start
+                <input id="windowStart" autocomplete="off" value="2026-04-08T15:45:00+00:00">
+              </label>
+              <label>Window end
+                <input id="windowEnd" autocomplete="off" value="2026-04-08T15:46:00+00:00">
+              </label>
+              <label class="wide">IRTD rows
+                <textarea id="irtdRows" rows="4">Time,IRTD (deg C),MJT1-A
+2026-04-08T15:45:00+00:00,-80.031,-80.036
+2026-04-08T15:46:00+00:00,-80.030,-80.034</textarea>
+              </label>
+              <label class="pressure-fields" hidden>Reference pressure
+                <input id="manualPressureReference" autocomplete="off" value="10.000">
+              </label>
+              <label class="pressure-fields" hidden>Pressure unit
+                <input id="manualPressureUnit" autocomplete="off" value="bar">
+              </label>
+              <label class="pressure-fields" hidden>Indication 1
                 <input id="manualPressureIndicationA" autocomplete="off" value="10.004">
               </label>
-              <label>Indication 2
+              <label class="pressure-fields" hidden>Indication 2
                 <input id="manualPressureIndicationB" autocomplete="off" value="10.006">
               </label>
-              <label>Source file
-                <input id="sourceFile" type="file">
-              </label>
-              <label>File kind
+              <label class="pressure-fields" hidden>File kind
                 <select id="uploadFileKind">
-                  <option value="calibration_xlsx">Calibration XLSX</option>
+                  <option value="calibration_xlsx" selected>Calibration XLSX</option>
                   <option value="verification_pdf">Verification PDF</option>
                   <option value="certificate_reference_pdf">Certificate reference PDF</option>
-                  <option value="other" selected>Other</option>
+                  <option value="other">Other</option>
                 </select>
               </label>
+              <input id="calibrationUploadedFileId" type="hidden">
+              <input id="verificationUploadedFileId" type="hidden">
+              <input id="windowDutId" type="hidden" value="">
             </div>
             <div class="panel-actions">
-              <button id="uploadSourceFile">Upload File</button>
+              <button id="uploadTemperatureFiles">Upload Temperature Files</button>
+              <button class="secondary pressure-fields" id="uploadSourceFile" hidden>Upload Pressure File</button>
               <button class="secondary" id="reviewImports">Review Imports</button>
+              <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
+              <button class="secondary" id="recordIrtdRows">Record IRTD</button>
+              <button class="secondary" id="selectTemperatureWindow">Select Window</button>
+              <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
             </div>
             <div class="run-status" id="sourceFileStatus"></div>
           </section>
@@ -585,33 +619,36 @@ def browser_workflow_html() -> str:
             </div>
             <div class="field-grid">
               <label class="wide">Budget method
-                <input id="budgetMethod" autocomplete="off" value="SIMVal manual pressure calibration method">
+                <input id="budgetMethod" autocomplete="off" value="ValProbe RT automatic temperature">
               </label>
-              <label>Pressure kind
+              <label class="pressure-fields" hidden>Pressure kind
                 <select id="pressureKind">
                   <option value="gauge" selected>Gauge</option>
                   <option value="absolute">Absolute</option>
                 </select>
               </label>
               <label>CMC floor
-                <input id="cmcFloor" autocomplete="off" value="0.001">
+                <input id="cmcFloor" autocomplete="off" value="0.010">
               </label>
               <label>Reference U
-                <input id="referenceExpandedUncertainty" autocomplete="off" value="0.004">
+                <input id="referenceExpandedUncertainty" autocomplete="off" value="0.010">
               </label>
-              <label>Reference k
+              <label class="pressure-fields" hidden>Reference k
                 <input id="referenceCoverageFactor" autocomplete="off" value="2.0">
               </label>
-              <label>DUT resolution
-                <input id="dutResolution" autocomplete="off" value="0.002">
+              <label>Bath U
+                <input id="bathExpandedUncertainty" autocomplete="off" value="0.004">
               </label>
-              <label>Barometer U
+              <label>DUT resolution
+                <input id="dutResolution" autocomplete="off" value="0.010">
+              </label>
+              <label class="pressure-fields" hidden>Barometer U
                 <input id="barometerExpandedUncertainty" autocomplete="off" value="0.0">
               </label>
-              <label>Barometer k
+              <label class="pressure-fields" hidden>Barometer k
                 <input id="barometerCoverageFactor" autocomplete="off" value="2.0">
               </label>
-              <label>Coverage factor
+              <label class="pressure-fields" hidden>Coverage factor
                 <input id="coverageFactor" autocomplete="off" value="2.0">
               </label>
               <label>Calculation engine
@@ -621,12 +658,13 @@ def browser_workflow_html() -> str:
                 <input id="constantSetVersion" autocomplete="off" value="constants-2026-001">
               </label>
               <label>Budget version
-                <input id="budgetVersion" autocomplete="off" value="budget-pressure-001">
+                <input id="budgetVersion" autocomplete="off" value="budget-temp-001">
               </label>
             </div>
             <div class="panel-actions">
               <button class="secondary" id="createUncertaintyBudget">Create Budget</button>
-              <button class="secondary" id="calculatePressure">Calculate Pressure</button>
+              <button class="secondary" id="calculateTemperature">Calculate Temperature</button>
+              <button class="secondary pressure-fields" id="calculatePressure" hidden>Calculate Pressure</button>
               <button class="secondary" type="button" id="openReviewStep">Review Preview</button>
             </div>
             <div class="run-status" id="budgetStatus"></div>
@@ -637,8 +675,8 @@ def browser_workflow_html() -> str:
               <span class="status-pill" data-step-status="review">Pending</span>
             </div>
             <div class="summary-grid">
-              <div class="summary-item"><span>Pressure point</span><strong id="pressurePointSummary">10.000 bar</strong></div>
-              <div class="summary-item"><span>Certificate</span><strong id="certificateSummary">SIMVAL-MANUAL-PRESSURE-0001</strong></div>
+              <div class="summary-item"><span>Temperature setpoint</span><strong id="pressurePointSummary">-80 deg C</strong></div>
+              <div class="summary-item"><span>Certificate</span><strong id="certificateSummary">SIMVAL-TEMP-0001</strong></div>
               <div class="summary-item"><span>Preview PDF</span><strong id="pdfSummary">Not rendered</strong></div>
               <div class="summary-item"><span>Released certificate</span><strong id="releaseSummary">Not released</strong></div>
             </div>
@@ -648,8 +686,8 @@ def browser_workflow_html() -> str:
               <button class="secondary" id="approveQaRelease">Approve QA</button>
               <button class="secondary" id="buildCertificatePreview">Build Preview</button>
               <button class="secondary" id="renderCertificateRelease">Render Release</button>
-              <button id="runManualPressurePreview">Run Complete Preview</button>
-              <button id="runFirstCertificate">Produce Certificate</button>
+              <button class="secondary pressure-fields" id="runManualPressurePreview" hidden>Run Pressure Preview</button>
+              <button id="runFirstTemperatureCertificate">Produce Certificate</button>
               <a class="button-link" id="manualPressurePdfLink" href="#" target="_blank" rel="noopener" hidden>Open Preview PDF</a>
               <a class="button-link" id="certificatePdfLink" href="#" target="_blank" rel="noopener" hidden>Open Certificate PDF</a>
             </div>
@@ -662,31 +700,6 @@ def browser_workflow_html() -> str:
         </div>
       </section>
     </div>
-    <section class="panel" hidden>
-      <label>Calibration file ID
-        <input id="calibrationUploadedFileId" autocomplete="off">
-      </label>
-      <label>Verification file ID
-        <input id="verificationUploadedFileId" autocomplete="off">
-      </label>
-      <label>Setpoints
-        <input id="temperatureSetpoints" autocomplete="off" value="-80">
-      </label>
-      <textarea id="irtdRows" rows="4">Time,IRTD (deg C),MJT1-A
-2026-04-08T15:45:00+00:00,-80.031,-80.036
-2026-04-08T15:46:00+00:00,-80.030,-80.034</textarea>
-      <input id="windowId" autocomplete="off" value="window-001">
-      <input id="windowDutId" autocomplete="off" value="dut-MJT1-A">
-      <input id="windowChannelId" autocomplete="off" value="MJT1-A">
-      <input id="windowStart" autocomplete="off" value="2026-04-08T15:45:00+00:00">
-      <input id="windowEnd" autocomplete="off" value="2026-04-08T15:46:00+00:00">
-      <input id="bathExpandedUncertainty" autocomplete="off" value="0.004">
-      <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
-      <button class="secondary" id="recordIrtdRows">Record IRTD</button>
-      <button class="secondary" id="selectTemperatureWindow">Select Window</button>
-      <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
-      <button class="secondary" id="calculateTemperature">Calculate Temperature</button>
-    </section>
     <details class="advanced-console" id="advancedApiConsole">
       <summary>Advanced API Console</summary>
       <div class="advanced-inner">
@@ -800,7 +813,7 @@ def browser_workflow_html() -> str:
       },
       "/calibration-jobs/job-001/temperature-windows": {
         window_id: "window-001",
-        dut_id: "dut-MJT1-A",
+        dut_id: "dut-job-001-MJT1-A",
         dut_channel_id: "MJT1-A",
         setpoint: -80,
         unit: "deg C",
@@ -1065,7 +1078,8 @@ def browser_workflow_html() -> str:
     function setManualPressureDefaults() {
       const jobIdEl = document.getElementById("manualPressureJobId");
       if (!jobIdEl.value.trim()) {
-        jobIdEl.value = `manual-pressure-${Date.now()}`;
+        const prefix = document.getElementById("jobDiscipline").value === "pressure" ? "manual-pressure" : "temperature-cal";
+        jobIdEl.value = `${prefix}-${Date.now()}`;
       }
       document.getElementById("jobId").value = jobIdEl.value.trim();
     }
@@ -1078,10 +1092,109 @@ def browser_workflow_html() -> str:
     }
 
     function updatePressureSummary() {
-      document.getElementById("pressurePointSummary").textContent =
-        `${document.getElementById("manualPressureReference").value.trim()} ${document.getElementById("manualPressureUnit").value.trim()}`;
+      const discipline = document.getElementById("jobDiscipline").value;
+      document.getElementById("pressurePointSummary").textContent = discipline === "pressure"
+        ? `${document.getElementById("manualPressureReference").value.trim()} ${document.getElementById("manualPressureUnit").value.trim()}`
+        : `${document.getElementById("temperatureSetpoints").value.trim()} ${document.getElementById("temperatureUnit").value.trim()}`;
       document.getElementById("certificateSummary").textContent =
         document.getElementById("manualPressureCertificateNumber").value.trim();
+    }
+
+    function setFieldValue(id, value) {
+      document.getElementById(id).value = value;
+    }
+
+    function setControlGroupHidden(ids, hidden) {
+      for (const id of ids) {
+        const element = document.getElementById(id);
+        if (!element) continue;
+        const container = element.closest("label") || element;
+        container.hidden = hidden;
+      }
+    }
+
+    function syncDisciplineWorkflow() {
+      const discipline = document.getElementById("jobDiscipline").value;
+      const pressureMode = discipline === "pressure";
+      for (const element of document.querySelectorAll(".pressure-fields")) {
+        element.hidden = !pressureMode;
+      }
+      setControlGroupHidden([
+        "temperatureSetpoints",
+        "temperatureUnit",
+        "sourceFile",
+        "verificationSourceFile",
+        "windowId",
+        "windowChannelId",
+        "windowStart",
+        "windowEnd",
+        "irtdRows",
+        "bathExpandedUncertainty"
+      ], pressureMode);
+      for (const id of [
+        "uploadTemperatureFiles",
+        "prepareTemperatureData",
+        "recordIrtdRows",
+        "selectTemperatureWindow",
+        "completeTemperatureWindows",
+        "calculateTemperature"
+      ]) {
+        document.getElementById(id).hidden = pressureMode;
+      }
+      document.getElementById("uploadSourceFile").hidden = true;
+      document.getElementById("calculatePressure").hidden = true;
+      document.getElementById("runManualPressurePreview").hidden = true;
+      document.getElementById("runFirstTemperatureCertificate").disabled = pressureMode;
+      if (pressureMode) {
+        document.getElementById("workflowTitle").textContent = "Pressure Certificate";
+        document.getElementById("workflowModeSummary").textContent = "Pressure workflow deferred for Phase 3";
+        setFieldValue("measurementMode", "manual");
+        setFieldValue("clientName", "SIMVal pressure customer");
+        setFieldValue("clientAddress", "Pressure Road 1, 2800 Lyngby");
+        setFieldValue("jobMethod", "SIMVal manual pressure calibration method");
+        setFieldValue("manualPressureCertificateNumber", "SIMVAL-MANUAL-PRESSURE-0001");
+        setFieldValue("taskNumber", "TASK-PRESSURE-2026-001");
+        setFieldValue("purchaseOrder", "PO-PRESSURE-12345");
+        setFieldValue("procedure", "SIMVal SOP-PRESS-001");
+        setFieldValue("place", "SIMVal Pressure Laboratory, Lyngby");
+        setFieldValue("remarks", "Pressure workflow is deferred until the Phase 3 method validation is complete.");
+        setFieldValue("traceabilityStatement", "Pressure measurements are traceable through the selected reference pressure standard.");
+        setFieldValue("budgetMethod", "SIMVal manual pressure calibration method");
+        setFieldValue("cmcFloor", "0.001");
+        setFieldValue("referenceExpandedUncertainty", "0.004");
+        setFieldValue("dutResolution", "0.002");
+        setFieldValue("budgetVersion", "budget-pressure-001");
+        document.getElementById("referenceEquipmentSummaryId").textContent = "SIM-P-001";
+        document.getElementById("referenceEquipmentSummaryType").textContent = "Pressure calibrator";
+        document.getElementById("referenceEquipmentSummaryRange").textContent = "0 to 20 bar";
+        manualPressureStatus("Pressure workflow deferred for Phase 3. Use Temperature for the active certificate flow.");
+      } else {
+        document.getElementById("workflowTitle").textContent = "Create Temperature Certificate";
+        document.getElementById("workflowModeSummary").textContent = "ValProbe RT linked XLSX/PDF workflow";
+        setFieldValue("measurementMode", "automatic");
+        setFieldValue("clientName", "SIMVal temperature customer");
+        setFieldValue("clientAddress", "Temperature Road 1, 2800 Lyngby");
+        setFieldValue("jobMethod", "ValProbe RT linked XLSX/PDF workflow");
+        setFieldValue("manualPressureCertificateNumber", "SIMVAL-TEMP-0001");
+        setFieldValue("taskNumber", "TASK-TEMP-2026-001");
+        setFieldValue("purchaseOrder", "PO-TEMP-12345");
+        setFieldValue("procedure", "SIMVal SOP-TEMP-001");
+        setFieldValue("place", "SIMVal Temperature Laboratory, Lyngby");
+        setFieldValue("remarks", "ValProbe RT logger data reviewed.");
+        setFieldValue("traceabilityStatement", "Measurements are metrologically traceable through the selected reference IRTD.");
+        setFieldValue("budgetMethod", "ValProbe RT automatic temperature");
+        setFieldValue("cmcFloor", "0.010");
+        setFieldValue("referenceExpandedUncertainty", "0.010");
+        setFieldValue("dutResolution", "0.010");
+        setFieldValue("budgetVersion", "budget-temp-001");
+        document.getElementById("referenceEquipmentSummaryId").textContent = "SIM-T-001";
+        document.getElementById("referenceEquipmentSummaryType").textContent = "IRTD";
+        document.getElementById("referenceEquipmentSummaryRange").textContent = "-90 to 140 deg C";
+        if (document.getElementById("manualPressureStatus").textContent.includes("Pressure workflow deferred")) {
+          manualPressureStatus("");
+        }
+      }
+      updatePressureSummary();
     }
 
     function setSourceFileStatus(message) {
@@ -1106,6 +1219,14 @@ def browser_workflow_html() -> str:
 
     function fieldValue(id) {
       return document.getElementById(id).value.trim();
+    }
+
+    function controlledSafeId(value) {
+      const candidate = value.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^[._]+|[._]+$/g, "");
+      if (!candidate) {
+        throw new Error("Controlled ID source cannot be blank.");
+      }
+      return candidate;
     }
 
     function numericField(id) {
@@ -1363,13 +1484,14 @@ def browser_workflow_html() -> str:
         return;
       }
       const jobId = syncJobIds();
-      let fileText = "";
-      try {
-        fileText = await file.text();
-        applyManualPressureRowsFromText(fileText);
-        appendSourceFileStatus("Read pressure rows from selected file");
-      } catch (error) {
-        appendSourceFileStatus(`File retained; manual fields unchanged: ${error.message || String(error)}`);
+      if (document.getElementById("jobDiscipline").value === "pressure") {
+        try {
+          const fileText = await file.text();
+          applyManualPressureRowsFromText(fileText);
+          appendSourceFileStatus("Read pressure rows from selected file");
+        } catch (error) {
+          appendSourceFileStatus(`File retained; manual fields unchanged: ${error.message || String(error)}`);
+        }
       }
       const params = new URLSearchParams({
         original_filename: file.name,
@@ -1402,6 +1524,52 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function uploadFileForKind(jobId, file, fileKind, stage = "operator") {
+      const params = new URLSearchParams({
+        original_filename: file.name,
+        file_kind: fileKind,
+        software_version: document.getElementById("uploadSoftwareVersion").value.trim()
+      });
+      const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/files?${params}`, {
+        method: "POST",
+        headers: { ...sessionHeadersForStage(stage), "Content-Type": "application/octet-stream" },
+        body: await file.arrayBuffer()
+      });
+      return parseResponse(response);
+    }
+
+    async function uploadTemperatureFiles() {
+      setSourceFileStatus("");
+      const calibrationFile = document.getElementById("sourceFile").files[0];
+      const verificationFile = document.getElementById("verificationSourceFile").files[0];
+      if (!calibrationFile || !verificationFile) {
+        responseBodyEl.textContent = "Select both the calibration XLSX and verification PDF first.";
+        setSourceFileStatus("Calibration XLSX and verification PDF are required.");
+        return;
+      }
+      const jobId = syncJobIds();
+      responseBodyEl.textContent = "Uploading...";
+      try {
+        const calibrationUpload = await uploadFileForKind(jobId, calibrationFile, "calibration_xlsx");
+        document.getElementById("calibrationUploadedFileId").value = calibrationUpload.uploaded_file_id;
+        appendSourceFileStatus(`Uploaded calibration XLSX: ${calibrationFile.name}`);
+        if (calibrationUpload.parser_status) {
+          appendSourceFileStatus(`XLSX parser status: ${calibrationUpload.parser_status}`);
+        }
+        const verificationUpload = await uploadFileForKind(jobId, verificationFile, "verification_pdf");
+        document.getElementById("verificationUploadedFileId").value = verificationUpload.uploaded_file_id;
+        appendSourceFileStatus(`Uploaded verification PDF: ${verificationFile.name}`);
+        setStepStatus("measurement", "active");
+        responseBodyEl.textContent = pretty({
+          calibration_upload: calibrationUpload,
+          verification_upload: verificationUpload
+        });
+      } catch (error) {
+        appendSourceFileStatus(`Upload blocked: ${error.message || String(error)}`);
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     async function reviewImports() {
       const jobId = syncJobIds();
       responseBodyEl.textContent = "Waiting...";
@@ -1424,7 +1592,7 @@ def browser_workflow_html() -> str:
       const payload = {
         calibration_uploaded_file_id: document.getElementById("calibrationUploadedFileId").value.trim(),
         setpoints,
-        unit: "deg C",
+        unit: fieldValue("temperatureUnit"),
         software_version: document.getElementById("uploadSoftwareVersion").value.trim()
       };
       responseBodyEl.textContent = "Waiting...";
@@ -1435,6 +1603,7 @@ def browser_workflow_html() -> str:
           body: JSON.stringify(payload)
         });
         const parsed = await response.json();
+        if (response.ok) appendSourceFileStatus("Temperature data prepared");
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -1457,7 +1626,7 @@ def browser_workflow_html() -> str:
         calibration_uploaded_file_id: document.getElementById("calibrationUploadedFileId").value.trim(),
         verification_uploaded_file_id: document.getElementById("verificationUploadedFileId").value.trim(),
         rows: parseTableRows(document.getElementById("irtdRows").value),
-        unit: "deg C",
+        unit: fieldValue("temperatureUnit"),
         software_version: document.getElementById("uploadSoftwareVersion").value.trim()
       };
       responseBodyEl.textContent = "Waiting...";
@@ -1468,6 +1637,7 @@ def browser_workflow_html() -> str:
           body: JSON.stringify(payload)
         });
         const parsed = await response.json();
+        if (response.ok) appendSourceFileStatus("IRTD rows recorded");
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -1480,12 +1650,14 @@ def browser_workflow_html() -> str:
         .split(",")
         .map(value => Number(value.trim()))
         .filter(value => Number.isFinite(value));
+      const dutChannelId = document.getElementById("windowChannelId").value.trim();
+      const generatedDutId = `dut-${controlledSafeId(jobId)}-${controlledSafeId(dutChannelId)}`;
       const payload = {
         window_id: document.getElementById("windowId").value.trim(),
-        dut_id: document.getElementById("windowDutId").value.trim(),
-        dut_channel_id: document.getElementById("windowChannelId").value.trim(),
+        dut_id: document.getElementById("windowDutId").value.trim() || generatedDutId,
+        dut_channel_id: dutChannelId,
         setpoint: setpointValues[0],
-        unit: "deg C",
+        unit: fieldValue("temperatureUnit"),
         start_timestamp: document.getElementById("windowStart").value.trim(),
         end_timestamp: document.getElementById("windowEnd").value.trim(),
         software_version: document.getElementById("uploadSoftwareVersion").value.trim()
@@ -1498,6 +1670,7 @@ def browser_workflow_html() -> str:
           body: JSON.stringify(payload)
         });
         const parsed = await response.json();
+        if (response.ok) appendSourceFileStatus(`Window selected: ${parsed.window_id || payload.window_id}`);
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -1517,6 +1690,10 @@ def browser_workflow_html() -> str:
           body: JSON.stringify(payload)
         });
         const parsed = await response.json();
+        if (response.ok) {
+          appendSourceFileStatus("Temperature windows complete");
+          setStepStatus("measurement", "done");
+        }
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -1532,7 +1709,7 @@ def browser_workflow_html() -> str:
       const payload = {
         uncertainty_inputs: [{
           setpoint: setpointValues[0],
-          unit: "deg C",
+          unit: fieldValue("temperatureUnit"),
           cmc_floor: document.getElementById("cmcFloor").value.trim(),
           reference_expanded_uncertainty: Number(document.getElementById("referenceExpandedUncertainty").value),
           bath_expanded_uncertainty: Number(document.getElementById("bathExpandedUncertainty").value),
@@ -1551,6 +1728,11 @@ def browser_workflow_html() -> str:
           body: JSON.stringify(payload)
         });
         const parsed = await response.json();
+        if (response.ok) {
+          setStepStatus("calculation", "done");
+          showWizardStep("review");
+          appendBudgetStatus(`Calculated ${parsed.summaries.length} temperature result`);
+        }
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -1614,6 +1796,144 @@ def browser_workflow_html() -> str:
         pointId: `${jobId}-point-001`,
         constantSetVersion: `${jobId}-constants`,
         budgetVersion: `${jobId}-budget`
+      };
+    }
+
+    function temperatureIds(jobId) {
+      return {
+        constantSetVersion: `${jobId}-constants`,
+        budgetVersion: `${jobId}-budget`,
+        previewCertificateId: `${jobId}-preview-cert`,
+        certificateId: `${jobId}-cert`,
+        artifactId: `${jobId}-artifact`
+      };
+    }
+
+    function temperatureSetpoints() {
+      const values = document.getElementById("temperatureSetpoints").value
+        .split(",")
+        .map(value => Number(value.trim()))
+        .filter(value => Number.isFinite(value));
+      if (values.length === 0) {
+        throw new Error("At least one temperature setpoint is required.");
+      }
+      return values;
+    }
+
+    function temperatureRunContext() {
+      const jobId = syncJobIds();
+      const ids = temperatureIds(jobId);
+      return {
+        jobId,
+        ids,
+        certificateNumber: fieldValue("manualPressureCertificateNumber"),
+        softwareVersion: fieldValue("uploadSoftwareVersion") || "app-0.1.0",
+        unit: fieldValue("temperatureUnit") || "deg C",
+        setpoints: temperatureSetpoints(),
+        windowId: fieldValue("windowId"),
+        dutId: fieldValue("windowDutId") || `dut-${controlledSafeId(jobId)}-${controlledSafeId(fieldValue("windowChannelId"))}`,
+        dutChannelId: fieldValue("windowChannelId"),
+        temperatureScale: "ITS-90"
+      };
+    }
+
+    function temperatureCalibrationJobPayload(context) {
+      return {
+        job_id: context.jobId,
+        client_name: fieldValue("clientName"),
+        client_address: fieldValue("clientAddress"),
+        discipline: "temperature",
+        measurement_mode: "automatic",
+        method: fieldValue("jobMethod"),
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureReferenceEquipmentPayload(context) {
+      return {
+        job_id: context.jobId,
+        equipment_id: `${context.jobId}-ref-001`,
+        simval_id: "SIM-T-001",
+        equipment_type: "IRTD",
+        serial_number: "IRT-123",
+        discipline: "temperature",
+        calibration_certificate_reference: "DANAK-CAL-12345",
+        calibration_due_date: "2027-04-30",
+        status: "active",
+        range_minimum: -90.0,
+        range_maximum: 140.0,
+        range_unit: context.unit,
+        traceability_statement: "Accredited calibration with SI traceability.",
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureConstantSetPayload(context) {
+      return {
+        version: context.ids.constantSetVersion,
+        discipline: "temperature",
+        effective_from: "2026-01-01T00:00:00+00:00",
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureUncertaintyBudgetPayload(context) {
+      return {
+        version: context.ids.budgetVersion,
+        budget_type: "temperature_logger",
+        method: fieldValue("budgetMethod"),
+        discipline: "temperature",
+        linked_constant_set_version: context.ids.constantSetVersion,
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureDataEntryPayload(context, calibrationUploadedFileId) {
+      return {
+        calibration_uploaded_file_id: calibrationUploadedFileId,
+        setpoints: context.setpoints,
+        unit: context.unit,
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureIrtdPayload(context, calibrationUploadedFileId, verificationUploadedFileId) {
+      return {
+        calibration_uploaded_file_id: calibrationUploadedFileId,
+        verification_uploaded_file_id: verificationUploadedFileId,
+        rows: parseTableRows(document.getElementById("irtdRows").value),
+        unit: context.unit,
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureWindowPayload(context) {
+      return {
+        window_id: context.windowId,
+        dut_id: context.dutId,
+        dut_channel_id: context.dutChannelId,
+        setpoint: context.setpoints[0],
+        unit: context.unit,
+        start_timestamp: fieldValue("windowStart"),
+        end_timestamp: fieldValue("windowEnd"),
+        software_version: context.softwareVersion
+      };
+    }
+
+    function temperatureCalculationPayload(context) {
+      return {
+        uncertainty_inputs: [{
+          setpoint: context.setpoints[0],
+          unit: context.unit,
+          cmc_floor: fieldValue("cmcFloor"),
+          reference_expanded_uncertainty: numericField("referenceExpandedUncertainty"),
+          bath_expanded_uncertainty: numericField("bathExpandedUncertainty"),
+          dut_resolution: numericField("dutResolution")
+        }],
+        software_version: context.softwareVersion,
+        calculation_engine_version: fieldValue("calculationEngineVersion"),
+        constant_set_version: context.ids.constantSetVersion,
+        budget_version: context.ids.budgetVersion
       };
     }
 
@@ -1715,7 +2035,7 @@ def browser_workflow_html() -> str:
         traceability_statement: fieldValue("traceabilityStatement"),
         uncertainty_statement: fieldValue("uncertaintyStatement"),
         ambient_conditions: fieldValue("ambientConditions"),
-        temperature_scale: context.unit,
+        temperature_scale: context.temperatureScale || context.unit,
         software_version: context.softwareVersion
       };
     }
@@ -1823,6 +2143,18 @@ def browser_workflow_html() -> str:
     async function createUncertaintyBudget() {
       setBudgetStatus("");
       try {
+        if (document.getElementById("jobDiscipline").value === "temperature") {
+          const context = temperatureRunContext();
+          document.getElementById("constantSetVersion").value = context.ids.constantSetVersion;
+          document.getElementById("budgetVersion").value = context.ids.budgetVersion;
+          appendBudgetStatus("Approving temperature constants");
+          await postJsonForStage("qa", "/constant-sets/approved", temperatureConstantSetPayload(context));
+          appendBudgetStatus("Approving temperature uncertainty budget");
+          await postJsonForStage("qa", "/uncertainty-budgets/approved", temperatureUncertaintyBudgetPayload(context));
+          appendBudgetStatus(`Budget ready: ${context.ids.budgetVersion}`);
+          setStepStatus("equipment", "done");
+          return;
+        }
         const context = pressureRunContext();
         document.getElementById("constantSetVersion").value = context.ids.constantSetVersion;
         document.getElementById("budgetVersion").value = context.ids.budgetVersion;
@@ -2060,7 +2392,7 @@ def browser_workflow_html() -> str:
       }
     }
 
-    async function runFirstCertificate() {
+    async function runFirstPressureCertificate() {
       const previewLinkEl = document.getElementById("manualPressurePdfLink");
       const certificateLinkEl = document.getElementById("certificatePdfLink");
       if (previewLinkEl.dataset.objectUrl) {
@@ -2176,6 +2508,14 @@ def browser_workflow_html() -> str:
           { software_version: context.softwareVersion }
         );
 
+        appendManualPressureStatus("Building release preview evidence");
+        await postJsonForStage("release", "/certificate-previews", {
+          job_id: context.jobId,
+          template_version: "template-2026-001",
+          software_version: context.softwareVersion,
+          accreditation_mark_allowed: false
+        });
+
         appendManualPressureStatus("Releasing certificate PDF");
         const release = await postJsonForStage("release", "/certificate-rendered-releases", {
           job_id: context.jobId,
@@ -2216,6 +2556,202 @@ def browser_workflow_html() -> str:
       }
     }
 
+    async function runFirstTemperatureCertificate() {
+      const previewLinkEl = document.getElementById("manualPressurePdfLink");
+      const certificateLinkEl = document.getElementById("certificatePdfLink");
+      if (previewLinkEl.dataset.objectUrl) {
+        URL.revokeObjectURL(previewLinkEl.dataset.objectUrl);
+        delete previewLinkEl.dataset.objectUrl;
+      }
+      if (certificateLinkEl.dataset.objectUrl) {
+        URL.revokeObjectURL(certificateLinkEl.dataset.objectUrl);
+        delete certificateLinkEl.dataset.objectUrl;
+      }
+      if (lastCertificateObjectUrl) {
+        URL.revokeObjectURL(lastCertificateObjectUrl);
+        lastCertificateObjectUrl = "";
+      }
+      previewLinkEl.hidden = true;
+      certificateLinkEl.hidden = true;
+      document.getElementById("pdfSummary").textContent = "Not rendered";
+      document.getElementById("releaseSummary").textContent = "Not released";
+      manualPressureStatus("");
+      setSourceFileStatus("");
+      setBudgetStatus("");
+      responseBodyEl.textContent = "";
+      try {
+        if (!isLocalhost()) requireSessionId();
+        document.getElementById("jobDiscipline").value = "temperature";
+        document.getElementById("measurementMode").value = "automatic";
+        syncDisciplineWorkflow();
+        const context = temperatureRunContext();
+        document.getElementById("constantSetVersion").value = context.ids.constantSetVersion;
+        document.getElementById("budgetVersion").value = context.ids.budgetVersion;
+        updatePressureSummary();
+        showWizardStep("review");
+
+        appendManualPressureStatus("Creating temperature job");
+        await postJsonForStage("operator", "/calibration-jobs", temperatureCalibrationJobPayload(context));
+        setStepStatus("job", "done");
+
+        appendManualPressureStatus("Capturing certificate metadata");
+        await postJsonForStage("operator", "/certificate-metadata", metadataPayload(context));
+        setStepStatus("metadata", "done");
+
+        appendManualPressureStatus("Selecting temperature reference equipment");
+        await postJsonForStage("operator", "/reference-equipment-selections", temperatureReferenceEquipmentPayload(context));
+        setStepStatus("equipment", "active");
+
+        let calibrationUploadedFileId = fieldValue("calibrationUploadedFileId");
+        let verificationUploadedFileId = fieldValue("verificationUploadedFileId");
+        const calibrationFile = document.getElementById("sourceFile").files[0];
+        const verificationFile = document.getElementById("verificationSourceFile").files[0];
+        if (calibrationFile && verificationFile) {
+          appendManualPressureStatus("Uploading calibration XLSX");
+          const calibrationUpload = await uploadFileForKind(context.jobId, calibrationFile, "calibration_xlsx");
+          calibrationUploadedFileId = calibrationUpload.uploaded_file_id;
+          document.getElementById("calibrationUploadedFileId").value = calibrationUploadedFileId;
+          appendSourceFileStatus(`XLSX parser status: ${calibrationUpload.parser_status}`);
+          appendManualPressureStatus("Uploading verification PDF");
+          const verificationUpload = await uploadFileForKind(context.jobId, verificationFile, "verification_pdf");
+          verificationUploadedFileId = verificationUpload.uploaded_file_id;
+          document.getElementById("verificationUploadedFileId").value = verificationUploadedFileId;
+        }
+        if (!calibrationUploadedFileId || !verificationUploadedFileId) {
+          throw new Error("Upload a calibration XLSX and verification PDF before producing the certificate.");
+        }
+
+        appendManualPressureStatus("Preparing temperature data");
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/temperature-data-entry`,
+          temperatureDataEntryPayload(context, calibrationUploadedFileId)
+        );
+
+        appendManualPressureStatus("Recording IRTD verification rows");
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/verification-irtd-rows`,
+          temperatureIrtdPayload(context, calibrationUploadedFileId, verificationUploadedFileId)
+        );
+
+        appendManualPressureStatus("Selecting measurement window");
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/temperature-windows`,
+          temperatureWindowPayload(context)
+        );
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/temperature-windows/complete`,
+          { software_version: context.softwareVersion }
+        );
+        setStepStatus("measurement", "done");
+
+        appendManualPressureStatus("Creating uncertainty budget");
+        await postJsonForStage("qa", "/constant-sets/approved", temperatureConstantSetPayload(context));
+        await postJsonForStage("qa", "/uncertainty-budgets/approved", temperatureUncertaintyBudgetPayload(context));
+        appendBudgetStatus(`Budget ready: ${context.ids.budgetVersion}`);
+        setStepStatus("equipment", "done");
+
+        appendManualPressureStatus("Calculating temperature result");
+        const calculation = await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/temperature-calculations`,
+          temperatureCalculationPayload(context)
+        );
+        setStepStatus("calculation", "done");
+
+        appendManualPressureStatus("Rendering preview PDF");
+        const previewResponse = await fetch("/certificate-preview-pdfs", {
+          method: "POST",
+          headers: { ...sessionHeadersForStage("operator"), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            job_id: context.jobId,
+            certificate_id: context.ids.previewCertificateId,
+            certificate_number: context.certificateNumber,
+            template_version: "template-2026-001",
+            software_version: context.softwareVersion,
+            accreditation_mark_allowed: false
+          })
+        });
+        if (!previewResponse.ok) {
+          await parseResponse(previewResponse);
+        }
+        const previewBlob = await previewResponse.blob();
+        const previewUrl = URL.createObjectURL(previewBlob);
+        previewLinkEl.href = previewUrl;
+        previewLinkEl.dataset.objectUrl = previewUrl;
+        previewLinkEl.hidden = false;
+        document.getElementById("pdfSummary").textContent = `${previewBlob.size} bytes`;
+
+        appendManualPressureStatus("Submitting technical review");
+        await postJsonForStage(
+          "operator",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/technical-review-submissions`,
+          { software_version: context.softwareVersion }
+        );
+        appendManualPressureStatus("Approving technical review");
+        await postJsonForStage(
+          "technical",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/technical-review-approvals`,
+          { software_version: context.softwareVersion }
+        );
+        appendManualPressureStatus("Approving QA release");
+        await postJsonForStage(
+          "qa",
+          `/calibration-jobs/${encodeURIComponent(context.jobId)}/qa-release-approvals`,
+          { software_version: context.softwareVersion }
+        );
+
+        appendManualPressureStatus("Building release preview evidence");
+        await postJsonForStage("release", "/certificate-previews", {
+          job_id: context.jobId,
+          template_version: "template-2026-001",
+          software_version: context.softwareVersion,
+          accreditation_mark_allowed: false
+        });
+
+        appendManualPressureStatus("Releasing certificate PDF");
+        const release = await postJsonForStage("release", "/certificate-rendered-releases", {
+          job_id: context.jobId,
+          certificate_id: context.ids.certificateId,
+          certificate_number: context.certificateNumber,
+          artifact_id: context.ids.artifactId,
+          template_version: "template-2026-001",
+          software_version: context.softwareVersion,
+          accreditation_mark_allowed: false
+        });
+        const artifact = release.artifacts[0];
+        const artifactResponse = await fetch(`/certificate-artifacts/${encodeURIComponent(artifact.artifact_id)}`, {
+          headers: sessionHeadersForStage("release")
+        });
+        if (!artifactResponse.ok) {
+          await parseResponse(artifactResponse);
+        }
+        const artifactBlob = await artifactResponse.blob();
+        const artifactUrl = URL.createObjectURL(artifactBlob);
+        lastCertificateObjectUrl = artifactUrl;
+        certificateLinkEl.href = artifactUrl;
+        certificateLinkEl.dataset.objectUrl = artifactUrl;
+        certificateLinkEl.hidden = false;
+        document.getElementById("releaseSummary").textContent = release.certificate_number;
+        setStepStatus("review", "done");
+        appendManualPressureStatus("Temperature certificate PDF ready");
+        responseBodyEl.textContent = pretty({
+          job_id: context.jobId,
+          certificate_number: release.certificate_number,
+          artifact_id: artifact.artifact_id,
+          artifact_bytes: artifactBlob.size,
+          checksum_sha256: artifact.checksum_sha256,
+          summary_ids: calculation.summary_ids
+        });
+      } catch (error) {
+        appendManualPressureStatus(`Blocked: ${error.message || String(error)}`);
+        responseBodyEl.textContent = String(error);
+      }
+    }
+
     operationEl.addEventListener("change", loadSample);
     document.getElementById("loadContract").addEventListener("click", loadContract);
     document.getElementById("sendRequest").addEventListener("click", sendRequest);
@@ -2224,6 +2760,7 @@ def browser_workflow_html() -> str:
     document.getElementById("selectReferenceEquipment").addEventListener("click", () => postSample("/reference-equipment-selections"));
     document.getElementById("approveConstantSet").addEventListener("click", () => postSample("/constant-sets/approved"));
     document.getElementById("approveUncertaintyBudget").addEventListener("click", () => postSample("/uncertainty-budgets/approved"));
+    document.getElementById("uploadTemperatureFiles").addEventListener("click", uploadTemperatureFiles);
     document.getElementById("uploadSourceFile").addEventListener("click", uploadSourceFile);
     document.getElementById("reviewImports").addEventListener("click", reviewImports);
     document.getElementById("prepareTemperatureData").addEventListener("click", prepareTemperatureData);
@@ -2239,7 +2776,8 @@ def browser_workflow_html() -> str:
     document.getElementById("buildCertificatePreview").addEventListener("click", () => postSample("/certificate-previews"));
     document.getElementById("renderCertificateRelease").addEventListener("click", () => postSample("/certificate-rendered-releases"));
     document.getElementById("runManualPressurePreview").addEventListener("click", runManualPressurePreview);
-    document.getElementById("runFirstCertificate").addEventListener("click", runFirstCertificate);
+    document.getElementById("runFirstTemperatureCertificate").addEventListener("click", runFirstTemperatureCertificate);
+    document.getElementById("jobDiscipline").addEventListener("change", syncDisciplineWorkflow);
     document.getElementById("previousWizardStep").addEventListener("click", () => moveWizardStep(-1));
     document.getElementById("nextWizardStep").addEventListener("click", () => moveWizardStep(1));
     document.getElementById("openReviewStep").addEventListener("click", () => showWizardStep("review"));
@@ -2250,13 +2788,16 @@ def browser_workflow_html() -> str:
     for (const id of [
       "manualPressureCertificateNumber",
       "manualPressureReference",
-      "manualPressureUnit"
+      "manualPressureUnit",
+      "temperatureSetpoints",
+      "temperatureUnit"
     ]) {
       document.getElementById(id).addEventListener("input", updatePressureSummary);
     }
     bootstrapLocalSession();
     setManualPressureDefaults();
     syncJobIds();
+    syncDisciplineWorkflow();
     updatePressureSummary();
     showWizardStep("job");
     loadContract();

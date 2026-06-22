@@ -125,9 +125,10 @@ def prepare_temperature_data_entry_for_session(
                 "Required temperature setpoints already exist for this job."
             )
 
+        safe_job_id = _safe_id(job_id)
         duts = tuple(
             DeviceUnderTest(
-                id=f"dut-{safe_channel_id}",
+                id=f"dut-{safe_job_id}-{safe_channel_id}",
                 job_id=job_id,
                 make="Kaye",
                 model="ValProbe RT",
@@ -141,7 +142,7 @@ def prepare_temperature_data_entry_for_session(
 
         planned_setpoints = tuple(
             RequiredTemperatureSetpoint(
-                id=f"setpoint-{index + 1:03d}",
+                id=f"setpoint-{safe_job_id}-{index + 1:03d}",
                 job_id=job_id,
                 setpoint=setpoint,
                 unit=unit,

@@ -2712,6 +2712,7 @@ def create_app_from_settings(
         enabled_disciplines=settings.enabled_disciplines,
         entra_token_verifier=entra_token_verifier,
         entra_session_duration=settings.entra_session_duration,
+        allow_provisional_valprobe_parser=settings.allow_provisional_valprobe_parser,
     )
 
 

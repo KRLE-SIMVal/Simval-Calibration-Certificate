@@ -36,6 +36,7 @@ class ApiSettings:
     auth_provider: AuthProvider
     entra_id: EntraIdConfiguration | None
     entra_session_duration: timedelta
+    allow_provisional_valprobe_parser: bool
 
     @classmethod
     def from_environment(
@@ -61,6 +62,10 @@ class ApiSettings:
             auth_provider=auth_provider,
             entra_id=_entra_configuration(env, auth_provider),
             entra_session_duration=_entra_session_duration(env),
+            allow_provisional_valprobe_parser=_allow_provisional_valprobe_parser(
+                env,
+                runtime_profile,
+            ),
         )
 
 
@@ -161,6 +166,25 @@ def _entra_session_duration(environment: Mapping[str, str]) -> timedelta:
             "SIMVAL_ENTRA_LOCAL_SESSION_HOURS must be between 1 and 12."
         )
     return timedelta(hours=hours)
+
+
+def _allow_provisional_valprobe_parser(
+    environment: Mapping[str, str],
+    runtime_profile: RuntimeProfile,
+) -> bool:
+    raw_value = environment.get("SIMVAL_ALLOW_PROVISIONAL_VALPROBE_PARSER", "false")
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        if runtime_profile is RuntimeProfile.PRODUCTION:
+            raise ApiSettingsError(
+                "SIMVAL_ALLOW_PROVISIONAL_VALPROBE_PARSER is not allowed in production."
+            )
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ApiSettingsError(
+        "SIMVAL_ALLOW_PROVISIONAL_VALPROBE_PARSER must be true or false."
+    )
 
 
 def _optional_environment_value(

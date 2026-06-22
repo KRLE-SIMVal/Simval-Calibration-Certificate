@@ -532,8 +532,8 @@ def test_api_prepare_temperature_data_entry_creates_duts_setpoints_and_state(
     payload = response.json()
     assert payload["job_id"] == "job-001"
     assert payload["state"] == "data_entered"
-    assert payload["dut_ids"] == ["dut-MJT1-A"]
-    assert payload["setpoint_ids"] == ["setpoint-001"]
+    assert payload["dut_ids"] == ["dut-job-001-MJT1-A"]
+    assert payload["setpoint_ids"] == ["setpoint-job-001-001"]
     assert SQLiteCalibrationJobRepository(connection).get("job-001").state is (
         WorkflowState.DATA_ENTERED
     )
@@ -966,7 +966,7 @@ def test_api_select_windows_and_calculate_temperature_from_linked_readings(tmp_p
         headers={"X-Session-Id": "session-001"},
         json={
             "window_id": "window-001",
-            "dut_id": "dut-MJT1-A",
+            "dut_id": "dut-job-001-MJT1-A",
             "dut_channel_id": "MJT1-A",
             "setpoint": -80.0,
             "unit": "deg C",
@@ -1549,7 +1549,10 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
     assert metadata.status_code == 200
     assert reference_selection.status_code == 200
     assert data_entry.status_code == 200
-    assert data_entry.json()["dut_ids"] == ["dut-MJT1-A", "dut-MJT2-A"]
+    assert data_entry.json()["dut_ids"] == [
+        "dut-job-001-MJT1-A",
+        "dut-job-001-MJT2-A",
+    ]
     assert irtd_rows.status_code == 200
     assert irtd_rows.json()["linked_reading_count"] == 4
 
@@ -1564,7 +1567,7 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
             headers={"X-Session-Id": "session-001"},
             json={
                 "window_id": window_id,
-                "dut_id": f"dut-{dut_channel_id}",
+                "dut_id": f"dut-job-001-{dut_channel_id}",
                 "dut_channel_id": dut_channel_id,
                 "setpoint": -80.0,
                 "unit": "deg C",
@@ -1678,8 +1681,8 @@ def test_api_end_to_end_temperature_certificate_supports_multiple_duts(tmp_path)
         "job-001-window-002-summary",
     ]
     assert [row["dut_id"] for row in preview_payload["rows"]] == [
-        "dut-MJT1-A",
-        "dut-MJT2-A",
+        "dut-job-001-MJT1-A",
+        "dut-job-001-MJT2-A",
     ]
     assert release.status_code == 200
     assert release.json()["status"] == "released"

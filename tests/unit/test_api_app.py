@@ -181,14 +181,19 @@ def test_api_serves_browser_workflow_shell():
     assert response.status_code == 200
     assert "SIMVal Calibration Certificate" in response.text
     assert 'id="certificateWorkspace"' in response.text
-    assert 'id="manualPressureWizard"' in response.text
+    assert 'id="temperatureWizard"' in response.text
     assert 'id="advancedApiConsole"' in response.text
     assert "Create Certificate" in response.text
     assert "Create Uncertainty Budget" in response.text
     assert "Equipment Library" in response.text
     assert "Certificate History" in response.text
     assert "Settings" in response.text
+    assert "ValProbe RT linked XLSX/PDF workflow" in response.text
+    assert '<option value="temperature" selected>Temperature</option>' in response.text
+    assert '<option value="automatic" selected>Automatic</option>' in response.text
     assert 'id="sourceFile" type="file"' in response.text
+    assert 'id="verificationSourceFile" type="file"' in response.text
+    assert 'id="uploadTemperatureFiles"' in response.text
     assert 'id="uploadSourceFile"' in response.text
     assert 'id="captureMetadata"' in response.text
     assert 'id="selectReferenceEquipment"' in response.text
@@ -196,12 +201,13 @@ def test_api_serves_browser_workflow_shell():
     assert 'id="approveUncertaintyBudget"' in response.text
     assert 'id="buildCertificatePreview"' in response.text
     assert 'id="createUncertaintyBudget"' in response.text
+    assert 'id="calculateTemperature"' in response.text
     assert 'id="calculatePressure"' in response.text
     assert 'id="runManualPressurePreview"' in response.text
-    assert 'id="runFirstCertificate"' in response.text
+    assert 'id="runFirstTemperatureCertificate"' in response.text
     assert 'id="manualPressurePdfLink"' in response.text
     assert 'id="certificatePdfLink"' in response.text
-    assert "Run Complete Preview" in response.text
+    assert "Pressure workflow deferred for Phase 3" in response.text
     assert "Produce Certificate" in response.text
     assert "Open Preview PDF" in response.text
     assert "Open Certificate PDF" in response.text
