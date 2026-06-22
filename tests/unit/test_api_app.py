@@ -180,6 +180,14 @@ def test_api_serves_browser_workflow_shell():
 
     assert response.status_code == 200
     assert "SIMVal Calibration Certificate" in response.text
+    assert 'id="certificateWorkspace"' in response.text
+    assert 'id="manualPressureWizard"' in response.text
+    assert 'id="advancedApiConsole"' in response.text
+    assert "Create Certificate" in response.text
+    assert "Create Uncertainty Budget" in response.text
+    assert "Equipment Library" in response.text
+    assert "Certificate History" in response.text
+    assert "Settings" in response.text
     assert 'id="sourceFile" type="file"' in response.text
     assert 'id="uploadSourceFile"' in response.text
     assert 'id="captureMetadata"' in response.text
@@ -189,6 +197,8 @@ def test_api_serves_browser_workflow_shell():
     assert 'id="buildCertificatePreview"' in response.text
     assert 'id="runManualPressurePreview"' in response.text
     assert 'id="manualPressurePdfLink"' in response.text
+    assert "Run Complete Preview" in response.text
+    assert "Open Preview PDF" in response.text
     assert 'id="renderCertificateRelease"' in response.text
     assert "/calibration-jobs" in response.text
     assert "/certificate-metadata" in response.text

@@ -79,7 +79,7 @@ def browser_workflow_html() -> str:
     header img { display: block; max-height: 58px; width: auto; }
     h1 { margin: 0; font-size: 1.35rem; font-weight: 700; }
     .subhead { margin-top: 5px; color: var(--muted); font-size: .92rem; }
-    main { padding: 22px 28px 32px; }
+    main { padding: 18px 24px 30px; }
     .toolbar {
       display: grid;
       grid-template-columns: minmax(220px, 320px) minmax(220px, 320px) 1fr;
@@ -135,6 +135,173 @@ def browser_workflow_html() -> str:
     .step h2 { margin: 0; font-size: 1rem; }
     .step p { margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.38; }
     .step .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .app-nav {
+      min-height: 52px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 0 0 16px;
+      overflow-x: auto;
+    }
+    .nav-item {
+      min-width: max-content;
+      color: var(--ink);
+      border-color: var(--line);
+      background: var(--surface);
+      font-weight: 700;
+    }
+    .nav-item.active {
+      color: white;
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    .workspace-layout {
+      display: grid;
+      grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .side-panel {
+      display: grid;
+      gap: 12px;
+    }
+    .side-panel .workflow {
+      grid-template-columns: 1fr;
+      margin-bottom: 0;
+    }
+    .side-panel .step {
+      min-height: 0;
+      border-radius: 6px;
+      padding: 11px;
+    }
+    .side-panel .step h2 { font-size: .92rem; }
+    .side-panel .step p { font-size: .78rem; }
+    .certificate-board {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .board-header {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(260px, 460px);
+      gap: 14px;
+      align-items: end;
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .board-header h2 { margin: 0; font-size: 1.15rem; }
+    .board-header p { margin: 5px 0 0; color: var(--muted); font-size: .86rem; }
+    .mode-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .wizard-steps {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(96px, 1fr));
+      border-bottom: 1px solid var(--line);
+      background: var(--band);
+    }
+    .wizard-step {
+      min-height: 54px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      border-radius: 0;
+      color: var(--ink);
+      background: transparent;
+      font-size: .82rem;
+    }
+    .wizard-step:last-child { border-right: 0; }
+    .wizard-step.active {
+      color: white;
+      background: var(--focus);
+    }
+    .wizard-body {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+    }
+    .wizard-section {
+      display: grid;
+      gap: 12px;
+    }
+    .wizard-section[hidden] { display: none; }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-head h3 { margin: 0; font-size: 1rem; }
+    .status-pill {
+      min-width: 76px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: .75rem;
+      font-weight: 700;
+      text-align: center;
+    }
+    .status-pill.done {
+      color: #0f5132;
+      border-color: #9ad0b2;
+      background: #eaf7ef;
+    }
+    .status-pill.active {
+      color: #084c61;
+      border-color: #87c7d4;
+      background: #e9f7fa;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: 10px;
+    }
+    .summary-item {
+      min-height: 74px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fbfcfd;
+    }
+    .summary-item span {
+      display: block;
+      color: var(--muted);
+      font-size: .76rem;
+      margin-bottom: 7px;
+    }
+    .summary-item strong {
+      display: block;
+      overflow-wrap: anywhere;
+      font-size: .95rem;
+    }
+    .wizard-nav {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    details.advanced-console {
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    details.advanced-console summary {
+      cursor: pointer;
+      padding: 13px 14px;
+      color: var(--ink);
+      font-weight: 700;
+    }
+    details.advanced-console .advanced-inner {
+      padding: 0 14px 14px;
+      border-top: 1px solid var(--line);
+    }
     .split {
       display: grid;
       grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
@@ -203,7 +370,9 @@ def browser_workflow_html() -> str:
     .danger { color: var(--danger); font-weight: 700; }
     @media (max-width: 780px) {
       header { grid-template-columns: 1fr; }
-      .toolbar, .split, .task-grid, .field-grid { grid-template-columns: 1fr; }
+      .toolbar, .split, .task-grid, .field-grid, .workspace-layout,
+      .board-header, .mode-strip, .summary-grid { grid-template-columns: 1fr; }
+      .wizard-steps { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .wide { grid-column: auto; }
     }
   </style>
@@ -217,178 +386,263 @@ def browser_workflow_html() -> str:
     </div>
     <button class="secondary" id="loadContract">Refresh</button>
   </header>
-  <main>
-    <div class="toolbar">
-      <label>Session ID
-        <input id="sessionId" autocomplete="off" placeholder="X-Session-Id">
-      </label>
-      <label>Operation
-        <select id="operation"></select>
-      </label>
-      <div>
-        <button id="sendRequest">Send</button>
-      </div>
+  <main id="certificateWorkspace">
+    <nav class="app-nav" aria-label="Application areas">
+      <button class="nav-item active" type="button">Create Certificate</button>
+      <button class="nav-item" type="button">Create Uncertainty Budget</button>
+      <button class="nav-item" type="button">Equipment Library</button>
+      <button class="nav-item" type="button">Certificate History</button>
+      <button class="nav-item" type="button">Settings</button>
+    </nav>
+    <div class="workspace-layout">
+      <aside class="side-panel">
+        <section class="panel">
+          <h2>Local Session</h2>
+          <label>Session ID
+            <input id="sessionId" autocomplete="off" placeholder="X-Session-Id">
+          </label>
+        </section>
+        <section class="panel">
+          <h2>Workflow Evidence</h2>
+          <div class="workflow" id="workflow"></div>
+        </section>
+      </aside>
+      <section class="certificate-board" id="manualPressureWizard">
+        <div class="board-header">
+          <div>
+            <h2>Create Certificate</h2>
+            <p>Manual pressure certificate draft</p>
+          </div>
+          <div class="mode-strip">
+            <label>Discipline
+              <select id="jobDiscipline">
+                <option value="pressure" selected>Pressure</option>
+                <option value="temperature">Temperature</option>
+              </select>
+            </label>
+            <label>Mode
+              <select id="measurementMode">
+                <option value="manual" selected>Manual</option>
+                <option value="automatic">Automatic</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="wizard-steps" role="tablist" aria-label="Certificate workflow">
+          <button class="wizard-step active" type="button" data-step-target="job">1 Job</button>
+          <button class="wizard-step" type="button" data-step-target="metadata">2 Metadata</button>
+          <button class="wizard-step" type="button" data-step-target="equipment">3 Equipment</button>
+          <button class="wizard-step" type="button" data-step-target="measurement">4 Measurement</button>
+          <button class="wizard-step" type="button" data-step-target="calculation">5 Calculation</button>
+          <button class="wizard-step" type="button" data-step-target="review">6 Review</button>
+        </div>
+        <div class="wizard-body">
+          <section class="wizard-section" data-wizard-panel="job">
+            <div class="section-head">
+              <h3>Job</h3>
+              <span class="status-pill active" data-step-status="job">Active</span>
+            </div>
+            <div class="field-grid">
+              <label>Job ID
+                <input id="manualPressureJobId" autocomplete="off">
+              </label>
+              <label>Client
+                <input id="clientName" autocomplete="off" value="SIMVal pressure customer">
+              </label>
+              <label class="wide">Client address
+                <input id="clientAddress" autocomplete="off" value="Pressure Road 1, 2800 Lyngby">
+              </label>
+              <label class="wide">Method
+                <input id="jobMethod" autocomplete="off" value="SIMVal manual pressure calibration method">
+              </label>
+              <label>Software version
+                <input id="uploadSoftwareVersion" autocomplete="off" value="app-0.1.0">
+              </label>
+              <input id="jobId" type="hidden" value="job-001">
+            </div>
+            <div class="panel-actions">
+              <button id="createJob">Save Job</button>
+            </div>
+          </section>
+          <section class="wizard-section" data-wizard-panel="metadata" hidden>
+            <div class="section-head">
+              <h3>Certificate Metadata</h3>
+              <span class="status-pill" data-step-status="metadata">Pending</span>
+            </div>
+            <div class="field-grid">
+              <label>Certificate number
+                <input id="manualPressureCertificateNumber" autocomplete="off" value="SIMVAL-MANUAL-PRESSURE-0001">
+              </label>
+              <label>Task number
+                <input autocomplete="off" value="TASK-PRESSURE-2026-001">
+              </label>
+              <label>Procedure
+                <input autocomplete="off" value="SIMVal SOP-PRESS-001">
+              </label>
+              <label>Place
+                <input autocomplete="off" value="SIMVal Pressure Laboratory, Lyngby">
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="captureMetadata">Capture Metadata</button>
+            </div>
+          </section>
+          <section class="wizard-section" data-wizard-panel="equipment" hidden>
+            <div class="section-head">
+              <h3>Reference Equipment</h3>
+              <span class="status-pill" data-step-status="equipment">Pending</span>
+            </div>
+            <div class="summary-grid">
+              <div class="summary-item"><span>SIMVal ID</span><strong>SIM-P-001</strong></div>
+              <div class="summary-item"><span>Type</span><strong>Pressure calibrator</strong></div>
+              <div class="summary-item"><span>Range</span><strong>0 to 20 bar</strong></div>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="selectReferenceEquipment">Select Equipment</button>
+              <button class="secondary" id="approveConstantSet">Approve Constants</button>
+              <button class="secondary" id="approveUncertaintyBudget">Approve Budget</button>
+            </div>
+          </section>
+          <section class="wizard-section" data-wizard-panel="measurement" hidden>
+            <div class="section-head">
+              <h3>Manual Measurement</h3>
+              <span class="status-pill" data-step-status="measurement">Pending</span>
+            </div>
+            <div class="field-grid">
+              <label>Reference pressure
+                <input id="manualPressureReference" autocomplete="off" value="10.000">
+              </label>
+              <label>Unit
+                <input id="manualPressureUnit" autocomplete="off" value="bar">
+              </label>
+              <label>Indication 1
+                <input id="manualPressureIndicationA" autocomplete="off" value="10.004">
+              </label>
+              <label>Indication 2
+                <input id="manualPressureIndicationB" autocomplete="off" value="10.006">
+              </label>
+              <label>Source file
+                <input id="sourceFile" type="file">
+              </label>
+              <label>File kind
+                <select id="uploadFileKind">
+                  <option value="calibration_xlsx">Calibration XLSX</option>
+                  <option value="verification_pdf">Verification PDF</option>
+                  <option value="certificate_reference_pdf">Certificate reference PDF</option>
+                  <option value="other" selected>Other</option>
+                </select>
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button id="uploadSourceFile">Upload File</button>
+              <button class="secondary" id="reviewImports">Review Imports</button>
+            </div>
+          </section>
+          <section class="wizard-section" data-wizard-panel="calculation" hidden>
+            <div class="section-head">
+              <h3>Calculation</h3>
+              <span class="status-pill" data-step-status="calculation">Pending</span>
+            </div>
+            <div class="field-grid">
+              <label>CMC floor
+                <input id="cmcFloor" autocomplete="off" value="0.001">
+              </label>
+              <label>Reference U
+                <input id="referenceExpandedUncertainty" autocomplete="off" value="0.004">
+              </label>
+              <label>DUT resolution
+                <input id="dutResolution" autocomplete="off" value="0.002">
+              </label>
+              <label>Calculation engine
+                <input id="calculationEngineVersion" autocomplete="off" value="calc-engine-0.1.0">
+              </label>
+              <label>Constants version
+                <input id="constantSetVersion" autocomplete="off" value="constants-2026-001">
+              </label>
+              <label>Budget version
+                <input id="budgetVersion" autocomplete="off" value="budget-pressure-001">
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" type="button" id="openReviewStep">Review Preview</button>
+            </div>
+          </section>
+          <section class="wizard-section" data-wizard-panel="review" hidden>
+            <div class="section-head">
+              <h3>Review and Preview</h3>
+              <span class="status-pill" data-step-status="review">Pending</span>
+            </div>
+            <div class="summary-grid">
+              <div class="summary-item"><span>Pressure point</span><strong id="pressurePointSummary">10.000 bar</strong></div>
+              <div class="summary-item"><span>Certificate</span><strong id="certificateSummary">SIMVAL-MANUAL-PRESSURE-0001</strong></div>
+              <div class="summary-item"><span>Preview PDF</span><strong id="pdfSummary">Not rendered</strong></div>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="submitTechnicalReview">Submit Review</button>
+              <button class="secondary" id="approveTechnicalReview">Approve Technical</button>
+              <button class="secondary" id="approveQaRelease">Approve QA</button>
+              <button class="secondary" id="buildCertificatePreview">Build Preview</button>
+              <button class="secondary" id="renderCertificateRelease">Render Release</button>
+              <button id="runManualPressurePreview">Run Complete Preview</button>
+              <a class="button-link" id="manualPressurePdfLink" href="#" target="_blank" rel="noopener" hidden>Open Preview PDF</a>
+            </div>
+            <div class="run-status" id="manualPressureStatus"></div>
+          </section>
+          <div class="wizard-nav">
+            <button class="secondary" type="button" id="previousWizardStep">Back</button>
+            <button type="button" id="nextWizardStep">Next</button>
+          </div>
+        </div>
+      </section>
     </div>
-    <div class="workflow" id="workflow"></div>
-    <div class="task-grid">
-      <section class="panel">
-        <h2>Manual Pressure Preview</h2>
-        <div class="field-grid">
-          <label>Job ID
-            <input id="manualPressureJobId" autocomplete="off">
-          </label>
-          <label>Certificate number
-            <input id="manualPressureCertificateNumber" autocomplete="off" value="SIMVAL-MANUAL-PRESSURE-0001">
-          </label>
-          <label>Reference pressure
-            <input id="manualPressureReference" autocomplete="off" value="10.000">
-          </label>
-          <label>Indication 1
-            <input id="manualPressureIndicationA" autocomplete="off" value="10.004">
-          </label>
-          <label>Indication 2
-            <input id="manualPressureIndicationB" autocomplete="off" value="10.006">
-          </label>
-          <label>Unit
-            <input id="manualPressureUnit" autocomplete="off" value="bar">
-          </label>
-        </div>
-        <div class="panel-actions">
-          <button id="runManualPressurePreview">Run Preview</button>
-          <a class="button-link" id="manualPressurePdfLink" href="#" target="_blank" rel="noopener" hidden>Open PDF</a>
-        </div>
-        <div class="run-status" id="manualPressureStatus"></div>
-      </section>
-      <section class="panel">
-        <h2>Create Job</h2>
-        <div class="field-grid">
-          <label>Job ID
-            <input id="jobId" autocomplete="off" value="job-001">
-          </label>
-          <label>Client
-            <input id="clientName" autocomplete="off" value="SIMVal customer">
-          </label>
-          <label class="wide">Client address
-            <input id="clientAddress" autocomplete="off" value="Validated Road 1">
-          </label>
-          <label>Discipline
-            <select id="jobDiscipline">
-              <option value="temperature">Temperature</option>
-              <option value="pressure">Pressure</option>
-            </select>
-          </label>
-          <label>Mode
-            <select id="measurementMode">
-              <option value="automatic">Automatic</option>
-              <option value="manual">Manual</option>
-            </select>
-          </label>
-          <label class="wide">Method
-            <input id="jobMethod" autocomplete="off" value="ValProbe RT linked XLSX/PDF workflow">
-          </label>
-        </div>
-        <div class="panel-actions">
-          <button id="createJob">Create Job</button>
-          <button class="secondary" id="captureMetadata">Capture Metadata</button>
-          <button class="secondary" id="selectReferenceEquipment">Select Equipment</button>
-          <button class="secondary" id="approveConstantSet">Approve Constants</button>
-          <button class="secondary" id="approveUncertaintyBudget">Approve Budget</button>
-        </div>
-      </section>
-      <section class="panel">
-        <h2>Upload Source File</h2>
-        <div class="field-grid">
-          <label>File kind
-            <select id="uploadFileKind">
-              <option value="calibration_xlsx">Calibration XLSX</option>
-              <option value="verification_pdf">Verification PDF</option>
-              <option value="certificate_reference_pdf">Certificate reference PDF</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Software version
-            <input id="uploadSoftwareVersion" autocomplete="off" value="app-0.1.0">
-          </label>
-          <label class="wide">Source file
-            <input id="sourceFile" type="file">
-          </label>
-          <label>Calibration file ID
-            <input id="calibrationUploadedFileId" autocomplete="off">
-          </label>
-          <label>Verification file ID
-            <input id="verificationUploadedFileId" autocomplete="off">
-          </label>
-          <label>Setpoints
-            <input id="temperatureSetpoints" autocomplete="off" value="-80">
-          </label>
-          <label class="wide">IRTD rows
-            <textarea id="irtdRows" rows="4">Time,IRTD (deg C),MJT1-A
+    <section class="panel" hidden>
+      <label>Calibration file ID
+        <input id="calibrationUploadedFileId" autocomplete="off">
+      </label>
+      <label>Verification file ID
+        <input id="verificationUploadedFileId" autocomplete="off">
+      </label>
+      <label>Setpoints
+        <input id="temperatureSetpoints" autocomplete="off" value="-80">
+      </label>
+      <textarea id="irtdRows" rows="4">Time,IRTD (deg C),MJT1-A
 2026-04-08T15:45:00+00:00,-80.031,-80.036
 2026-04-08T15:46:00+00:00,-80.030,-80.034</textarea>
+      <input id="windowId" autocomplete="off" value="window-001">
+      <input id="windowDutId" autocomplete="off" value="dut-MJT1-A">
+      <input id="windowChannelId" autocomplete="off" value="MJT1-A">
+      <input id="windowStart" autocomplete="off" value="2026-04-08T15:45:00+00:00">
+      <input id="windowEnd" autocomplete="off" value="2026-04-08T15:46:00+00:00">
+      <input id="bathExpandedUncertainty" autocomplete="off" value="0.004">
+      <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
+      <button class="secondary" id="recordIrtdRows">Record IRTD</button>
+      <button class="secondary" id="selectTemperatureWindow">Select Window</button>
+      <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
+      <button class="secondary" id="calculateTemperature">Calculate Temperature</button>
+    </section>
+    <details class="advanced-console" id="advancedApiConsole">
+      <summary>Advanced API Console</summary>
+      <div class="advanced-inner">
+        <div class="toolbar">
+          <label>Operation
+            <select id="operation"></select>
           </label>
-          <label>Window ID
-            <input id="windowId" autocomplete="off" value="window-001">
-          </label>
-          <label>DUT ID
-            <input id="windowDutId" autocomplete="off" value="dut-MJT1-A">
-          </label>
-          <label>Channel
-            <input id="windowChannelId" autocomplete="off" value="MJT1-A">
-          </label>
-          <label>Window start
-            <input id="windowStart" autocomplete="off" value="2026-04-08T15:45:00+00:00">
-          </label>
-          <label>Window end
-            <input id="windowEnd" autocomplete="off" value="2026-04-08T15:46:00+00:00">
-          </label>
-          <label>CMC floor
-            <input id="cmcFloor" autocomplete="off" value="0.010">
-          </label>
-          <label>Reference U
-            <input id="referenceExpandedUncertainty" autocomplete="off" value="0.010">
-          </label>
-          <label>Bath U
-            <input id="bathExpandedUncertainty" autocomplete="off" value="0.004">
-          </label>
-          <label>DUT resolution
-            <input id="dutResolution" autocomplete="off" value="0.010">
-          </label>
-          <label>Calculation engine
-            <input id="calculationEngineVersion" autocomplete="off" value="calc-engine-0.1.0">
-          </label>
-          <label>Constants version
-            <input id="constantSetVersion" autocomplete="off" value="constants-2026-001">
-          </label>
-          <label>Budget version
-            <input id="budgetVersion" autocomplete="off" value="budget-temp-001">
-          </label>
+          <div>
+            <button id="sendRequest">Send</button>
+          </div>
         </div>
-        <div class="panel-actions">
-          <button id="uploadSourceFile">Upload File</button>
-          <button class="secondary" id="reviewImports">Review Imports</button>
-          <button class="secondary" id="prepareTemperatureData">Prepare Data</button>
-          <button class="secondary" id="recordIrtdRows">Record IRTD</button>
-          <button class="secondary" id="selectTemperatureWindow">Select Window</button>
-          <button class="secondary" id="completeTemperatureWindows">Complete Windows</button>
-          <button class="secondary" id="calculateTemperature">Calculate</button>
-          <button class="secondary" id="submitTechnicalReview">Submit Review</button>
-          <button class="secondary" id="approveTechnicalReview">Approve Technical</button>
-          <button class="secondary" id="approveQaRelease">Approve QA</button>
-          <button class="secondary" id="buildCertificatePreview">Build Preview</button>
-          <button class="secondary" id="renderCertificateRelease">Render Release</button>
+        <div class="split">
+          <section class="panel">
+            <h2>Request</h2>
+            <textarea id="requestBody" spellcheck="false"></textarea>
+          </section>
+          <section class="panel">
+            <h2>Response</h2>
+            <pre id="responseBody"></pre>
+          </section>
         </div>
-      </section>
-    </div>
-    <div class="split">
-      <section class="panel">
-        <h2>Request</h2>
-        <textarea id="requestBody" spellcheck="false"></textarea>
-      </section>
-      <section class="panel">
-        <h2>Response</h2>
-        <pre id="responseBody"></pre>
-      </section>
-    </div>
+      </div>
+    </details>
   </main>
   <script>
     const samples = {
@@ -671,9 +925,63 @@ def browser_workflow_html() -> str:
     const operationEl = document.getElementById("operation");
     const requestBodyEl = document.getElementById("requestBody");
     const responseBodyEl = document.getElementById("responseBody");
+    const wizardSteps = Array.from(document.querySelectorAll(".wizard-step"));
+    const wizardPanels = Array.from(document.querySelectorAll("[data-wizard-panel]"));
+    const wizardStepOrder = wizardSteps.map(step => step.dataset.stepTarget);
+    let wizardStepIndex = 0;
 
     function pretty(value) {
       return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    }
+
+    function setStepStatus(stepId, state) {
+      const statusEl = document.querySelector(`[data-step-status="${stepId}"]`);
+      if (!statusEl) return;
+      statusEl.className = "status-pill";
+      if (state === "active" || state === "done") {
+        statusEl.classList.add(state);
+      }
+      statusEl.textContent = state === "done" ? "Done" : state === "active" ? "Active" : "Pending";
+    }
+
+    function showWizardStep(stepId) {
+      const nextIndex = wizardStepOrder.indexOf(stepId);
+      if (nextIndex < 0) return;
+      wizardStepIndex = nextIndex;
+      wizardSteps.forEach(step => {
+        const active = step.dataset.stepTarget === stepId;
+        step.classList.toggle("active", active);
+        step.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      wizardPanels.forEach(panel => {
+        panel.hidden = panel.dataset.wizardPanel !== stepId;
+      });
+      for (const statusStep of wizardStepOrder) {
+        const statusEl = document.querySelector(`[data-step-status="${statusStep}"]`);
+        if (!statusEl || statusEl.textContent === "Done") continue;
+        setStepStatus(statusStep, statusStep === stepId ? "active" : "pending");
+      }
+    }
+
+    function moveWizardStep(delta) {
+      const nextIndex = Math.max(0, Math.min(wizardStepOrder.length - 1, wizardStepIndex + delta));
+      showWizardStep(wizardStepOrder[nextIndex]);
+    }
+
+    function bootstrapLocalSession() {
+      const sessionEl = document.getElementById("sessionId");
+      let storedSession = "";
+      try { storedSession = window.localStorage.getItem("simvalSessionId") || ""; } catch (_error) {}
+      const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+      if (!sessionEl.value.trim() && storedSession) {
+        sessionEl.value = storedSession;
+      }
+      if (!sessionEl.value.trim() && isLocalhost) {
+        sessionEl.value = "lab-flow-test";
+      }
+      sessionEl.addEventListener("change", () => {
+        try { window.localStorage.setItem("simvalSessionId", sessionEl.value.trim()); } catch (_error) {}
+      });
     }
 
     function setManualPressureDefaults() {
@@ -681,6 +989,21 @@ def browser_workflow_html() -> str:
       if (!jobIdEl.value.trim()) {
         jobIdEl.value = `manual-pressure-${Date.now()}`;
       }
+      document.getElementById("jobId").value = jobIdEl.value.trim();
+    }
+
+    function syncJobIds() {
+      setManualPressureDefaults();
+      const jobId = document.getElementById("manualPressureJobId").value.trim();
+      document.getElementById("jobId").value = jobId;
+      return jobId;
+    }
+
+    function updatePressureSummary() {
+      document.getElementById("pressurePointSummary").textContent =
+        `${document.getElementById("manualPressureReference").value.trim()} ${document.getElementById("manualPressureUnit").value.trim()}`;
+      document.getElementById("certificateSummary").textContent =
+        document.getElementById("manualPressureCertificateNumber").value.trim();
     }
 
     function manualPressureStatus(message) {
@@ -794,8 +1117,9 @@ def browser_workflow_html() -> str:
     }
 
     async function createJob() {
+      const jobId = syncJobIds();
       const payload = {
-        job_id: document.getElementById("jobId").value.trim(),
+        job_id: jobId,
         client_name: document.getElementById("clientName").value.trim(),
         client_address: document.getElementById("clientAddress").value.trim(),
         discipline: document.getElementById("jobDiscipline").value,
@@ -811,6 +1135,7 @@ def browser_workflow_html() -> str:
           body: JSON.stringify(payload)
         });
         const parsed = await response.json();
+        if (response.ok) setStepStatus("job", "done");
         responseBodyEl.textContent = `${response.status} ${response.statusText}\n\n${pretty(parsed)}`;
       } catch (error) {
         responseBodyEl.textContent = String(error);
@@ -824,7 +1149,7 @@ def browser_workflow_html() -> str:
         responseBodyEl.textContent = "Select a source file first.";
         return;
       }
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const params = new URLSearchParams({
         original_filename: file.name,
         file_kind: document.getElementById("uploadFileKind").value,
@@ -851,7 +1176,7 @@ def browser_workflow_html() -> str:
     }
 
     async function reviewImports() {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       responseBodyEl.textContent = "Waiting...";
       try {
         const response = await fetch(`/calibration-jobs/${encodeURIComponent(jobId)}/imports`, {
@@ -866,7 +1191,7 @@ def browser_workflow_html() -> str:
     }
 
     async function prepareTemperatureData() {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const rawSetpoints = document.getElementById("temperatureSetpoints").value;
       const setpoints = rawSetpoints.split(",").map(value => Number(value.trim())).filter(value => Number.isFinite(value));
       const payload = {
@@ -900,7 +1225,7 @@ def browser_workflow_html() -> str:
     }
 
     async function recordIrtdRows() {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const payload = {
         calibration_uploaded_file_id: document.getElementById("calibrationUploadedFileId").value.trim(),
         verification_uploaded_file_id: document.getElementById("verificationUploadedFileId").value.trim(),
@@ -923,7 +1248,7 @@ def browser_workflow_html() -> str:
     }
 
     async function selectTemperatureWindow() {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const setpointValues = document.getElementById("temperatureSetpoints").value
         .split(",")
         .map(value => Number(value.trim()))
@@ -953,7 +1278,7 @@ def browser_workflow_html() -> str:
     }
 
     async function completeTemperatureWindows() {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const payload = {
         software_version: document.getElementById("uploadSoftwareVersion").value.trim()
       };
@@ -972,7 +1297,7 @@ def browser_workflow_html() -> str:
     }
 
     async function calculateTemperature() {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const setpointValues = document.getElementById("temperatureSetpoints").value
         .split(",")
         .map(value => Number(value.trim()))
@@ -1006,7 +1331,7 @@ def browser_workflow_html() -> str:
     }
 
     async function postJobWorkflowAction(pathSuffix) {
-      const jobId = document.getElementById("jobId").value.trim();
+      const jobId = syncJobIds();
       const payload = {
         software_version: document.getElementById("uploadSoftwareVersion").value.trim()
       };
@@ -1027,7 +1352,7 @@ def browser_workflow_html() -> str:
     function samplePayload(path) {
       const payload = JSON.parse(JSON.stringify(samples[path] ?? {}));
       if (payload && typeof payload === "object" && "job_id" in payload) {
-        payload.job_id = document.getElementById("jobId").value.trim();
+        payload.job_id = syncJobIds();
       }
       return payload;
     }
@@ -1097,8 +1422,7 @@ def browser_workflow_html() -> str:
       responseBodyEl.textContent = "";
       try {
         requireSessionId();
-        setManualPressureDefaults();
-        const jobId = document.getElementById("manualPressureJobId").value.trim();
+        const jobId = syncJobIds();
         const certificateNumber = document.getElementById("manualPressureCertificateNumber").value.trim();
         const softwareVersion = document.getElementById("uploadSoftwareVersion").value.trim() || "app-0.1.0";
         const unit = document.getElementById("manualPressureUnit").value.trim();
@@ -1106,6 +1430,8 @@ def browser_workflow_html() -> str:
         const indicationA = pressureNumber("manualPressureIndicationA");
         const indicationB = pressureNumber("manualPressureIndicationB");
         const ids = manualPressureIds(jobId);
+        updatePressureSummary();
+        showWizardStep("review");
 
         document.getElementById("jobId").value = jobId;
         document.getElementById("jobDiscipline").value = "pressure";
@@ -1124,6 +1450,7 @@ def browser_workflow_html() -> str:
           method: "SIMVal manual pressure calibration method",
           software_version: softwareVersion
         });
+        setStepStatus("job", "done");
 
         appendManualPressureStatus("Capturing certificate metadata");
         await postJson("/certificate-metadata", {
@@ -1145,6 +1472,7 @@ def browser_workflow_html() -> str:
           temperature_scale: unit,
           software_version: softwareVersion
         });
+        setStepStatus("metadata", "done");
 
         appendManualPressureStatus("Selecting pressure reference equipment");
         await postJson("/reference-equipment-selections", {
@@ -1163,6 +1491,7 @@ def browser_workflow_html() -> str:
           traceability_statement: "Accredited pressure calibration with SI traceability.",
           software_version: softwareVersion
         });
+        setStepStatus("equipment", "active");
 
         appendManualPressureStatus("Uploading pressure source evidence");
         const upload = await uploadManualPressureEvidence(jobId, softwareVersion);
@@ -1196,6 +1525,7 @@ def browser_workflow_html() -> str:
           ],
           software_version: softwareVersion
         });
+        setStepStatus("measurement", "done");
 
         appendManualPressureStatus("Approving pressure constants and budget");
         await postJson("/constant-sets/approved", {
@@ -1212,6 +1542,7 @@ def browser_workflow_html() -> str:
           linked_constant_set_version: ids.constantSetVersion,
           software_version: softwareVersion
         });
+        setStepStatus("equipment", "done");
 
         appendManualPressureStatus("Calculating pressure point");
         const calculation = await postJson(`/calibration-jobs/${encodeURIComponent(jobId)}/pressure-calculations`, {
@@ -1241,6 +1572,7 @@ def browser_workflow_html() -> str:
           constant_set_version: ids.constantSetVersion,
           budget_version: ids.budgetVersion
         });
+        setStepStatus("calculation", "done");
 
         appendManualPressureStatus("Rendering preview PDF");
         const pdfResponse = await fetch("/certificate-preview-pdfs", {
@@ -1264,6 +1596,8 @@ def browser_workflow_html() -> str:
         linkEl.dataset.objectUrl = pdfUrl;
         linkEl.hidden = false;
         const checksum = pdfResponse.headers.get("X-SIMVal-Checksum-SHA256");
+        document.getElementById("pdfSummary").textContent = `${pdfBlob.size} bytes`;
+        setStepStatus("review", "done");
         appendManualPressureStatus("Preview PDF ready");
         responseBodyEl.textContent = pretty({
           job_id: jobId,
@@ -1300,7 +1634,25 @@ def browser_workflow_html() -> str:
     document.getElementById("buildCertificatePreview").addEventListener("click", () => postSample("/certificate-previews"));
     document.getElementById("renderCertificateRelease").addEventListener("click", () => postSample("/certificate-rendered-releases"));
     document.getElementById("runManualPressurePreview").addEventListener("click", runManualPressurePreview);
+    document.getElementById("previousWizardStep").addEventListener("click", () => moveWizardStep(-1));
+    document.getElementById("nextWizardStep").addEventListener("click", () => moveWizardStep(1));
+    document.getElementById("openReviewStep").addEventListener("click", () => showWizardStep("review"));
+    wizardSteps.forEach(step => {
+      step.addEventListener("click", () => showWizardStep(step.dataset.stepTarget));
+    });
+    document.getElementById("manualPressureJobId").addEventListener("input", syncJobIds);
+    for (const id of [
+      "manualPressureCertificateNumber",
+      "manualPressureReference",
+      "manualPressureUnit"
+    ]) {
+      document.getElementById(id).addEventListener("input", updatePressureSummary);
+    }
+    bootstrapLocalSession();
     setManualPressureDefaults();
+    syncJobIds();
+    updatePressureSummary();
+    showWizardStep("job");
     loadContract();
   </script>
 </body>
